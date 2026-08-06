@@ -5,7 +5,7 @@ from accounts.models import CustomUser, Role
 class RegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ["user_id", "username", "email", "password"]
+        fields = "__all__"
 
     def create(self, validated_data):
         employee_role = Role.objects.get(rolename="Employee")
@@ -48,7 +48,7 @@ class ChangePasswordSerializer(serializers.Serializer):
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ["user_id", "username", "email", "phone_number", "role"]
+        fields = ["user_id", "username", "email", "phone_number", "role", "created_at", "updated_at"]
 
 
 class RoleSerializer(serializers.ModelSerializer):

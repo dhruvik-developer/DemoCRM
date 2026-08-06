@@ -1,22 +1,5 @@
-"""
-URL configuration for crm project.
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/6.0/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  path('', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  path('', Home.as_view(), name='home')
-Including another URLconf
-    1. Import the include() function: from django.urls import include, path
-    2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
-"""
-
 from django.urls import path
-from .views import RegisterAPIView, LoginAPIView, LogoutAPIView, refreshTokenAPIView, ChangePasswordAPIView, ProfileAPIView
+from .views import RoleAPIView, RegisterAPIView, LoginAPIView, LogoutAPIView, RoleAPIView, refreshTokenAPIView, ChangePasswordAPIView, ProfileAPIView, AssignRoleAPIView
 
 urlpatterns = [
     path("register/", RegisterAPIView.as_view(), name="register"),
@@ -24,5 +7,7 @@ urlpatterns = [
     path("logout/", LogoutAPIView.as_view(), name="logout"),
     path("refresh/", refreshTokenAPIView.as_view(), name="token_refresh"),
     path("change-password/", ChangePasswordAPIView.as_view(), name="change_password"),
-    path("profile/", ProfileAPIView.as_view(), name="profile"),
+    path("profile/<uuid:user_id>/", ProfileAPIView.as_view(), name="profile"),
+    path("roles/", RoleAPIView.as_view(), name="roles"),
+    path("assign-role/<uuid:user_id>/", AssignRoleAPIView.as_view(), name="assign_role"),
 ]

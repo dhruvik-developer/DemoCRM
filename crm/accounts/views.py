@@ -6,7 +6,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.tokens import RefreshToken        #type: ignore
+from django.shortcuts import get_object_or_404
 
 # Create your views here.
 class RegisterAPIView(APIView):
@@ -27,9 +28,9 @@ class RegisterAPIView(APIView):
                     status=status.HTTP_201_CREATED
                 )
             
-            except Exception:
+            except Exception as e:
                 return Response(
-                    {"error": "An error occurred while registering the user."},
+                    {"error": str(e)},
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -139,31 +140,151 @@ class ChangePasswordAPIView(APIView):
 class ProfileAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
-    def get(self, request):
-        serializer = ProfileSerializer(request.user)
-        return Response({"message": "Profile retrieved successfully.", "profile": serializer.data}, status=status.HTTP_200_OK)
+    def get(self, request, user_id):
 
-
-class CreateRoleAPIView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def get(self, request):
-        roles = Role.objects.all()
-        serializer = RoleSerializer(roles, many=True)
-        return Response({"message": "Roles retrieved successfully.", "roles": serializer.data}, status=status.HTTP_200_OK)
-
-
-    def post(self, request):
-        serializer = RoleSerializer(data=request.data)
-
-        if request.CustomUser.role.rolename == None and request.CustomUser.role.rolename != "Admin":
+        if request.user.role is None:
             return Response(
-                {"error": "Only Admin can create roles"},
+                {"error": "Role is not assigned."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        if request.user.role.rolename not in ["Admin", "Manager"]:
+            return Response(
+                {"error": "Only Admin and Manager can view profiles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        user = get_object_or_404(CustomUser, user_id=user_id)   
+
+        serializer = ProfileSerializer(user)
+
+        return Response(
+            {
+                "message": "Profile retrieved successfully.",
+                "profile": serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+ 
+
+class RoleAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role is None:
+            return Response(
+                {"error": "Role is not assigned."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.user.role.rolename not in ["Admin", "Manager"]:
+            return Response(
+                {"error": "Only Admin and Manager can view roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        roles = Role.objects.all()
+        serializer = RoleSerializer(roles)
+
+        return Response(
+            {
+                "message": "Roles retrieved successfully.",
+                "roles": serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+
+    def post(self, request):
+        if request.user.role is None:
+            return Response(
+                {"error": "Role is not assigned."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.user.role.rolename != "Admin":
+            return Response(
+                {"error": "Only Admin can create roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = RoleSerializer(data=request.data)
+
         if serializer.is_valid():
             serializer.save()
-            return Response({"message": "Role created successfully.", "role": serializer.data}, status=status.HTTP_201_CREATED)
+            return Response(
+                {
+                    "message": "Role created successfully.",
+                    "role": serializer.data
+                },
+                status=status.HTTP_201_CREATED
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+    def put(self, request, role_id):
+        if request.user.role is None:
+            return Response(
+                {"error": "Role is not assigned."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.user.role.rolename != "Admin":
+            return Response(
+                {"error": "Only Admin can update roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        role = get_object_or_404(Role, role_id=role_id)
+        serializer = RoleSerializer(role, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {
+                    "message": "Role updated successfully.",
+                    "role": serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class AssignRoleAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def put(self, request, user_id):
+
+        # Only Admin can assign roles
+        if request.user.role is None or request.user.role.rolename != "Admin":
+            return Response(
+                {"error": "Only Admin can assign roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        user = get_object_or_404(CustomUser, user_id=user_id)
+
+        role_id = request.data.get("role_id")
+
+        if not role_id:
+            return Response(
+                {"error": "role_id is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        role = get_object_or_404(Role, role_id=role_id)
+
+        user.role = role
+        user.save()
+
+        return Response(
+            {
+                "message": "Role assigned successfully.",
+                "user": user.username,
+                "role": role.rolename
+            },
+            status=status.HTTP_200_OK
+        )
