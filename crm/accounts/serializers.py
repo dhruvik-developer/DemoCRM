@@ -1,0 +1,57 @@
+from rest_framework import serializers
+from accounts.models import CustomUser, Role
+
+
+class RegisterSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ["user_id", "username", "email", "password"]
+
+    def create(self, validated_data):
+        employee_role = Role.objects.get(rolename="Employee")
+
+        user = CustomUser.objects.create_user(
+            username=validated_data["username"],
+            email=validated_data["email"],
+            password=validated_data["password"],
+            role=employee_role
+        )
+
+        return user
+
+
+
+class LoginSerializer(serializers.Serializer):
+    user_id = serializers.UUIDField()
+    email = serializers.EmailField()
+    password = serializers.CharField(write_only=True)
+
+
+class LogOutSerializer(serializers.Serializer):
+    refresh_token = serializers.CharField()
+
+    def validate_refresh_token(self, value):
+        if not value:
+            raise serializers.ValidationError("Refresh token is required.")
+        return value
+
+
+class RefreshTokenSerializer(serializers.Serializer):
+    refresh_token = serializers.CharField()
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+
+
+class ProfileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomUser
+        fields = ["user_id", "username", "email", "phone_number", "role"]
+
+
+class RoleSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = "__all__"
