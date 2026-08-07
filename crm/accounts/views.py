@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken        #type: ignore
 from django.shortcuts import get_object_or_404
-from .permissions import CanCreateRole, CanUpdateRole, CanDeleteRole, CanAssignRole
+from django.contrib.auth.models import Permission
 
 # Create your views here.
 class RegisterAPIView(APIView):
@@ -169,7 +169,7 @@ class ProfileAPIView(APIView):
  
 
 class RoleAPIView(APIView):
-    permission_classes = [IsAuthenticated, CanCreateRole]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         if request.user.role is None:
@@ -255,38 +255,6 @@ class RoleAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
-
-class PermissionAPIView(APIView):
-    permission_classes = [IsAuthenticated, CanCreateRole]
-
-    def post(self, request):
-        if request.user.role is None:
-            return Response(
-                {"error": "Role is not assigned."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        if request.user.role.rolename != "Admin":
-            return Response(
-                {"error": "Only Admin can create permissions."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        serializer = PermissionSerializer(data=request.data)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(
-                {
-                    "message": "Permission created successfully.",
-                    "permission": serializer.data
-                },
-                status=status.HTTP_201_CREATED
-            )
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 class AssignRoleAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -325,5 +293,117 @@ class AssignRoleAPIView(APIView):
                 "user": user.username,
                 "role": role.rolename
             },
+            status=status.HTTP_200_OK
+        )
+
+
+
+class PermissionAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        if request.user.role is None:
+            return Response(
+                {"error": "Role is not assigned."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.user.role.rolename != "Admin":
+            return Response(
+                {"error": "Only Admin can view permissions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        permissions = Permission.objects.all().order_by("id")
+        serializer = PermissionSerializer(permissions, many=True)
+
+        return Response(
+            {
+                "message": "Permissions retrieved successfully.",
+                "permissions": serializer.data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    def post(self, request):
+        if request.user.role is None:
+            return Response(
+                {"error": "Role is not assigned."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.user.role.rolename != "Admin":
+            return Response(
+                {"error": "Only Admin can create permissions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = PermissionSerializer(data=request.data)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {
+                    "message": "Permission created successfully.",
+                    "permission": serializer.data
+                },
+                status=status.HTTP_201_CREATED
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, permission_id):
+
+        if request.user.role is None:
+            return Response(
+                {"error": "Role is not assigned."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.user.role.rolename != "Admin":
+            return Response(
+                {"error": "Only Admin can update permissions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        permission = get_object_or_404(Permission, id=permission_id)
+
+        serializer = PermissionSerializer(
+            permission,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response(
+                {
+                    "message": "Permission updated successfully.",
+                    "permission": serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, permission_id):
+
+        if request.user.role is None:
+            return Response(
+                {"error": "Role is not assigned."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.user.role.rolename != "Admin":
+            return Response(
+                {"error": "Only Admin can delete permissions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        permission = get_object_or_404(Permission, id=permission_id)
+        permission.delete()
+
+        return Response(
+            {"message": "Permission deleted successfully."},
             status=status.HTTP_200_OK
         )

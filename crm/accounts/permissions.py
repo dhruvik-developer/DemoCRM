@@ -23,14 +23,14 @@ class HasDynamicPermission(BasePermission):
         ).exists()
     
 
-class CanCreateRole(HasDynamicPermission):
-    permission_name = "add_role"
+# class CanCreateRole(HasDynamicPermission):
+#     permission_name = "add_role"
 
-class CanUpdateRole(HasDynamicPermission):
-    permission_name = "update_role"
+# class CanUpdateRole(HasDynamicPermission):
+#     permission_name = "update_role"
 
-class CanDeleteRole(HasDynamicPermission):
-    permission_name = "delete_role"
+# class CanDeleteRole(HasDynamicPermission):
+#     permission_name = "delete_role"
 
-class CanAssignRole(HasDynamicPermission):
-    permission_name = "assign_role"
+# class CanAssignRole(HasDynamicPermission):
+#     permission_name = "assign_role"
