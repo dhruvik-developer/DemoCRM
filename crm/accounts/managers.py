@@ -1,5 +1,6 @@
 from django.contrib.auth.models import BaseUserManager
 from django.apps import apps
+from django.contrib.auth.models import Permission
 
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, username, password=None, **extra_fields):
@@ -19,9 +20,14 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
 
+        user = self.create_user(email=email, username=username, password=password, **extra_fields)
+
         # Assign Admin role automatically
         admin_role = Role.objects.get(rolename="Admin")
-        extra_fields["role"] = admin_role
 
+        user.role = admin_role
+        user.save()
 
-        return self.create_user(email, username, password, **extra_fields)
+        admin_role.permissions.set(Permission.objects.all())
+        
+        return user

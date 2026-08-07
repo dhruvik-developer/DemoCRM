@@ -1,5 +1,6 @@
 from rest_framework import serializers
-from accounts.models import CustomUser, Role
+from accounts.models import CustomUser, Permission, Role
+from django.contrib.auth.models import Permission 
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -52,6 +53,23 @@ class ProfileSerializer(serializers.ModelSerializer):
 
 
 class RoleSerializer(serializers.ModelSerializer):
+      
+    permissions = serializers.PrimaryKeyRelatedField(
+        queryset=Permission.objects.all(),
+        many=True,
+        required=False
+    )
     class Meta:
         model = Role
+        fields = "__all__"
+
+class RoleListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Role
+        fields = ["role_id", "rolename", "description"]
+
+
+class PermissionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Permission
         fields = "__all__"

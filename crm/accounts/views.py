@@ -1,13 +1,14 @@
 from django.shortcuts import render
 
 from .models import CustomUser, Role 
-from .serializers import ProfileSerializer, RegisterSerializer, LoginSerializer, LogOutSerializer, RefreshTokenSerializer, ChangePasswordSerializer, RoleSerializer
+from .serializers import PermissionSerializer, ProfileSerializer, RegisterSerializer, LoginSerializer, LogOutSerializer, RefreshTokenSerializer, ChangePasswordSerializer, RoleListSerializer, RoleSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken        #type: ignore
 from django.shortcuts import get_object_or_404
+from .permissions import CanCreateRole, CanUpdateRole, CanDeleteRole, CanAssignRole
 
 # Create your views here.
 class RegisterAPIView(APIView):
@@ -168,7 +169,7 @@ class ProfileAPIView(APIView):
  
 
 class RoleAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanCreateRole]
 
     def get(self, request):
         if request.user.role is None:
@@ -184,7 +185,7 @@ class RoleAPIView(APIView):
             )
 
         roles = Role.objects.all()
-        serializer = RoleSerializer(roles)
+        serializer = RoleListSerializer(roles, many=True)
 
         return Response(
             {
@@ -221,9 +222,17 @@ class RoleAPIView(APIView):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
 
+    def delete(self, request):
+        role_id = request.data.get("role_id")
 
-    def put(self, request, role_id):
+        if not role_id:
+            return Response(
+                {"error": "role_id is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         if request.user.role is None:
             return Response(
                 {"error": "Role is not assigned."},
@@ -232,25 +241,50 @@ class RoleAPIView(APIView):
 
         if request.user.role.rolename != "Admin":
             return Response(
-                {"error": "Only Admin can update roles."},
+                {"error": "Only Admin can delete roles."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
         role = get_object_or_404(Role, role_id=role_id)
-        serializer = RoleSerializer(role, data=request.data, partial=True)
+        role.delete()
+
+        return Response(
+            {"message": "Role deleted successfully.",
+             "role": role.rolename
+             },
+            status=status.HTTP_200_OK
+        )
+
+
+class PermissionAPIView(APIView):
+    permission_classes = [IsAuthenticated, CanCreateRole]
+
+    def post(self, request):
+        if request.user.role is None:
+            return Response(
+                {"error": "Role is not assigned."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if request.user.role.rolename != "Admin":
+            return Response(
+                {"error": "Only Admin can create permissions."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = PermissionSerializer(data=request.data)
 
         if serializer.is_valid():
             serializer.save()
             return Response(
                 {
-                    "message": "Role updated successfully.",
-                    "role": serializer.data
+                    "message": "Permission created successfully.",
+                    "permission": serializer.data
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_201_CREATED
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 
 class AssignRoleAPIView(APIView):
@@ -258,7 +292,6 @@ class AssignRoleAPIView(APIView):
 
     def put(self, request, user_id):
 
-        # Only Admin can assign roles
         if request.user.role is None or request.user.role.rolename != "Admin":
             return Response(
                 {"error": "Only Admin can assign roles."},
@@ -266,6 +299,12 @@ class AssignRoleAPIView(APIView):
             )
 
         user = get_object_or_404(CustomUser, user_id=user_id)
+
+        if user.role and user.role.rolename == "Admin":
+            return Response(
+                {"error": "Admin role cannot be changed."},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         role_id = request.data.get("role_id")
 
