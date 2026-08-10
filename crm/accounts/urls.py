@@ -9,6 +9,9 @@ urlpatterns = [
     path("change-password/", ChangePasswordAPIView.as_view(), name="change_password"),
     path("profile/<uuid:user_id>/", ProfileAPIView.as_view(), name="profile"),
     path("roles/", RoleAPIView.as_view(), name="roles"),
+    path("roles/<int:role_id>/", RoleAPIView.as_view(), name="role_detail"),
     path("permissions/", PermissionAPIView.as_view(), name="permissions"),
+    path("permissions/<int:permission_id>/", PermissionAPIView.as_view(), name="permission_detail"),
     path("assign-role/<uuid:user_id>/", AssignRoleAPIView.as_view(), name="assign_role"),
 ]
+ 

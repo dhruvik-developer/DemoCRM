@@ -22,7 +22,7 @@ class CustomUser(AbstractUser):
     user_id = models.UUIDField(default=uuid4, primary_key=True, editable=False)
     username = models.CharField(max_length=100)
     email = models.EmailField(unique=True, blank=False, null=False)
-    phone_number = models.CharField(max_length=10, blank=False, null=False)
+    phone_number = models.CharField(max_length=10, unique=True, blank=False, null=False)
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

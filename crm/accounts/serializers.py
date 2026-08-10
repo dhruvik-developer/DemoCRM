@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from accounts.models import CustomUser, Permission, Role
+from accounts.models import CustomUser, Role
 from django.contrib.auth.models import Permission 
 
 
@@ -14,6 +14,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         user = CustomUser.objects.create_user(
             username=validated_data["username"],
             email=validated_data["email"],
+            phone_number=validated_data["phone_number"],
             password=validated_data["password"],
             role=employee_role
         )
@@ -62,14 +63,16 @@ class RoleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
         fields = "__all__"
+        read_only_fields = ["role_id", "created_at", "updated_at"]
 
 class RoleListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Role
-        fields = ["role_id", "rolename", "description"]
+        fields = ["role_id", "rolename", "description", "permissions"]
 
 
 class PermissionSerializer(serializers.ModelSerializer):
     class Meta:
         model = Permission
         fields = ["id", "name", "codename", "content_type"]
+        read_only_fields = ["id"]

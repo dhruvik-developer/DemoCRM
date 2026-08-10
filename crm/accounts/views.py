@@ -166,8 +166,8 @@ class ProfileAPIView(APIView):
             },
             status=status.HTTP_200_OK
         )
- 
 
+ 
 class RoleAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -184,7 +184,7 @@ class RoleAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        roles = Role.objects.all()
+        roles = Role.objects.all().order_by("role_id")
         serializer = RoleListSerializer(roles, many=True)
 
         return Response(
@@ -194,7 +194,6 @@ class RoleAPIView(APIView):
             },
             status=status.HTTP_200_OK
         )
-
 
     def post(self, request):
         if request.user.role is None:
@@ -213,6 +212,7 @@ class RoleAPIView(APIView):
 
         if serializer.is_valid():
             serializer.save()
+
             return Response(
                 {
                     "message": "Role created successfully.",
@@ -221,18 +221,55 @@ class RoleAPIView(APIView):
                 status=status.HTTP_201_CREATED
             )
 
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-    def delete(self, request):
-        role_id = request.data.get("role_id")
-
-        if not role_id:
+    def put(self, request, role_id):
+        if request.user.role is None:
             return Response(
-                {"error": "role_id is required."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "Role is not assigned."},
+                status=status.HTTP_403_FORBIDDEN
             )
 
+        if request.user.role.rolename != "Admin":
+            return Response(
+                {"error": "Only Admin can update roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        role = get_object_or_404(Role, role_id=role_id)
+
+        if role.rolename == "Admin":
+            return Response(
+                {"error": "Admin role cannot be updated."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        serializer = RoleSerializer(
+            role,
+            data=request.data,
+            partial=True
+        )
+
+        if serializer.is_valid():
+            serializer.save()
+
+            return Response(
+                {
+                    "message": "Role updated successfully.",
+                    "role": serializer.data
+                },
+                status=status.HTTP_200_OK
+            )
+
+        return Response(
+            serializer.errors,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    def delete(self, request, role_id):
         if request.user.role is None:
             return Response(
                 {"error": "Role is not assigned."},
@@ -246,12 +283,21 @@ class RoleAPIView(APIView):
             )
 
         role = get_object_or_404(Role, role_id=role_id)
+
+        if role.rolename in ["Admin", "Manager", "Employee"]:
+            return Response(
+                {"error": "Default roles cannot be deleted."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        role_name = role.rolename
         role.delete()
 
         return Response(
-            {"message": "Role deleted successfully.",
-             "role": role.rolename
-             },
+            {
+                "message": "Role deleted successfully.",
+                "role": role_name
+            },
             status=status.HTTP_200_OK
         )
 
