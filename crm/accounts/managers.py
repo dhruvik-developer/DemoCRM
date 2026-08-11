@@ -22,11 +22,11 @@ class CustomUserManager(BaseUserManager):
 
         user = self.create_user(email=email, username=username, password=password, **extra_fields)
 
-        # Assign Admin role automatically
-        admin_role = Role.objects.get(rolename="Admin")
+        # Assign Admin role automatically, creating if it doesn't exist
+        admin_role, _ = Role.objects.get_or_create(rolename="Admin")
 
         user.role = admin_role
-        user.save()
+        user.save(using=self._db)
 
         admin_role.permissions.set(Permission.objects.all())
         

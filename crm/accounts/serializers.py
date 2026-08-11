@@ -1,15 +1,19 @@
 from rest_framework import serializers
 from accounts.models import CustomUser, Role
 from django.contrib.auth.models import Permission 
+from django.contrib.auth.password_validation import validate_password
 
 
 class RegisterSerializer(serializers.ModelSerializer):
+    password = serializers.CharField(write_only=True)
+
     class Meta:
         model = CustomUser
-        fields = "__all__"
+        fields = ["user_id", "username", "email", "phone_number", "password"]
+        read_only_fields = ["user_id"]
 
     def create(self, validated_data):
-        employee_role = Role.objects.get(rolename="Employee")
+        employee_role = Role.objects.filter(rolename="Employee").first()
 
         user = CustomUser.objects.create_user(
             username=validated_data["username"],
@@ -22,9 +26,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         return user
 
 
-
 class LoginSerializer(serializers.Serializer):
-    user_id = serializers.UUIDField()
     email = serializers.EmailField()
     password = serializers.CharField(write_only=True)
 
@@ -44,7 +46,7 @@ class RefreshTokenSerializer(serializers.Serializer):
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
-    new_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True, validators=[validate_password])
 
 
 class ProfileSerializer(serializers.ModelSerializer):
