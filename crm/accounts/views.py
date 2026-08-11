@@ -1,7 +1,7 @@
 from django.shortcuts import render
 
 from .models import CustomUser, Role 
-from .serializers import PermissionSerializer, ProfileSerializer, RegisterSerializer, LoginSerializer, LogOutSerializer, RefreshTokenSerializer, ChangePasswordSerializer, RoleListSerializer, RoleSerializer
+from .serializers import PermissionSerializer, ProfileSerializer, RegisterSerializer, LoginSerializer, LogOutSerializer, ChangePasswordSerializer, RoleListSerializer, RoleSerializer
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -9,6 +9,7 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken        #type: ignore
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import Permission
+from .permissions import HasDynamicPermission
 
 # Create your views here.
 class RegisterAPIView(APIView):
@@ -77,6 +78,7 @@ class LoginAPIView(APIView):
 
 class LogoutAPIView(APIView):
     permission_classes = [IsAuthenticated]
+    permission_name = "logout"
 
     def post(self, request):
         serializer = LogOutSerializer(data=request.data)
@@ -169,7 +171,13 @@ class ProfileAPIView(APIView):
 
  
 class RoleAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasDynamicPermission]
+    permission_names = {
+        "GET": "view_role",
+        "POST": "add_role",
+        "PUT": "change_role",
+        "DELETE": "delete_role",
+    }
 
     def get(self, request):
         if request.user.role is None:
@@ -302,7 +310,8 @@ class RoleAPIView(APIView):
         )
 
 class AssignRoleAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasDynamicPermission]
+    permission_name = "assign_role" 
 
     def put(self, request, user_id):
 
@@ -345,7 +354,13 @@ class AssignRoleAPIView(APIView):
 
 
 class PermissionAPIView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [HasDynamicPermission]
+    permission_names = {
+        "GET": "view_permission",
+        "POST": "add_permission",
+        "PUT": "change_permission",
+        "DELETE": "delete_permission",
+    }
 
     def get(self, request):
         if request.user.role is None:

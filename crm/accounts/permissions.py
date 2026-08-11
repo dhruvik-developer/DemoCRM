@@ -3,7 +3,7 @@ from rest_framework.permissions import BasePermission
 
 class HasDynamicPermission(BasePermission):
 
-    permission_name = None
+    permission_names = None
 
     def has_permission(self, request, view):
 
@@ -18,19 +18,11 @@ class HasDynamicPermission(BasePermission):
         if role is None:
             return False
 
+        permission_names = getattr(view, "permission_names", None)
+
+        if permission_names is None:
+            return False
+
         return role.permissions.filter(
-            codename=self.permission_name
+            codename=permission_names
         ).exists()
-    
-
-# class CanCreateRole(HasDynamicPermission):
-#     permission_name = "add_role"
-
-# class CanUpdateRole(HasDynamicPermission):
-#     permission_name = "update_role"
-
-# class CanDeleteRole(HasDynamicPermission):
-#     permission_name = "delete_role"
-
-# class CanAssignRole(HasDynamicPermission):
-#     permission_name = "assign_role"
