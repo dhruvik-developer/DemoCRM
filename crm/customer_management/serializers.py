@@ -218,11 +218,24 @@ class ActivitySerializer(serializers.ModelSerializer):
         follow_up_required = attrs.get("follow_up_required")
         follow_up_date = attrs.get("follow_up_date")
 
+        # Activity must belong to either Lead or Customer
         if not lead and not customer:
             raise serializers.ValidationError(
                 "Activity must belong to a Lead or Customer."
             )
 
+        # Converted Leads cannot receive new activities
+        if lead and lead.status == Lead.Status.CONVERTED:
+            raise serializers.ValidationError(
+                {
+                    "lead": (
+                        "Cannot create a new Activity for a converted Lead. "
+                        "Create the Activity against the Customer instead."
+                    )
+                }
+            )
+
+        # Follow-up validation
         if follow_up_required and not follow_up_date:
             raise serializers.ValidationError(
                 {
