@@ -367,7 +367,7 @@ class CRMService:
             user=user,
             entity_type="Lead",
             entity_id=lead.id,
-            action="STATUS_CHANGED",
+            action="LEAD_LOST",
             old_value={
                 "status": Lead.Status.ACTIVE,
             },
@@ -445,6 +445,18 @@ class CRMService:
                 "Activity must belong to a Lead or Customer."
             )
 
+        if lead and customer:
+            raise ValidationError(
+                "Activity cannot belong to both a Lead and a Customer."
+            )
+
+        if lead:
+            lead_obj = Lead.objects.filter(pk=lead.pk).values("status").first()
+            if lead_obj and lead_obj["status"] == Lead.Status.CONVERTED:
+                raise ValidationError(
+                    "Cannot create a new Activity for a converted Lead. Create the Activity against the Customer instead."
+                )
+
         if follow_up_required and not follow_up_date:
             raise ValidationError(
                 "Follow-up date is required."
@@ -500,7 +512,6 @@ class CRMService:
         lead = (
             Lead.objects
             .select_for_update()
-            .select_related("customer")
             .get(pk=lead.pk)
         )
 
@@ -522,15 +533,17 @@ class CRMService:
         )
 
         if existing_customer:
-            customer = existing_customer
-        else:
-            customer = Customer.objects.create(
-                lead=lead,
-                name=name,
-                email=email,
-                phone=phone,
-                company_name=company_name,
+            raise ValidationError(
+                "A customer with this email address already exists."
             )
+
+        customer = Customer.objects.create(
+            lead=lead,
+            name=name,
+            email=email,
+            phone=phone,
+            company_name=company_name,
+        )
 
         old_status = lead.status
 
