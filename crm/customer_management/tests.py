@@ -328,3 +328,52 @@ class CRMRegressionTests(CRMBaseTestCase):
         CRMService.reengage_lead(user=self.user, lead=lost)
         audit_log = AuditLog.objects.filter(entity_id=lead.id, action="LEAD_REENGAGED").first()
         self.assertIsNotNone(audit_log)
+
+    # ---------------------------------------------------------
+    # TEST 18-21: Terminal-state & negative PATCH guards
+    # ---------------------------------------------------------
+
+    def test_18_patch_on_converted_lead_is_rejected(self):
+        lead = CRMService.create_lead(
+            user=self.user, name="Conv Patch Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline, current_stage=self.stage1
+        )
+        CRMService.convert_lead(
+            user=self.user, lead=lead,
+            name="Cust", email="patchconv@example.com", phone="123",
+        )
+        lead.refresh_from_db()
+        self.assertEqual(lead.status, Lead.Status.CONVERTED)
+
+        response = self.client.patch(
+            f"/api/crm/leads/{lead.id}/", {"current_stage": str(self.stage2.id)}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+        lead.refresh_from_db()
+        self.assertEqual(lead.current_stage, self.stage1)
+
+    def test_19_patch_lost_reason_on_active_lead_is_rejected(self):
+        lead = CRMService.create_lead(
+            user=self.user, name="Lost Reason Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline, current_stage=self.stage1
+        )
+        response = self.client.patch(
+            f"/api/crm/leads/{lead.id}/", {"lost_reason": "not actually lost"}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_20_patch_with_inactive_source_is_rejected(self):
+        lead = CRMService.create_lead(
+            user=self.user, name="Inactive Source Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline, current_stage=self.stage1
+        )
+        response = self.client.patch(
+            f"/api/crm/leads/{lead.id}/", {"source": str(self.inactive_source.id)}
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_21_unauthenticated_lead_list_rejected(self):
+        unauth_client = APIClient()
+        response = unauth_client.get("/api/crm/leads/")
+        self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])

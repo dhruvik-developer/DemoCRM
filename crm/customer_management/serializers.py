@@ -172,6 +172,35 @@ class LeadSerializer(serializers.ModelSerializer):
                 }
             )
 
+        # A Lead that is LOST or CONVERTED is in a terminal state. State
+        # transitions must go through the dedicated workflow endpoints
+        # (progress / lost / re-engage / convert / assign). Direct PATCH/PUT
+        # must be rejected so a converted Lead cannot keep behaving like an
+        # active one.
+        if self.instance and self.instance.status != Lead.Status.ACTIVE:
+            raise serializers.ValidationError(
+                {
+                    "status": (
+                        "A Lead that is not Active cannot be modified directly. "
+                        "Use the workflow endpoints (assign/progress/lost/"
+                        "re-engage/convert)."
+                    )
+                }
+            )
+
+        # lost_reason / lost_at may only be present on a LOST Lead. Since
+        # status is read-only, it can never be set to LOST through a PATCH,
+        # so any attempt to set lost_reason on a non-lost Lead is invalid.
+        if "lost_reason" in attrs and (
+            self.instance is None
+            or self.instance.status != Lead.Status.LOST
+        ):
+            raise serializers.ValidationError(
+                {
+                    "lost_reason": "Lost reason can only be set on a lost Lead."
+                }
+            )
+
         return attrs
 
 
