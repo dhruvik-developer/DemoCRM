@@ -500,7 +500,6 @@ class CRMService:
         lead = (
             Lead.objects
             .select_for_update()
-            .select_related("customer")
             .get(pk=lead.pk)
         )
 
