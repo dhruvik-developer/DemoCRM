@@ -191,6 +191,18 @@ class RoleAPIView(APIView):
     }
 
     def get(self, request):
+        if request.user.role is None:
+             return Response(
+            {"error": "Role is not assigned."},
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+        if request.user.role.rolename not in ["Admin", "Manager"]:
+            return Response(
+                {"error": "Only Admin and Manager can view roles."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         roles = Role.objects.prefetch_related("permissions").order_by("role_id")
         serializer = RoleListSerializer(roles, many=True)
 
