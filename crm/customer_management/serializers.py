@@ -223,6 +223,11 @@ class ActivitySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Activity must belong to a Lead or Customer."
             )
+        
+        if lead and customer:
+            raise serializers.ValidationError(
+                "Activity cannot belong to both a Lead and a Customer."
+            )
 
         # Converted Leads cannot receive new activities
         if lead and lead.status == Lead.Status.CONVERTED:

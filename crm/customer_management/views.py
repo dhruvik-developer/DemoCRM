@@ -4,10 +4,12 @@ from django.shortcuts import get_object_or_404
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework import generics
 
 from .models import (
     Activity,
     AuditLog,
+    Customer,
     Lead,
     LeadSource,
     Pipeline,
@@ -17,6 +19,7 @@ from .permissions import CRMHasPermission
 from .serializers import (
     ActivitySerializer,
     AuditLogSerializer,
+    CustomerSerializer,
     LeadSerializer,
     LeadSourceSerializer,
     PipelineSerializer,
@@ -476,3 +479,40 @@ class AuditLogListView(APIView):
         )
 
         return Response(serializer.data)
+
+class CustomerListCreateView(generics.ListCreateAPIView):
+    queryset = Customer.objects.all()
+    serializer_class = CustomerSerializer
+
+    def perform_create(self, serializer):
+        customer = serializer.save()
+
+        CRMService.create_audit_log(
+            user=self.request.user,
+            entity_type="Customer",
+            entity_id=customer.id,
+            action="CUSTOMER_CREATED",
+            new_value={
+                "lead": str(customer.lead_id),
+                "name": customer.name,
+                "email": customer.email,
+            },
+        )
+
+
+class CustomerDetailView(generics.RetrieveAPIView):
+    queryset = Customer.objects.all()
+    serializer_class = CustomerSerializer
+
+class CustomerActivityListView(generics.ListAPIView):
+    serializer_class = ActivitySerializer
+
+    def get_queryset(self):
+        customer_id = self.kwargs["pk"]
+
+        return (
+            Activity.objects
+            .filter(customer_id=customer_id)
+            .select_related("customer", "created_by")
+            .order_by("-created_at")
+        )

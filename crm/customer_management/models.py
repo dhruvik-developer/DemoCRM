@@ -281,7 +281,12 @@ class Activity(models.Model):
     def clean(self):
         if not self.lead_id and not self.customer_id:
             raise ValidationError(
-                "An Activity must belong to a Lead or Customer."
+                "An Activity must belong to either a Lead or a Customer."
+            )
+
+        if self.lead_id and self.customer_id:
+            raise ValidationError(
+                "An Activity cannot belong to both a Lead and a Customer."
             )
 
         if self.follow_up_required and not self.follow_up_date:
@@ -293,7 +298,7 @@ class Activity(models.Model):
             raise ValidationError(
                 "Follow-up date cannot be set when follow-up is not required."
             )
-
+    
     def __str__(self):
         return f"{self.activity_type} - {self.outcome}"
 

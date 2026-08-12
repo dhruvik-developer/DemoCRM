@@ -3,6 +3,9 @@ from django.urls import path
 from .views import (
     ActivityListCreateView,
     AuditLogListView,
+    CustomerDetailView,
+    CustomerListCreateView,
+    CustomerActivityListView,
     LeadAssignView,
     LeadConvertView,
     LeadDetailView,
@@ -82,5 +85,21 @@ urlpatterns = [
         "audit-logs/",
         AuditLogListView.as_view(),
         name="audit-log-list",
+    ),
+    # Customers
+    path(
+        "customers/",
+        CustomerListCreateView.as_view(),
+        name="customer-list-create",
+    ),
+    path(
+        "customers/<uuid:pk>/",
+        CustomerDetailView.as_view(),
+        name="customer-detail",
+    ),
+    path(
+        "customers/<uuid:pk>/activities/",
+        CustomerActivityListView.as_view(),
+        name="customer-activity-list",
     ),
 ]
