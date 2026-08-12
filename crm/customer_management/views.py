@@ -194,6 +194,16 @@ class LeadDetailView(APIView):
 
     def patch(self, request, pk):
         lead = self.get_object(pk)
+        old_data = {
+            "name": lead.name,
+            "email": lead.email,
+            "phone": lead.phone,
+            "company_name": lead.company_name,
+            "source": str(lead.source_id) if lead.source_id else None,
+            "assigned_to": str(lead.assigned_to_id) if lead.assigned_to_id else None,
+            "pipeline": str(lead.pipeline_id) if lead.pipeline_id else None,
+            "current_stage": str(lead.current_stage_id) if lead.current_stage_id else None,
+        }
 
         serializer = LeadSerializer(
             lead,
@@ -201,19 +211,71 @@ class LeadDetailView(APIView):
             partial=True,
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        updated_lead = serializer.save()
+
+        new_data = {
+            "name": updated_lead.name,
+            "email": updated_lead.email,
+            "phone": updated_lead.phone,
+            "company_name": updated_lead.company_name,
+            "source": str(updated_lead.source_id) if updated_lead.source_id else None,
+            "assigned_to": str(updated_lead.assigned_to_id) if updated_lead.assigned_to_id else None,
+            "pipeline": str(updated_lead.pipeline_id) if updated_lead.pipeline_id else None,
+            "current_stage": str(updated_lead.current_stage_id) if updated_lead.current_stage_id else None,
+        }
+
+        if old_data != new_data:
+            CRMService.create_audit_log(
+                user=request.user,
+                entity_type="Lead",
+                entity_id=updated_lead.id,
+                action="LEAD_UPDATED",
+                old_value=old_data,
+                new_value=new_data,
+            )
 
         return Response(serializer.data)
 
     def put(self, request, pk):
         lead = self.get_object(pk)
+        old_data = {
+            "name": lead.name,
+            "email": lead.email,
+            "phone": lead.phone,
+            "company_name": lead.company_name,
+            "source": str(lead.source_id) if lead.source_id else None,
+            "assigned_to": str(lead.assigned_to_id) if lead.assigned_to_id else None,
+            "pipeline": str(lead.pipeline_id) if lead.pipeline_id else None,
+            "current_stage": str(lead.current_stage_id) if lead.current_stage_id else None,
+        }
 
         serializer = LeadSerializer(
             lead,
             data=request.data,
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        updated_lead = serializer.save()
+
+        new_data = {
+            "name": updated_lead.name,
+            "email": updated_lead.email,
+            "phone": updated_lead.phone,
+            "company_name": updated_lead.company_name,
+            "source": str(updated_lead.source_id) if updated_lead.source_id else None,
+            "assigned_to": str(updated_lead.assigned_to_id) if updated_lead.assigned_to_id else None,
+            "pipeline": str(updated_lead.pipeline_id) if updated_lead.pipeline_id else None,
+            "current_stage": str(updated_lead.current_stage_id) if updated_lead.current_stage_id else None,
+        }
+
+        if old_data != new_data:
+            CRMService.create_audit_log(
+                user=request.user,
+                entity_type="Lead",
+                entity_id=updated_lead.id,
+                action="LEAD_UPDATED",
+                old_value=old_data,
+                new_value=new_data,
+            )
 
         return Response(serializer.data)
 
@@ -483,6 +545,12 @@ class AuditLogListView(APIView):
 class CustomerListCreateView(generics.ListCreateAPIView):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
+    permission_classes = [CRMHasPermission]
+
+    permission_names = {
+        "GET": "view_customer",
+        "POST": "add_customer",
+    }
 
     def perform_create(self, serializer):
         customer = serializer.save()
@@ -503,9 +571,20 @@ class CustomerListCreateView(generics.ListCreateAPIView):
 class CustomerDetailView(generics.RetrieveAPIView):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
+    permission_classes = [CRMHasPermission]
+
+    permission_names = {
+        "GET": "view_customer",
+    }
+
 
 class CustomerActivityListView(generics.ListAPIView):
     serializer_class = ActivitySerializer
+    permission_classes = [CRMHasPermission]
+
+    permission_names = {
+        "GET": "view_activity",
+    }
 
     def get_queryset(self):
         customer_id = self.kwargs["pk"]

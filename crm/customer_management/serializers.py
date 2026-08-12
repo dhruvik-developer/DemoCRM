@@ -139,6 +139,12 @@ class LeadSerializer(serializers.ModelSerializer):
                 }
             )
 
+        target_pipeline_id = (
+            pipeline.id
+            if pipeline
+            else (self.instance.pipeline_id if self.instance else None)
+        )
+
         if current_stage:
             if not current_stage.is_active:
                 raise serializers.ValidationError(
@@ -147,7 +153,7 @@ class LeadSerializer(serializers.ModelSerializer):
                     }
                 )
 
-            if pipeline and current_stage.pipeline_id != pipeline.id:
+            if target_pipeline_id and current_stage.pipeline_id != target_pipeline_id:
                 raise serializers.ValidationError(
                     {
                         "current_stage": (
