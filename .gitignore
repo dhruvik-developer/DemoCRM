@@ -151,6 +151,7 @@ activemq-data/
 .env
 .envrc
 .venv
+venv
 env/
 venv/
 ENV/
@@ -220,3 +221,4 @@ __marimo__/
 
 graphify-out
 PROJECT_FLOW.md
+database
