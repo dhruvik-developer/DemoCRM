@@ -85,11 +85,26 @@ class NotificationType(models.Model):
 
 class NotificationTemplate(models.Model):
     template_id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, blank=True, default="")
+    notification_type_id = models.ForeignKey(
+        NotificationType,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="templates",
+    )
     subject = models.CharField(max_length=255)
     body = models.TextField()
     is_active = models.BooleanField(default=True)
 
 class Notification(models.Model):
+
+    class Status(models.TextChoices):
+        DRAFT = "DRAFT", "Draft"
+        SCHEDULED = "SCHEDULED", "Scheduled"
+        SENT = "SENT", "Sent"
+        FAILED = "FAILED", "Failed"
+
     notification_id = models.AutoField(primary_key=True)
     # Developer 1 - User
     user_id = models.ForeignKey(
@@ -103,4 +118,25 @@ class Notification(models.Model):
     message = models.TextField()
     is_read = models.BooleanField(default=False)
     read_at = models.DateTimeField(blank=True, null=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.DRAFT,
+    )
+    is_customized = models.BooleanField(default=False)
+    # Developer 1 - User
+    edited_by = models.ForeignKey(
+        "accounts.CustomUser",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="edited_notifications",
+    )
+    scheduled_at = models.DateTimeField(blank=True, null=True)
+    sent_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        permissions = [
+            ("send_notification", "Can send notification"),
+        ]

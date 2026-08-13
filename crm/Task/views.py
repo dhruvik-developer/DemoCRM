@@ -2,9 +2,10 @@ from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 
 from rest_framework import status
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+
+from .permissions import TaskHasPermission
 
 from .models import (
     Task,
@@ -23,6 +24,8 @@ from .serializers import (
     ReminderSerializer,
 )
 
+from FollowUp.notification_utils import notify_task_assignment
+
 
 User = get_user_model()
 
@@ -40,7 +43,12 @@ class TaskListCreateView(APIView):
         Create a task
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "GET": "view_task",
+        "POST": "add_task",
+    }
 
     def get(self, request):
 
@@ -85,6 +93,10 @@ class TaskListCreateView(APIView):
                 created_by=request.user
             )
 
+            # Auto-notify the assignee when a task is created.
+            if task.assigned_to and task.assigned_to != request.user:
+                notify_task_assignment(task)
+
             return Response(
                 TaskSerializer(
                     task,
@@ -111,7 +123,13 @@ class TaskDetailView(APIView):
         Soft delete task
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "GET": "view_task",
+        "PATCH": "change_task",
+        "DELETE": "delete_task",
+    }
 
     def get_task(self, task_id):
 
@@ -211,7 +229,11 @@ class TaskAssignView(APIView):
     Assign or reassign a task.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "POST": "assign_task",
+    }
 
     def post(self, request, task_id):
 
@@ -247,6 +269,10 @@ class TaskAssignView(APIView):
             ]
         )
 
+        # Auto-notify the new assignee on (re)assignment.
+        if old_user is None or old_user.user_id != new_user.user_id:
+            notify_task_assignment(task)
+
         return Response(
             {
                 "message": "Task assigned successfully.",
@@ -271,7 +297,11 @@ class TaskStatusUpdateView(APIView):
     Change task status.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "PATCH": "change_task",
+    }
 
     def patch(self, request, task_id):
 
@@ -330,7 +360,11 @@ class MeetingCreateView(APIView):
     Create a meeting.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "POST": "add_meeting",
+    }
 
     def post(self, request):
 
@@ -367,7 +401,11 @@ class MeetingDetailView(APIView):
     Get meeting details.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "GET": "view_meeting",
+    }
 
     def get(self, request, meeting_id):
 
@@ -403,7 +441,11 @@ class MeetingRescheduleView(APIView):
     Change meeting date/time.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "PATCH": "change_meeting",
+    }
 
     def patch(self, request, meeting_id):
 
@@ -455,7 +497,11 @@ class MeetingStatusUpdateView(APIView):
     Change meeting status.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "PATCH": "change_meeting",
+    }
 
     def patch(self, request, meeting_id):
 
@@ -514,7 +560,11 @@ class MeetingParticipantAddView(APIView):
     Add a participant.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "POST": "add_meetingparticipant",
+    }
 
     def post(self, request, meeting_id):
 
@@ -604,7 +654,11 @@ class MeetingParticipantRemoveView(APIView):
     Remove participant from meeting.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "DELETE": "delete_meetingparticipant",
+    }
 
     def delete(self, request, meeting_id, user_id):
 
@@ -642,7 +696,11 @@ class ReminderCreateView(APIView):
     Create a reminder.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "POST": "add_reminder",
+    }
 
     def post(self, request):
 
@@ -683,7 +741,13 @@ class ReminderDetailView(APIView):
         Delete reminder
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "GET": "view_reminder",
+        "PATCH": "change_reminder",
+        "DELETE": "delete_reminder",
+    }
 
     def get_reminder(self, reminder_id):
 
@@ -780,7 +844,11 @@ class ReminderStatusUpdateView(APIView):
     Change reminder status.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [TaskHasPermission]
+
+    permission_names = {
+        "PATCH": "change_reminder",
+    }
 
     def patch(self, request, reminder_id):
 

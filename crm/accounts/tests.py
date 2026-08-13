@@ -39,7 +39,7 @@ class AccountTestCase(APITestCase):
         self.admin_role = self._create_role("Admin", PERMISSION_CODENAMES)
 
     def _create_role(self, rolename, codenames=()):
-        role = Role.objects.create(rolename=rolename)
+        role, _ = Role.objects.get_or_create(rolename=rolename)
         self._grant_permissions(role, codenames)
         return role
 

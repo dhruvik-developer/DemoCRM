@@ -6,6 +6,9 @@ from .views import (
     FollowUpNoteCreateView,
     UserNotificationListView,
     NotificationDetailView,
+    NotificationTemplateListView,
+    NotificationPreviewView,
+    NotificationSendView,
 )
 
 
@@ -44,8 +47,26 @@ urlpatterns = [
     ),
 
     path(
+        "notifications/preview/",
+        NotificationPreviewView.as_view(),
+        name="notification-preview"
+    ),
+
+    path(
+        "notifications/send/",
+        NotificationSendView.as_view(),
+        name="notification-send"
+    ),
+
+    path(
         "notifications/<int:notification_id>/",
         NotificationDetailView.as_view(),
         name="notification-detail"
+    ),
+
+    path(
+        "notification-templates/",
+        NotificationTemplateListView.as_view(),
+        name="notification-template-list"
     ),
 ]

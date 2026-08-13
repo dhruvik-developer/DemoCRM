@@ -16,7 +16,7 @@ User = get_user_model()
 class CRMBaseTestCase(TestCase):
     def setUp(self):
         # Create permissions and role
-        self.role = Role.objects.create(rolename="Manager")
+        self.role, _ = Role.objects.get_or_create(rolename="Manager")
         all_perms = Permission.objects.filter(
             codename__in=[
                 "view_leadsource", "manage_lead_source",

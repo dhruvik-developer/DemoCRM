@@ -68,6 +68,7 @@ class TaskSerializer(serializers.ModelSerializer):
             "task_id",
             "created_at",
             "updated_at",
+            "created_by",
         )
 
     def validate_task_title(self, value):
