@@ -264,6 +264,44 @@ class RoleAPIView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+
+    def patch(self, request, role_id):
+        role = get_object_or_404(Role, role_id=role_id)
+
+        if role.rolename == "Admin":
+            return Response(
+                {"error": "Admin role cannot be updated."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        permission_ids = request.data.get("permissions")
+
+        if not permission_ids:
+            return Response(
+                {"error": "permissions is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        permissions = Permission.objects.filter(
+            id__in=permission_ids
+        )
+
+        if permissions.count() != len(set(permission_ids)):
+            return Response(
+                {"error": "One or more permission IDs are invalid."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        role.permissions.add(*permissions)
+
+        return Response(
+            {
+                "message": "Permissions added successfully.",
+                "role": RoleSerializer(role).data
+            },
+            status=status.HTTP_200_OK
+        )
+
     def delete(self, request, role_id):
         role = get_object_or_404(Role, role_id=role_id)
 
