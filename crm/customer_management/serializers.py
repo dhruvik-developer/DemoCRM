@@ -139,6 +139,12 @@ class LeadSerializer(serializers.ModelSerializer):
                 }
             )
 
+        target_pipeline_id = (
+            pipeline.id
+            if pipeline
+            else (self.instance.pipeline_id if self.instance else None)
+        )
+
         if current_stage:
             if not current_stage.is_active:
                 raise serializers.ValidationError(
@@ -147,7 +153,7 @@ class LeadSerializer(serializers.ModelSerializer):
                     }
                 )
 
-            if pipeline and current_stage.pipeline_id != pipeline.id:
+            if target_pipeline_id and current_stage.pipeline_id != target_pipeline_id:
                 raise serializers.ValidationError(
                     {
                         "current_stage": (
@@ -163,6 +169,35 @@ class LeadSerializer(serializers.ModelSerializer):
                     "assigned_to": (
                         "An inactive employee cannot be assigned a Lead."
                     )
+                }
+            )
+
+        # A Lead that is LOST or CONVERTED is in a terminal state. State
+        # transitions must go through the dedicated workflow endpoints
+        # (progress / lost / re-engage / convert / assign). Direct PATCH/PUT
+        # must be rejected so a converted Lead cannot keep behaving like an
+        # active one.
+        if self.instance and self.instance.status != Lead.Status.ACTIVE:
+            raise serializers.ValidationError(
+                {
+                    "status": (
+                        "A Lead that is not Active cannot be modified directly. "
+                        "Use the workflow endpoints (assign/progress/lost/"
+                        "re-engage/convert)."
+                    )
+                }
+            )
+
+        # lost_reason / lost_at may only be present on a LOST Lead. Since
+        # status is read-only, it can never be set to LOST through a PATCH,
+        # so any attempt to set lost_reason on a non-lost Lead is invalid.
+        if "lost_reason" in attrs and (
+            self.instance is None
+            or self.instance.status != Lead.Status.LOST
+        ):
+            raise serializers.ValidationError(
+                {
+                    "lost_reason": "Lost reason can only be set on a lost Lead."
                 }
             )
 
@@ -218,11 +253,29 @@ class ActivitySerializer(serializers.ModelSerializer):
         follow_up_required = attrs.get("follow_up_required")
         follow_up_date = attrs.get("follow_up_date")
 
+        # Activity must belong to either Lead or Customer
         if not lead and not customer:
             raise serializers.ValidationError(
                 "Activity must belong to a Lead or Customer."
             )
+        
+        if lead and customer:
+            raise serializers.ValidationError(
+                "Activity cannot belong to both a Lead and a Customer."
+            )
 
+        # Converted Leads cannot receive new activities
+        if lead and lead.status == Lead.Status.CONVERTED:
+            raise serializers.ValidationError(
+                {
+                    "lead": (
+                        "Cannot create a new Activity for a converted Lead. "
+                        "Create the Activity against the Customer instead."
+                    )
+                }
+            )
+
+        # Follow-up validation
         if follow_up_required and not follow_up_date:
             raise serializers.ValidationError(
                 {
