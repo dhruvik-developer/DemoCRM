@@ -1,35 +1,113 @@
 from django.urls import path
 
-from . import views
+from .views import (
+    TaskListCreateView,
+    TaskDetailView,
+    TaskAssignView,
+    TaskStatusUpdateView,
+
+    MeetingCreateView,
+    MeetingDetailView,
+    MeetingRescheduleView,
+    MeetingStatusUpdateView,
+    MeetingParticipantAddView,
+    MeetingParticipantRemoveView,
+
+    ReminderCreateView,
+    ReminderDetailView,
+    ReminderStatusUpdateView,
+)
+
 
 urlpatterns = [
-    # ---------------- TASK ----------------
-    path("", views.task_list_create, name="task_list_create"),
-    path("<int:task_id>/", views.task_detail, name="task_detail"),
-    path("<int:task_id>/assign/", views.assign_task, name="assign_task"),
-    path("<int:task_id>/status/", views.task_status_update, name="task_status_update"),
 
-    path("statuses/", views.task_status_list_create, name="task_status_list_create"),
-    path("priorities/", views.task_priority_list_create, name="task_priority_list_create"),
-    path("categories/", views.task_category_list_create, name="task_category_list_create"),
+    # ======================================================
+    # TASK
+    # ======================================================
 
-    # ---------------- MEETING ----------------
-    path("meetings/", views.meeting_list_create, name="meeting_list_create"),
-    path("meetings/<int:meeting_id>/", views.meeting_detail, name="meeting_detail"),
-    path("meeting-participants/", views.meeting_participant_list_create, name="meeting_participant_list_create"),
-    path("meeting-statuses/", views.meeting_status_list_create, name="meeting_status_list_create"),
-    path("meeting-statuses/<int:meeting_status_id>/", views.meeting_status_detail, name="meeting_status_detail"),
-    path("meeting-types/", views.meeting_type_list_create, name="meeting_type_list_create"),
-    path("meeting-types/<int:meeting_type_id>/", views.meeting_type_detail, name="meeting_type_detail"),
+    path(
+        "",
+        TaskListCreateView.as_view(),
+        name="task-list-create"
+    ),
 
-    # ---------------- REMINDER ----------------
-    path("reminders/", views.reminder_list_create, name="reminder_list_create"),
-    path("reminders/<int:reminder_id>/", views.reminder_detail, name="reminder_detail"),
-    path("reminder-types/", views.reminder_type_list_create, name="reminder_type_list_create"),
-    path("reminder-types/<int:reminder_type_id>/", views.reminder_type_detail, name="reminder_type_detail"),
-    path("reminder-statuses/", views.reminder_status_list_create, name="reminder_status_list_create"),
-    path("reminder-statuses/<int:reminder_status_id>/", views.reminder_status_detail, name="reminder_status_detail"),
+    path(
+        "<int:task_id>/",
+        TaskDetailView.as_view(),
+        name="task-detail"
+    ),
 
-    # ---------------- DASHBOARD ----------------
-    path("dashboard/", views.dashboard_report, name="dashboard_report"),
+    path(
+        "<int:task_id>/assign/",
+        TaskAssignView.as_view(),
+        name="task-assign"
+    ),
+
+    path(
+        "<int:task_id>/status/",
+        TaskStatusUpdateView.as_view(),
+        name="task-status-update"
+    ),
+
+    # ======================================================
+    # MEETING
+    # ======================================================
+
+    path(
+        "meetings/",
+        MeetingCreateView.as_view(),
+        name="meeting-create"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/",
+        MeetingDetailView.as_view(),
+        name="meeting-detail"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/reschedule/",
+        MeetingRescheduleView.as_view(),
+        name="meeting-reschedule"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/status/",
+        MeetingStatusUpdateView.as_view(),
+        name="meeting-status-update"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/participants/",
+        MeetingParticipantAddView.as_view(),
+        name="meeting-participant-add"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/participants/<int:user_id>/",
+        MeetingParticipantRemoveView.as_view(),
+        name="meeting-participant-remove"
+    ),
+
+    # ======================================================
+    # REMINDER
+    # ======================================================
+
+    path(
+        "reminders/",
+        ReminderCreateView.as_view(),
+        name="reminder-create"
+    ),
+
+    path(
+        "reminders/<int:reminder_id>/",
+        ReminderDetailView.as_view(),
+        name="reminder-detail"
+    ),
+
+    path(
+        "reminders/<int:reminder_id>/status/",
+        ReminderStatusUpdateView.as_view(),
+        name="reminder-status-update"
+    ),
 ]
