@@ -1,6 +1,4 @@
 from django.db import models
-
-
 # ======================================================
 # TASK
 # ======================================================
@@ -43,22 +41,22 @@ class Task(models.Model):
         on_delete=models.PROTECT,
         related_name="created_tasks"
     )
-    # Developer 2 - Lead
-    # lead = models.ForeignKey(
-    #     "Tables.Lead",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     blank=True,
-    #     related_name="tasks"
-    # )
-    # # Developer 2 - Customer
-    # customer = models.ForeignKey(
-    #     "Tables.Customer",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     blank=True,
-    #     related_name="tasks"
-    # )
+    #Developer 2 - Lead
+    lead = models.ForeignKey(
+        "customer_management.Lead",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tasks"
+    )
+    # Developer 2 - Customer
+    customer = models.ForeignKey(
+        "customer_management.Customer",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tasks"
+    )
     task_title = models.CharField(max_length=200)
     description = models.TextField(
         blank=True,
@@ -214,7 +212,6 @@ class Reminder(models.Model):
         blank=True,
         related_name="reminders"
     )
-
     # Reminder Type
     reminder_type_id = models.ForeignKey(
         ReminderType,

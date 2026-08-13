@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import TaskPriority,TaskCategory,TaskStatus,Task,MeetingParticipant,MeetingStatus,Meeting,MeetingType,ReminderType,ReminderStatus,Reminder
+from .models import TaskPriority, TaskCategory, TaskStatus, Task, MeetingParticipant, MeetingStatus, Meeting, MeetingType, ReminderType, ReminderStatus, Reminder
 
 # ============================================================
 # TASK
@@ -97,10 +97,13 @@ class TaskSerializer(serializers.ModelSerializer):
         return value
 
     def validate_due_date(self, value):
-        if value and value < timezone.now():
-            raise serializers.ValidationError(
-                "Due date cannot be in the past."
-            )
+        if value:
+            if self.instance and self.instance.due_date == value:
+                return value
+            if value < timezone.now():
+                raise serializers.ValidationError(
+                    "Due date cannot be in the past."
+                )
 
         return value
 
@@ -187,8 +190,8 @@ class MeetingSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        start_time = attrs.get("start_time")
-        end_time = attrs.get("end_time")
+        start_time = attrs.get("start_time", getattr(self.instance, "start_time", None))
+        end_time = attrs.get("end_time", getattr(self.instance, "end_time", None))
 
         if start_time and end_time:
             if end_time <= start_time:
@@ -205,7 +208,7 @@ class MeetingParticipantSerializer(serializers.ModelSerializer):
         model = MeetingParticipant
         fields = "__all__"
         read_only_fields = (
-            "participent_id",
+            "participant_id",
         )
 
     def validate_participant_role(self, value):

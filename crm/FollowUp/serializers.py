@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Followup,FollowUpNote,FollowUpStatus,FollowUpTypes,ActivityAction,ActivityLog,ActivityType,Notification,NotificationTemplate,NotificationType
+from .models import Followup, FollowUpNote, FollowUpStatus, FollowUpTypes, ActivityAction, ActivityLog, ActivityType, Notification, NotificationTemplate, NotificationType
 from django.utils import timezone
 class FollowUpStatusSerializer(serializers.ModelSerializer):
 
@@ -47,10 +47,13 @@ class FollowupSerializer(serializers.ModelSerializer):
         )
 
     def validate_followup_date(self, value):
-        if value < timezone.now():
-            raise serializers.ValidationError(
-                "Follow-up date cannot be in the past."
-            )
+        if value:
+            if self.instance and self.instance.followup_date == value:
+                return value
+            if value < timezone.now():
+                raise serializers.ValidationError(
+                    "Follow-up date cannot be in the past."
+                )
 
         return value
 
@@ -210,8 +213,8 @@ class NotificationSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        is_read = attrs.get("is_read", False)
-        read_at = attrs.get("read_at")
+        is_read = attrs.get("is_read", getattr(self.instance, "is_read", False))
+        read_at = attrs.get("read_at", getattr(self.instance, "read_at", None))
 
         if not is_read and read_at is not None:
             raise serializers.ValidationError({
