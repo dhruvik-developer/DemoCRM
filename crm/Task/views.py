@@ -1,5 +1,9 @@
+import logging
+
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
+
+logger = logging.getLogger(__name__)
 
 from rest_framework import status
 from rest_framework.response import Response
@@ -96,6 +100,7 @@ class TaskListCreateView(APIView):
             # Auto-notify the assignee when a task is created.
             if task.assigned_to and task.assigned_to != request.user:
                 notify_task_assignment(task)
+            logger.info("Task created: %s (ID: %s) by user %s", task.title, task.task_id, request.user.user_id)
 
             return Response(
                 TaskSerializer(

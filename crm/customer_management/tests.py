@@ -651,3 +651,109 @@ class QuotationWorkflowTestCase(CRMBaseTestCase):
         # Manager accepts quotation -> Allowed (200)
         resp_mgr_accept = client_mgr.post(f"/api/crm/quotations/{q_id}/accept/")
         self.assertEqual(resp_mgr_accept.status_code, status.HTTP_200_OK)
+
+    def test_13_unauthenticated_requests_rejection(self):
+        client_anon = APIClient()
+
+        endpoints = [
+            ("/api/crm/leads/", "GET"),
+            ("/api/crm/leads/", "POST"),
+            ("/api/crm/quotations/", "GET"),
+            ("/api/crm/quotations/", "POST"),
+            ("/api/crm/customers/", "GET"),
+            ("/api/crm/activities/", "GET"),
+            ("/api/crm/audit-logs/", "GET"),
+        ]
+
+        for url, method in endpoints:
+            if method == "GET":
+                resp = client_anon.get(url)
+            else:
+                resp = client_anon.post(url, {})
+            self.assertIn(resp.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_14_invalid_state_transitions_and_locked_versions(self):
+        pipeline_inv = CRMService.create_pipeline(user=self.user, name="Invalid Pipeline")
+        stage_inv = CRMService.create_pipeline_stage(
+            user=self.user,
+            pipeline=pipeline_inv,
+            name="Invalid Stage",
+            display_order=1,
+            requires_quotation=True,
+            quotation_approval_required=True,
+        )
+        lead_inv = CRMService.create_lead(
+            user=self.user,
+            name="Invalid Lead",
+            source=self.source,
+            assigned_to=self.user,
+            pipeline=pipeline_inv,
+            current_stage=stage_inv,
+        )
+
+        q = QuotationService.create_quotation(
+            user=self.user,
+            lead=lead_inv,
+            line_items=[{"description": "Item 1", "quantity": 1, "unit_price": 1000}],
+        )
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        # 1. Cannot approve DRAFT quotation
+        resp_app = client.post(f"/api/crm/quotations/{q.id}/approve/")
+        self.assertEqual(resp_app.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 2. Cannot send DRAFT quotation
+        resp_send = client.post(f"/api/crm/quotations/{q.id}/send/")
+        self.assertEqual(resp_send.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # 3. Cannot accept DRAFT quotation
+        resp_acc = client.post(f"/api/crm/quotations/{q.id}/accept/")
+        self.assertEqual(resp_acc.status_code, status.HTTP_400_BAD_REQUEST)
+
+        # Submit -> PENDING_APPROVAL
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+
+        # 4. Cannot accept PENDING_APPROVAL quotation
+        resp_acc_pending = client.post(f"/api/crm/quotations/{q.id}/accept/")
+        self.assertEqual(resp_acc_pending.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_15_query_count_and_large_dataset_performance(self):
+        pipeline_perf = CRMService.create_pipeline(user=self.user, name="Perf Pipeline")
+        stage_perf = CRMService.create_pipeline_stage(
+            user=self.user,
+            pipeline=pipeline_perf,
+            name="Perf Stage",
+            display_order=1,
+        )
+
+        # Bulk create 15 leads and 15 quotations
+        for i in range(15):
+            l = CRMService.create_lead(
+                user=self.user,
+                name=f"Perf Lead {i}",
+                email=f"perf{i}@example.com",
+                phone=f"555000{i:04d}",
+                source=self.source,
+                assigned_to=self.user,
+                pipeline=pipeline_perf,
+                current_stage=stage_perf,
+            )
+            QuotationService.create_quotation(
+                user=self.user,
+                lead=l,
+                line_items=[
+                    {"description": f"Item A {i}", "quantity": 2, "unit_price": 500},
+                    {"description": f"Item B {i}", "quantity": 1, "unit_price": 1500},
+                ],
+            )
+
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+
+        # Fetch quotation list and verify bounded query count (7 queries for 15+ items)
+        with self.assertNumQueries(7):
+            resp = client.get("/api/crm/quotations/")
+            self.assertEqual(resp.status_code, status.HTTP_200_OK)
+            self.assertGreaterEqual(len(resp.data), 15)

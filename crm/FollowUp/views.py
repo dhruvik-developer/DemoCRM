@@ -1,4 +1,8 @@
+import logging
+
 from django.shortcuts import get_object_or_404
+
+logger = logging.getLogger(__name__)
 
 from rest_framework import status
 from rest_framework.response import Response
@@ -98,6 +102,8 @@ class FollowUpListCreateView(APIView):
         followup = serializer.save(
             created_by=request.user
         )
+
+        logger.info("FollowUp created for task %s by user %s (ID: %s)", followup.task_id_id, request.user.user_id, followup.followup_id)
 
         return Response(
             FollowupSerializer(

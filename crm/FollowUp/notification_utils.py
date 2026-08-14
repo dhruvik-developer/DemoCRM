@@ -6,6 +6,7 @@ Shared helpers for:
 """
 
 import re
+import logging
 
 from django.conf import settings
 from django.core.mail import send_mail
@@ -14,6 +15,8 @@ from django.utils import timezone
 from .models import Notification, NotificationTemplate, NotificationType
 
 PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}")
+logger = logging.getLogger(__name__)
+
 
 
 def render_template(template, context):

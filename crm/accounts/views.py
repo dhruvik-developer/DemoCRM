@@ -16,6 +16,8 @@ from rest_framework_simplejwt.exceptions import TokenError
 
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 # Create your views here.
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
@@ -27,6 +29,7 @@ class RegisterAPIView(APIView):
 
             try:
                 serializer.save()
+                logger.info("User registered successfully: %s (ID: %s)", serializer.data["email"], serializer.data["user_id"])
                 return Response(
                     {"user_id": serializer.data["user_id"],
                      "username": serializer.data["username"],
@@ -35,8 +38,8 @@ class RegisterAPIView(APIView):
                     status=status.HTTP_201_CREATED
                 )
             
-            except Exception:
-                logger.exception("Something failed for user authentication")
+            except Exception as e:
+                logger.exception("Failed user registration attempt")
                 return Response(
                     {"error": "Failed to register. Please try again."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -58,12 +61,14 @@ class LoginAPIView(APIView):
             try:
                 user = CustomUser.objects.get(email=email)
             except CustomUser.DoesNotExist:
+                logger.warning("Failed login attempt for non-existent email: %s", email)
                 return Response(
                     {"error": "Invalid credentials"},
                     status=status.HTTP_401_UNAUTHORIZED
                 )
 
             if not user.is_active or not user.check_password(password):
+                logger.warning("Failed login attempt for user: %s (inactive or wrong password)", email)
                 return Response(
                     {"error": "Invalid credentials"},
                     status=status.HTTP_401_UNAUTHORIZED
@@ -77,6 +82,8 @@ class LoginAPIView(APIView):
                     {"error": "Failed to generate tokens. Please try again."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
+
+            logger.info("User %s logged in successfully", user.user_id)
 
             return Response({
                 "message": "Login successful",
