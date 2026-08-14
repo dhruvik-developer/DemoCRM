@@ -183,8 +183,9 @@ class MeetingSerializer(serializers.ModelSerializer):
 
         read_only_fields = (
             "meeting_id",
+            "created_at",
             "updated_at",
-            "created_by", 
+            "created_by",
         )
 
     def validate_meeting_title(self, value):
