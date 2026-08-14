@@ -1,8 +1,20 @@
+from decimal import Decimal
 from uuid import uuid4
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+
+
+class QuotationStatus(models.TextChoices):
+    DRAFT = "DRAFT", "Draft"
+    PENDING_APPROVAL = "PENDING_APPROVAL", "Pending Approval"
+    APPROVED = "APPROVED", "Approved"
+    SENT = "SENT", "Sent"
+    ACCEPTED = "ACCEPTED", "Accepted"
+    REJECTED = "REJECTED", "Rejected"
+    REVISION_REQUESTED = "REVISION_REQUESTED", "Revision Requested"
+    REVISED = "REVISED", "Revised"
 
 
 class LeadSource(models.Model):
@@ -72,6 +84,14 @@ class PipelineStage(models.Model):
     description = models.TextField(blank=True, null=True)
     display_order = models.PositiveIntegerField()
     is_active = models.BooleanField(default=True)
+
+    # Dynamic quotation workflow configuration.
+    # When `requires_quotation` is True, Leads sitting on this stage must go
+    # through the quotation workflow before they can move on / be converted.
+    # `quotation_approval_required` makes quotation revisions require manager
+    # approval before they can be sent.
+    requires_quotation = models.BooleanField(default=False)
+    quotation_approval_required = models.BooleanField(default=False)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -235,6 +255,16 @@ class Activity(models.Model):
         MEETING = "MEETING", "Meeting"
         DEMO = "DEMO", "Demo"
         FOLLOW_UP = "FOLLOW_UP", "Follow Up"
+        QUOTATION_CREATED = "QUOTATION_CREATED", "Quotation Created"
+        QUOTATION_UPDATED = "QUOTATION_UPDATED", "Quotation Updated"
+        QUOTATION_SUBMITTED = "QUOTATION_SUBMITTED", "Quotation Submitted"
+        QUOTATION_APPROVED = "QUOTATION_APPROVED", "Quotation Approved"
+        QUOTATION_APPROVAL_REJECTED = "QUOTATION_APPROVAL_REJECTED", "Quotation Approval Rejected"
+        QUOTATION_SENT = "QUOTATION_SENT", "Quotation Sent"
+        QUOTATION_REVISION_REQUESTED = "QUOTATION_REVISION_REQUESTED", "Quotation Revision Requested"
+        QUOTATION_VERSION_CREATED = "QUOTATION_VERSION_CREATED", "Quotation Version Created"
+        QUOTATION_ACCEPTED = "QUOTATION_ACCEPTED", "Quotation Accepted"
+        QUOTATION_REJECTED = "QUOTATION_REJECTED", "Quotation Rejected"
 
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
 
@@ -248,6 +278,14 @@ class Activity(models.Model):
 
     customer = models.ForeignKey(
         Customer,
+        on_delete=models.PROTECT,
+        related_name="activities",
+        blank=True,
+        null=True,
+    )
+
+    quotation = models.ForeignKey(
+        "Quotation",
         on_delete=models.PROTECT,
         related_name="activities",
         blank=True,
@@ -329,3 +367,304 @@ class AuditLog(models.Model):
 
     def __str__(self):
         return f"{self.action} - {self.entity_type}"
+
+
+class Quotation(models.Model):
+    """
+    Logical quotation document. A Quotation holds a reference number and points
+    at its `current_version`. Every revision creates a new QuotationVersion
+    instead of overwriting the previous one, so the full history is preserved.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+
+    quotation_number = models.CharField(max_length=50, unique=True)
+
+    lead = models.ForeignKey(
+        Lead,
+        on_delete=models.PROTECT,
+        related_name="quotations",
+    )
+
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.PROTECT,
+        related_name="quotations",
+        blank=True,
+        null=True,
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_quotations",
+    )
+
+    current_version = models.ForeignKey(
+        "QuotationVersion",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+
+    # Mirrors the current version's status so clients can read the active
+    # quotation state without traversing versions. Kept in sync by the service.
+    status = models.CharField(
+        max_length=30,
+        choices=QuotationStatus.choices,
+        default=QuotationStatus.DRAFT,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "quotation"
+        ordering = ["-created_at"]
+
+        permissions = [
+            ("submit_quotation", "Can submit quotation for approval"),
+            ("approve_quotation", "Can approve quotation"),
+            ("send_quotation", "Can send quotation"),
+            ("accept_quotation", "Can accept quotation"),
+            ("reject_quotation", "Can reject quotation"),
+            ("request_quotation_revision", "Can request quotation revision"),
+        ]
+
+    def __str__(self):
+        return self.quotation_number
+
+
+class QuotationVersion(models.Model):
+    """
+    A single version of a Quotation. Status lives on the version so each
+    revision carries its own lifecycle (DRAFT -> APPROVED -> SENT -> ...).
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+
+    quotation = models.ForeignKey(
+        Quotation,
+        on_delete=models.CASCADE,
+        related_name="versions",
+    )
+
+    version_number = models.PositiveIntegerField()
+
+    status = models.CharField(
+        max_length=30,
+        choices=QuotationStatus.choices,
+        default=QuotationStatus.DRAFT,
+    )
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="created_quotation_versions",
+    )
+
+    # Responsible agent. Kept decoupled from Member 3's Task assignment so
+    # Member 3 can freely assign/reassign the follow-up Task.
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="assigned_quotation_versions",
+    )
+
+    # Pipeline/stage context snapshot taken at creation time.
+    pipeline = models.ForeignKey(
+        Pipeline,
+        on_delete=models.PROTECT,
+        related_name="quotation_versions",
+        blank=True,
+        null=True,
+    )
+
+    current_stage = models.ForeignKey(
+        PipelineStage,
+        on_delete=models.PROTECT,
+        related_name="quotation_versions",
+        blank=True,
+        null=True,
+    )
+
+    # Snapshot of whether approval was required for this version so later
+    # changes to the pipeline configuration cannot alter history.
+    approval_required = models.BooleanField(default=False)
+
+    total_amount = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+
+    terms = models.TextField(blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+
+    sent_at = models.DateTimeField(blank=True, null=True)
+    accepted_at = models.DateTimeField(blank=True, null=True)
+    rejected_at = models.DateTimeField(blank=True, null=True)
+    rejection_reason = models.TextField(blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "quotation_version"
+        ordering = ["quotation", "version_number"]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["quotation", "version_number"],
+                name="unique_quotation_version",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.quotation.quotation_number} v{self.version_number}"
+        )
+
+
+class QuotationLineItem(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+
+    version = models.ForeignKey(
+        QuotationVersion,
+        on_delete=models.CASCADE,
+        related_name="line_items",
+    )
+
+    description = models.CharField(max_length=255)
+    quantity = models.PositiveIntegerField(default=1)
+    unit_price = models.DecimalField(max_digits=18, decimal_places=2)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    @property
+    def amount(self):
+        return self.quantity * self.unit_price
+
+    class Meta:
+        db_table = "quotation_line_item"
+        ordering = ["version", "created_at"]
+
+    def __str__(self):
+        return self.description
+
+
+class QuotationApproval(models.Model):
+
+    class Decision(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        APPROVED = "APPROVED", "Approved"
+        REJECTED = "REJECTED", "Rejected"
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+
+    version = models.ForeignKey(
+        QuotationVersion,
+        on_delete=models.CASCADE,
+        related_name="approvals",
+    )
+
+    submitted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="submitted_quotation_approvals",
+    )
+
+    reviewed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="reviewed_quotation_approvals",
+        blank=True,
+        null=True,
+    )
+
+    decision = models.CharField(
+        max_length=20,
+        choices=Decision.choices,
+        default=Decision.PENDING,
+    )
+
+    reason = models.TextField(blank=True, null=True)
+
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = "quotation_approval"
+        ordering = ["-submitted_at"]
+
+    def __str__(self):
+        return f"{self.version} - {self.decision}"
+
+
+class QuotationIntegrationEvent(models.Model):
+    """
+    Member 2 -> Member 3 integration contract.
+
+    Member 2 (CRM) never creates Tasks. Instead it records integration events
+    such as `quotation.followup_required` that describe work that needs to be
+    performed. Member 3's Task Management system consumes these events and
+    creates/assigns its own Task records.
+
+    Contract:
+      * event_type: "quotation.followup_required"
+      * payload contains: lead_id, customer_id, quotation_id,
+        quotation_number, quotation_version, responsible_agent_id,
+        suggested_task_title, suggested_due_date, source
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "Pending"
+        CONSUMED = "CONSUMED", "Consumed"
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+
+    event_type = models.CharField(max_length=100)
+
+    lead = models.ForeignKey(
+        Lead,
+        on_delete=models.SET_NULL,
+        related_name="quotation_integration_events",
+        blank=True,
+        null=True,
+    )
+
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.SET_NULL,
+        related_name="quotation_integration_events",
+        blank=True,
+        null=True,
+    )
+
+    quotation = models.ForeignKey(
+        Quotation,
+        on_delete=models.SET_NULL,
+        related_name="integration_events",
+        blank=True,
+        null=True,
+    )
+
+    quotation_version_number = models.PositiveIntegerField(blank=True, null=True)
+
+    payload = models.JSONField(blank=True, default=dict)
+
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.PENDING,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "quotation_integration_event"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.event_type} - {self.id}"

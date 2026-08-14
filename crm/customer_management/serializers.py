@@ -8,6 +8,11 @@ from .models import (
     LeadSource,
     Pipeline,
     PipelineStage,
+    Quotation,
+    QuotationApproval,
+    QuotationIntegrationEvent,
+    QuotationLineItem,
+    QuotationVersion,
 )
 
 
@@ -61,6 +66,8 @@ class PipelineStageSerializer(serializers.ModelSerializer):
             "description",
             "display_order",
             "is_active",
+            "requires_quotation",
+            "quotation_approval_required",
             "created_at",
             "updated_at",
         ]
@@ -324,3 +331,143 @@ class AuditLogSerializer(serializers.ModelSerializer):
             "metadata",
             "created_at",
         ]
+
+
+class QuotationLineItemSerializer(serializers.ModelSerializer):
+    amount = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
+
+    class Meta:
+        model = QuotationLineItem
+        fields = [
+            "id",
+            "description",
+            "quantity",
+            "unit_price",
+            "amount",
+            "created_at",
+        ]
+        read_only_fields = ["id", "amount", "created_at"]
+
+
+class QuotationApprovalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuotationApproval
+        fields = [
+            "id",
+            "version",
+            "submitted_by",
+            "reviewed_by",
+            "decision",
+            "reason",
+            "submitted_at",
+            "reviewed_at",
+        ]
+        read_only_fields = [
+            "id",
+            "version",
+            "submitted_by",
+            "reviewed_by",
+            "decision",
+            "submitted_at",
+            "reviewed_at",
+        ]
+
+
+class QuotationVersionSerializer(serializers.ModelSerializer):
+    line_items = QuotationLineItemSerializer(many=True, read_only=True)
+    approvals = QuotationApprovalSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = QuotationVersion
+        fields = [
+            "id",
+            "quotation",
+            "version_number",
+            "status",
+            "created_by",
+            "assigned_to",
+            "pipeline",
+            "current_stage",
+            "approval_required",
+            "total_amount",
+            "terms",
+            "notes",
+            "line_items",
+            "approvals",
+            "sent_at",
+            "accepted_at",
+            "rejected_at",
+            "rejection_reason",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "quotation",
+            "version_number",
+            "status",
+            "created_by",
+            "assigned_to",
+            "pipeline",
+            "current_stage",
+            "approval_required",
+            "total_amount",
+            "line_items",
+            "approvals",
+            "sent_at",
+            "accepted_at",
+            "rejected_at",
+            "rejection_reason",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class QuotationSerializer(serializers.ModelSerializer):
+    current_version_detail = QuotationVersionSerializer(source="current_version", read_only=True)
+    all_versions = QuotationVersionSerializer(source="versions", many=True, read_only=True)
+
+    class Meta:
+        model = Quotation
+        fields = [
+            "id",
+            "quotation_number",
+            "lead",
+            "customer",
+            "status",
+            "current_version",
+            "current_version_detail",
+            "all_versions",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = [
+            "id",
+            "quotation_number",
+            "customer",
+            "status",
+            "current_version",
+            "current_version_detail",
+            "all_versions",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+
+class QuotationIntegrationEventSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = QuotationIntegrationEvent
+        fields = [
+            "id",
+            "event_type",
+            "lead",
+            "customer",
+            "quotation",
+            "quotation_version_number",
+            "payload",
+            "status",
+            "created_at",
+        ]
+        read_only_fields = fields

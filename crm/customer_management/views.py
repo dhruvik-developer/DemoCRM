@@ -1,10 +1,9 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
 
-from rest_framework import status
+from rest_framework import generics, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework import generics
 
 from .models import (
     Activity,
@@ -14,6 +13,9 @@ from .models import (
     LeadSource,
     Pipeline,
     PipelineStage,
+    Quotation,
+    QuotationIntegrationEvent,
+    QuotationVersion,
 )
 from .permissions import CRMHasPermission
 from .serializers import (
@@ -24,8 +26,11 @@ from .serializers import (
     LeadSourceSerializer,
     PipelineSerializer,
     PipelineStageSerializer,
+    QuotationIntegrationEventSerializer,
+    QuotationSerializer,
+    QuotationVersionSerializer,
 )
-from .services import CRMService
+from .services import CRMService, QuotationService
 
 
 class LeadSourceListCreateView(APIView):
@@ -45,11 +50,19 @@ class LeadSourceListCreateView(APIView):
         serializer = LeadSourceSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        source = CRMService.create_lead_source(
-            user=request.user,
-            name=serializer.validated_data["name"],
-            description=serializer.validated_data.get("description"),
-        )
+        try:
+            source = CRMService.create_lead_source(
+                user=request.user,
+                name=serializer.validated_data["name"],
+                description=serializer.validated_data.get(
+                    "description"
+                ),
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response(
             LeadSourceSerializer(source).data,
@@ -74,11 +87,19 @@ class PipelineListCreateView(APIView):
         serializer = PipelineSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
-        pipeline = CRMService.create_pipeline(
-            user=request.user,
-            name=serializer.validated_data["name"],
-            description=serializer.validated_data.get("description"),
-        )
+        try:
+            pipeline = CRMService.create_pipeline(
+                user=request.user,
+                name=serializer.validated_data["name"],
+                description=serializer.validated_data.get(
+                    "description"
+                ),
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         return Response(
             PipelineSerializer(pipeline).data,
@@ -108,8 +129,18 @@ class PipelineStageListCreateView(APIView):
                 user=request.user,
                 pipeline=serializer.validated_data["pipeline"],
                 name=serializer.validated_data["name"],
-                display_order=serializer.validated_data["display_order"],
-                description=serializer.validated_data.get("description"),
+                display_order=serializer.validated_data[
+                    "display_order"
+                ],
+                description=serializer.validated_data.get(
+                    "description"
+                ),
+                requires_quotation=serializer.validated_data.get(
+                    "requires_quotation", False
+                ),
+                quotation_approval_required=serializer.validated_data.get(
+                    "quotation_approval_required", False
+                ),
             )
         except DjangoValidationError as exc:
             return Response(
@@ -143,7 +174,11 @@ class LeadListCreateView(APIView):
             .all()
         )
 
-        serializer = LeadSerializer(leads, many=True)
+        serializer = LeadSerializer(
+            leads,
+            many=True,
+        )
+
         return Response(serializer.data)
 
     def post(self, request):
@@ -156,11 +191,17 @@ class LeadListCreateView(APIView):
                 name=serializer.validated_data["name"],
                 email=serializer.validated_data.get("email"),
                 phone=serializer.validated_data.get("phone"),
-                company_name=serializer.validated_data.get("company_name"),
+                company_name=serializer.validated_data.get(
+                    "company_name"
+                ),
                 source=serializer.validated_data["source"],
-                assigned_to=serializer.validated_data["assigned_to"],
+                assigned_to=serializer.validated_data[
+                    "assigned_to"
+                ],
                 pipeline=serializer.validated_data["pipeline"],
-                current_stage=serializer.validated_data["current_stage"],
+                current_stage=serializer.validated_data[
+                    "current_stage"
+                ],
             )
         except DjangoValidationError as exc:
             return Response(
@@ -174,43 +215,26 @@ class LeadListCreateView(APIView):
         )
 
 
-class LeadDetailView(APIView):
+class LeadDetailView(generics.RetrieveUpdateAPIView):
+    queryset = Lead.objects.all()
+    serializer_class = LeadSerializer
     permission_classes = [CRMHasPermission]
 
     permission_names = {
         "GET": "view_lead",
-        "PATCH": "change_lead",
         "PUT": "change_lead",
-        "DELETE": "delete_lead",
+        "PATCH": "change_lead",
     }
 
-    def get_object(self, pk):
-        return get_object_or_404(Lead, pk=pk)
-
-    def get(self, request, pk):
-        lead = self.get_object(pk)
-        serializer = LeadSerializer(lead)
-        return Response(serializer.data)
-
-    def patch(self, request, pk):
-        lead = self.get_object(pk)
+    def perform_update(self, serializer):
+        old_lead = self.get_object()
         old_data = {
-            "name": lead.name,
-            "email": lead.email,
-            "phone": lead.phone,
-            "company_name": lead.company_name,
-            "source": str(lead.source_id) if lead.source_id else None,
-            "assigned_to": str(lead.assigned_to_id) if lead.assigned_to_id else None,
-            "pipeline": str(lead.pipeline_id) if lead.pipeline_id else None,
-            "current_stage": str(lead.current_stage_id) if lead.current_stage_id else None,
+            "name": old_lead.name,
+            "email": old_lead.email,
+            "phone": old_lead.phone,
+            "company_name": old_lead.company_name,
         }
 
-        serializer = LeadSerializer(
-            lead,
-            data=request.data,
-            partial=True,
-        )
-        serializer.is_valid(raise_exception=True)
         updated_lead = serializer.save()
 
         new_data = {
@@ -218,73 +242,15 @@ class LeadDetailView(APIView):
             "email": updated_lead.email,
             "phone": updated_lead.phone,
             "company_name": updated_lead.company_name,
-            "source": str(updated_lead.source_id) if updated_lead.source_id else None,
-            "assigned_to": str(updated_lead.assigned_to_id) if updated_lead.assigned_to_id else None,
-            "pipeline": str(updated_lead.pipeline_id) if updated_lead.pipeline_id else None,
-            "current_stage": str(updated_lead.current_stage_id) if updated_lead.current_stage_id else None,
         }
 
-        if old_data != new_data:
-            CRMService.create_audit_log(
-                user=request.user,
-                entity_type="Lead",
-                entity_id=updated_lead.id,
-                action="LEAD_UPDATED",
-                old_value=old_data,
-                new_value=new_data,
-            )
-
-        return Response(serializer.data)
-
-    def put(self, request, pk):
-        lead = self.get_object(pk)
-        old_data = {
-            "name": lead.name,
-            "email": lead.email,
-            "phone": lead.phone,
-            "company_name": lead.company_name,
-            "source": str(lead.source_id) if lead.source_id else None,
-            "assigned_to": str(lead.assigned_to_id) if lead.assigned_to_id else None,
-            "pipeline": str(lead.pipeline_id) if lead.pipeline_id else None,
-            "current_stage": str(lead.current_stage_id) if lead.current_stage_id else None,
-        }
-
-        serializer = LeadSerializer(
-            lead,
-            data=request.data,
-        )
-        serializer.is_valid(raise_exception=True)
-        updated_lead = serializer.save()
-
-        new_data = {
-            "name": updated_lead.name,
-            "email": updated_lead.email,
-            "phone": updated_lead.phone,
-            "company_name": updated_lead.company_name,
-            "source": str(updated_lead.source_id) if updated_lead.source_id else None,
-            "assigned_to": str(updated_lead.assigned_to_id) if updated_lead.assigned_to_id else None,
-            "pipeline": str(updated_lead.pipeline_id) if updated_lead.pipeline_id else None,
-            "current_stage": str(updated_lead.current_stage_id) if updated_lead.current_stage_id else None,
-        }
-
-        if old_data != new_data:
-            CRMService.create_audit_log(
-                user=request.user,
-                entity_type="Lead",
-                entity_id=updated_lead.id,
-                action="LEAD_UPDATED",
-                old_value=old_data,
-                new_value=new_data,
-            )
-
-        return Response(serializer.data)
-
-    def delete(self, request, pk):
-        lead = self.get_object(pk)
-        lead.delete()
-
-        return Response(
-            status=status.HTTP_204_NO_CONTENT
+        CRMService.create_audit_log(
+            user=self.request.user,
+            entity_type="Lead",
+            entity_id=updated_lead.id,
+            action="LEAD_UPDATED",
+            old_value=old_data,
+            new_value=new_data,
         )
 
 
@@ -292,27 +258,25 @@ class LeadAssignView(APIView):
     permission_classes = [CRMHasPermission]
 
     permission_names = {
-        "PATCH": "assign_lead",
+        "POST": "assign_lead",
     }
 
-    def patch(self, request, pk):
+    def post(self, request, pk):
         lead = get_object_or_404(Lead, pk=pk)
 
-        new_assignee_id = request.data.get("assigned_to")
+        assigned_to_id = request.data.get("assigned_to")
 
-        if not new_assignee_id:
+        if not assigned_to_id:
             return Response(
-                {"detail": "assigned_to is required."},
+                {"assigned_to": ["This field is required."]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from django.contrib.auth import get_user_model
-
-        User = get_user_model()
+        from accounts.models import CustomUser
 
         new_assignee = get_object_or_404(
-            User,
-            pk=new_assignee_id,
+            CustomUser,
+            pk=assigned_to_id,
         )
 
         try:
@@ -327,7 +291,10 @@ class LeadAssignView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return Response(LeadSerializer(lead).data)
+        return Response(
+            LeadSerializer(lead).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class LeadProgressView(APIView):
@@ -340,10 +307,13 @@ class LeadProgressView(APIView):
     def post(self, request, pk):
         lead = get_object_or_404(Lead, pk=pk)
 
+        stage_id = request.data.get("stage_id")
+
         try:
             lead = CRMService.progress_lead(
                 user=request.user,
                 lead=lead,
+                stage_id=stage_id,
             )
         except DjangoValidationError as exc:
             return Response(
@@ -351,7 +321,10 @@ class LeadProgressView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return Response(LeadSerializer(lead).data)
+        return Response(
+            LeadSerializer(lead).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class LeadLostView(APIView):
@@ -366,6 +339,12 @@ class LeadLostView(APIView):
 
         lost_reason = request.data.get("lost_reason")
 
+        if not lost_reason:
+            return Response(
+                {"lost_reason": ["This field is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
         try:
             lead = CRMService.mark_lead_lost(
                 user=request.user,
@@ -378,7 +357,10 @@ class LeadLostView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return Response(LeadSerializer(lead).data)
+        return Response(
+            LeadSerializer(lead).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class LeadReengageView(APIView):
@@ -402,7 +384,10 @@ class LeadReengageView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        return Response(LeadSerializer(lead).data)
+        return Response(
+            LeadSerializer(lead).data,
+            status=status.HTTP_200_OK,
+        )
 
 
 class LeadConvertView(APIView):
@@ -415,26 +400,23 @@ class LeadConvertView(APIView):
     def post(self, request, pk):
         lead = get_object_or_404(Lead, pk=pk)
 
-        required_fields = [
-            "name",
-            "email",
-            "phone",
-        ]
+        name = request.data.get("name", lead.name)
+        email = request.data.get("email", lead.email)
+        phone = request.data.get("phone", lead.phone)
+        company_name = request.data.get(
+            "company_name",
+            lead.company_name,
+        )
 
-        missing_fields = [
-            field
-            for field in required_fields
-            if not request.data.get(field)
-        ]
-
-        if missing_fields:
+        if not email:
             return Response(
-                {
-                    "detail": (
-                        "Missing required fields: "
-                        + ", ".join(missing_fields)
-                    )
-                },
+                {"email": ["This field is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not phone:
+            return Response(
+                {"phone": ["This field is required."]},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -442,18 +424,16 @@ class LeadConvertView(APIView):
             customer = CRMService.convert_lead(
                 user=request.user,
                 lead=lead,
-                name=request.data["name"],
-                email=request.data["email"],
-                phone=request.data["phone"],
-                company_name=request.data.get("company_name"),
+                name=name,
+                email=email,
+                phone=phone,
+                company_name=company_name,
             )
         except DjangoValidationError as exc:
             return Response(
                 {"detail": exc.message},
                 status=status.HTTP_400_BAD_REQUEST,
             )
-
-        from .serializers import CustomerSerializer
 
         return Response(
             CustomerSerializer(customer).data,
@@ -542,6 +522,7 @@ class AuditLogListView(APIView):
 
         return Response(serializer.data)
 
+
 class CustomerListCreateView(generics.ListCreateAPIView):
     queryset = Customer.objects.all()
     serializer_class = CustomerSerializer
@@ -595,3 +576,321 @@ class CustomerActivityListView(generics.ListAPIView):
             .select_related("customer", "created_by")
             .order_by("-created_at")
         )
+
+
+# ==============================================================================
+# QUOTATION WORKFLOW VIEWS (MEMBER 2)
+# ==============================================================================
+
+class QuotationListCreateView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "view_quotation",
+        "POST": "add_quotation",
+    }
+
+    def get(self, request):
+        lead_id = request.query_params.get("lead")
+        queryset = Quotation.objects.select_related(
+            "lead", "customer", "created_by", "current_version"
+        ).prefetch_related("versions", "versions__line_items", "versions__approvals")
+
+        if lead_id:
+            queryset = queryset.filter(lead_id=lead_id)
+
+        serializer = QuotationSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        lead_id = request.data.get("lead_id") or request.data.get("lead")
+        if not lead_id:
+            return Response(
+                {"lead_id": ["This field is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        lead = get_object_or_404(Lead, pk=lead_id)
+        terms = request.data.get("terms")
+        notes = request.data.get("notes")
+        line_items = request.data.get("line_items")
+        if line_items is None:
+            line_items = request.data.get("items", [])
+
+        try:
+            quotation = QuotationService.create_quotation(
+                user=request.user,
+                lead=lead,
+                terms=terms,
+                notes=notes,
+                line_items=line_items,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            QuotationSerializer(quotation).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class QuotationDetailView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "view_quotation",
+    }
+
+    def get(self, request, pk):
+        quotation = get_object_or_404(
+            Quotation.objects.select_related(
+                "lead", "customer", "created_by", "current_version"
+            ).prefetch_related("versions", "versions__line_items", "versions__approvals"),
+            pk=pk,
+        )
+        serializer = QuotationSerializer(quotation)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class QuotationUpdateDraftView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "PATCH": "change_quotation",
+        "PUT": "change_quotation",
+    }
+
+    def patch(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+        terms = request.data.get("terms")
+        notes = request.data.get("notes")
+        line_items = request.data.get("line_items")
+
+        try:
+            quotation = QuotationService.update_draft_quotation(
+                user=request.user,
+                quotation=quotation,
+                terms=terms,
+                notes=notes,
+                line_items=line_items,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            QuotationSerializer(quotation).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class QuotationSubmitView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "POST": "submit_quotation",
+    }
+
+    def post(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+
+        try:
+            quotation = QuotationService.submit_quotation_for_approval(
+                user=request.user,
+                quotation=quotation,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            QuotationSerializer(quotation).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class QuotationApproveView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "POST": "approve_quotation",
+    }
+
+    def post(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+
+        try:
+            quotation = QuotationService.approve_quotation(
+                reviewer_user=request.user,
+                quotation=quotation,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            QuotationSerializer(quotation).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class QuotationRejectApprovalView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "POST": "approve_quotation",
+    }
+
+    def post(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+        reason = request.data.get("reason")
+
+        try:
+            quotation = QuotationService.reject_quotation_approval(
+                reviewer_user=request.user,
+                quotation=quotation,
+                reason=reason,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            QuotationSerializer(quotation).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class QuotationSendView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "POST": "send_quotation",
+    }
+
+    def post(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+
+        try:
+            quotation = QuotationService.send_quotation(
+                user=request.user,
+                quotation=quotation,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            QuotationSerializer(quotation).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class QuotationRevisionView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "POST": "request_quotation_revision",
+    }
+
+    def post(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+        terms = request.data.get("terms")
+        notes = request.data.get("notes")
+        line_items = request.data.get("line_items")
+
+        try:
+            quotation = QuotationService.create_revision(
+                user=request.user,
+                quotation=quotation,
+                terms=terms,
+                notes=notes,
+                line_items=line_items,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            QuotationSerializer(quotation).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class QuotationAcceptView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "POST": "accept_quotation",
+    }
+
+    def post(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+
+        try:
+            quotation, customer = QuotationService.accept_quotation(
+                user=request.user,
+                quotation=quotation,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "quotation": QuotationSerializer(quotation).data,
+                "customer": CustomerSerializer(customer).data if customer else None,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class QuotationRejectView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "POST": "reject_quotation",
+    }
+
+    def post(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+        rejection_reason = request.data.get("rejection_reason") or request.data.get("reason")
+
+        if not rejection_reason:
+            return Response(
+                {"rejection_reason": ["This field is required."]},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            quotation = QuotationService.reject_quotation(
+                user=request.user,
+                quotation=quotation,
+                rejection_reason=rejection_reason,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            QuotationSerializer(quotation).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+class QuotationIntegrationEventListView(generics.ListAPIView):
+    queryset = QuotationIntegrationEvent.objects.all()
+    serializer_class = QuotationIntegrationEventSerializer
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "view_quotation",
+    }
