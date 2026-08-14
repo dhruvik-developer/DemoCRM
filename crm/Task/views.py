@@ -5,8 +5,20 @@ from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from datetime import datetime, timedelta
 
+from django.db import transaction
+from django.utils import timezone
+
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from accounts import serializers    
+from .services import send_meeting_reminder_email, send_meeting_creation_emails
 from .models import (
+    MeetingType,
+    ReminderType,
     Task,
     TaskStatus,
     Meeting,
@@ -17,8 +29,12 @@ from .models import (
 )
 
 from .serializers import (
+    MeetingTypeSerializer,
+    ReminderStatusSerializer,
+    ReminderTypeSerializer,
     TaskSerializer,
     MeetingSerializer,
+    MeetingStatusSerializer,
     MeetingParticipantSerializer,
     ReminderSerializer,
 )
@@ -318,517 +334,236 @@ class TaskStatusUpdateView(APIView):
             status=status.HTTP_200_OK
         )
 
+# ============================================================
+# MEETING STATUS
+# ============================================================
 
-# ==========================================================
+class MeetingStatusViewSet(viewsets.ModelViewSet):
+
+    queryset = MeetingStatus.objects.all().order_by(
+        "meeting_status_id"
+    )
+
+    serializer_class = MeetingStatusSerializer
+    permission_classes = [IsAuthenticated]
+
+
+# ============================================================
+# MEETING TYPE
+# ============================================================
+
+class MeetingTypeViewSet(viewsets.ModelViewSet):
+
+    queryset = MeetingType.objects.all().order_by(
+        "meeting_type_id"
+    )
+
+    serializer_class = MeetingTypeSerializer
+    permission_classes = [IsAuthenticated]
+
+
+# ============================================================
 # MEETING
-# ==========================================================
+# ============================================================
 
-class MeetingCreateView(APIView):
-    """
-    POST /api/meetings/
+class MeetingViewSet(viewsets.ModelViewSet):
 
-    Create a meeting.
-    """
+    queryset = Meeting.objects.select_related(
+        "task_id",
+        "lead",
+        "meeting_status_id",
+        "meeting_type_id",
+        "created_by",
+    ).prefetch_related(
+        "participants",
+        "reminders",
+    ).all().order_by("-meeting_date", "-start_time")
 
+    serializer_class = MeetingSerializer
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
+    def perform_create(self, serializer):
 
-        serializer = MeetingSerializer(
-            data=request.data,
-            context={"request": request}
+        meeting = serializer.save(
+            created_by=self.request.user
         )
 
-        if serializer.is_valid():
+        # Send meeting email to both Lead and Host/Creator, and create DB reminder
+        send_meeting_creation_emails(meeting)
 
-            # created_by comes from authenticated user
-            meeting = serializer.save(
-                created_by=request.user
-            )
+    def get_queryset(self):
 
-            return Response(
-                MeetingSerializer(
-                    meeting,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_201_CREATED
-            )
+        queryset = super().get_queryset()
 
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
+        task_id = self.request.query_params.get("task_id")
+        lead_id = self.request.query_params.get("lead")
+        meeting_status = self.request.query_params.get(
+            "meeting_status"
+        )
+        meeting_type = self.request.query_params.get(
+            "meeting_type"
+        )
+        created_by = self.request.query_params.get(
+            "created_by"
         )
 
+        if task_id:
+            queryset = queryset.filter(
+                task_id_id=task_id
+            )
 
-class MeetingDetailView(APIView):
-    """
-    GET /api/meetings/<meeting_id>/
+        if lead_id:
+            queryset = queryset.filter(
+                lead_id=lead_id
+            )
 
-    Get meeting details.
-    """
+        if meeting_status:
+            queryset = queryset.filter(
+                meeting_status_id_id=meeting_status
+            )
 
+        if meeting_type:
+            queryset = queryset.filter(
+                meeting_type_id_id=meeting_type
+            )
+
+        if created_by:
+            queryset = queryset.filter(
+                created_by_id=created_by
+            )
+
+        return queryset
+
+
+# ============================================================
+# MEETING PARTICIPANT
+# ============================================================
+
+class MeetingParticipantViewSet(viewsets.ModelViewSet):
+
+    queryset = MeetingParticipant.objects.select_related(
+        "meeting_id",
+        "user_id",
+    ).all().order_by("participant_id")
+
+    serializer_class = MeetingParticipantSerializer
     permission_classes = [IsAuthenticated]
 
-    def get(self, request, meeting_id):
+    def get_queryset(self):
 
-        meeting = get_object_or_404(
-            Meeting.objects.select_related(
-                "task_id",
-                "meeting_status_id",
-                "meeting_type_id",
-                "created_by",
-            ),
-            meeting_id=meeting_id
+        queryset = super().get_queryset()
+
+        meeting_id = self.request.query_params.get(
+            "meeting_id"
         )
 
-        serializer = MeetingSerializer(
-            meeting,
-            context={"request": request}
+        user_id = self.request.query_params.get(
+            "user_id"
         )
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        if meeting_id:
+            queryset = queryset.filter(
+                meeting_id_id=meeting_id
+            )
+
+        if user_id:
+            queryset = queryset.filter(
+                user_id_id=user_id
+            )
+
+        return queryset
 
 
-# ==========================================================
-# RESCHEDULE MEETING
-# ==========================================================
+# ============================================================
+# REMINDER TYPE
+# ============================================================
 
-class MeetingRescheduleView(APIView):
-    """
-    PATCH /api/meetings/<meeting_id>/reschedule/
+class ReminderTypeViewSet(viewsets.ModelViewSet):
 
-    Change meeting date/time.
-    """
+    queryset = ReminderType.objects.all().order_by(
+        "reminder_type_id"
+    )
 
+    serializer_class = ReminderTypeSerializer
     permission_classes = [IsAuthenticated]
 
-    def patch(self, request, meeting_id):
 
-        meeting = get_object_or_404(
-            Meeting,
-            meeting_id=meeting_id
-        )
+# ============================================================
+# REMINDER STATUS
+# ============================================================
 
-        serializer = MeetingSerializer(
-            meeting,
-            data={
-                "meeting_date": request.data.get("meeting_date"),
-                "start_time": request.data.get("start_time"),
-                "end_time": request.data.get("end_time"),
-            },
-            partial=True,
-            context={"request": request}
-        )
+class ReminderStatusViewSet(viewsets.ModelViewSet):
 
-        if serializer.is_valid():
+    queryset = ReminderStatus.objects.all().order_by(
+        "reminder_status_id"
+    )
 
-            meeting = serializer.save()
-
-            return Response(
-                {
-                    "message": "Meeting rescheduled successfully.",
-                    "meeting": MeetingSerializer(
-                        meeting,
-                        context={"request": request}
-                    ).data
-                },
-                status=status.HTTP_200_OK
-            )
-
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-
-# ==========================================================
-# CHANGE MEETING STATUS
-# ==========================================================
-
-class MeetingStatusUpdateView(APIView):
-    """
-    PATCH /api/meetings/<meeting_id>/status/
-
-    Change meeting status.
-    """
-
+    serializer_class = ReminderStatusSerializer
     permission_classes = [IsAuthenticated]
 
-    def patch(self, request, meeting_id):
 
-        meeting = get_object_or_404(
-            Meeting,
-            meeting_id=meeting_id
-        )
-
-        status_id = request.data.get("meeting_status_id")
-
-        if not status_id:
-
-            return Response(
-                {
-                    "meeting_status_id": "This field is required."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        new_status = get_object_or_404(
-            MeetingStatus,
-            meeting_status_id=status_id,
-            is_active=True
-        )
-
-        old_status = meeting.meeting_status_id
-
-        meeting.meeting_status_id = new_status
-
-        meeting.save(
-            update_fields=[
-                "meeting_status_id",
-                "updated_at"
-            ]
-        )
-
-        return Response(
-            {
-                "message": "Meeting status updated successfully.",
-                "meeting_id": meeting.meeting_id,
-                "previous_status": old_status.status_name,
-                "new_status": new_status.status_name
-            },
-            status=status.HTTP_200_OK
-        )
-
-
-# ==========================================================
-# ADD MEETING PARTICIPANT
-# ==========================================================
-
-class MeetingParticipantAddView(APIView):
-    """
-    POST /api/meetings/<meeting_id>/participants/
-
-    Add a participant.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request, meeting_id):
-
-        meeting = get_object_or_404(
-            Meeting,
-            meeting_id=meeting_id
-        )
-
-        user_id = request.data.get("user_id")
-        participant_role = request.data.get(
-            "participant_role"
-        )
-        is_required = request.data.get(
-            "is_required",
-            True
-        )
-
-        if not user_id:
-
-            return Response(
-                {
-                    "user_id": "This field is required."
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not participant_role:
-
-            return Response(
-                {
-                    "participant_role": (
-                        "This field is required."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user = get_object_or_404(
-            User,
-            pk=user_id
-        )
-
-        # Prevent duplicate participant
-        already_exists = MeetingParticipant.objects.filter(
-            meeting_id=meeting,
-            user_id=user
-        ).exists()
-
-        if already_exists:
-
-            return Response(
-                {
-                    "error": (
-                        "This user is already a participant "
-                        "of this meeting."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        participant = MeetingParticipant.objects.create(
-            meeting_id=meeting,
-            user_id=user,
-            participant_role=participant_role.strip(),
-            is_required=is_required
-        )
-
-        serializer = MeetingParticipantSerializer(
-            participant,
-            context={"request": request}
-        )
-
-        return Response(
-            serializer.data,
-            status=status.HTTP_201_CREATED
-        )
-
-
-# ==========================================================
-# REMOVE MEETING PARTICIPANT
-# ==========================================================
-
-class MeetingParticipantRemoveView(APIView):
-    """
-    DELETE /api/meetings/<meeting_id>/participants/<user_id>/
-
-    Remove participant from meeting.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def delete(self, request, meeting_id, user_id):
-
-        meeting = get_object_or_404(
-            Meeting,
-            meeting_id=meeting_id
-        )
-
-        participant = get_object_or_404(
-            MeetingParticipant,
-            meeting_id=meeting,
-            user_id_id=user_id
-        )
-
-        participant.delete()
-
-        return Response(
-            {
-                "message": "Participant removed successfully.",
-                "meeting_id": meeting.meeting_id,
-                "user_id": user_id
-            },
-            status=status.HTTP_200_OK
-        )
-
-
-# ==========================================================
+# ============================================================
 # REMINDER
-# ==========================================================
+# ============================================================
 
-class ReminderCreateView(APIView):
-    """
-    POST /api/reminders/
+class ReminderViewSet(viewsets.ModelViewSet):
 
-    Create a reminder.
-    """
+    queryset = Reminder.objects.select_related(
+        "task_id",
+        "meeting_id",
+        "reminder_for",
+        "reminder_type_id",
+        "reminder_status_id",
+        "created_by",
+    ).all().order_by("reminder_datetime")
 
+    serializer_class = ReminderSerializer
     permission_classes = [IsAuthenticated]
 
-    def post(self, request):
+    def perform_create(self, serializer):
 
-        serializer = ReminderSerializer(
-            data=request.data,
-            context={"request": request}
+        serializer.save(
+            created_by=self.request.user
         )
 
-        if serializer.is_valid():
+    def get_queryset(self):
 
-            reminder = serializer.save(
-                created_by=request.user
+        queryset = super().get_queryset()
+
+        meeting_id = self.request.query_params.get(
+            "meeting_id"
+        )
+
+        task_id = self.request.query_params.get(
+            "task_id"
+        )
+
+        reminder_for = self.request.query_params.get(
+            "reminder_for"
+        )
+
+        is_sent = self.request.query_params.get(
+            "is_sent"
+        )
+
+        if meeting_id:
+            queryset = queryset.filter(
+                meeting_id_id=meeting_id
             )
 
-            return Response(
-                ReminderSerializer(
-                    reminder,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_201_CREATED
+        if task_id:
+            queryset = queryset.filter(
+                task_id_id=task_id
             )
 
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-
-class ReminderDetailView(APIView):
-    """
-    GET    /api/reminders/<reminder_id>/
-        Reminder detail
-
-    PATCH  /api/reminders/<reminder_id>/
-        Update reminder
-
-    DELETE /api/reminders/<reminder_id>/
-        Delete reminder
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def get_reminder(self, reminder_id):
-
-        return get_object_or_404(
-            Reminder.objects.select_related(
-                "task_id",
-                "meeting_id",
-                "reminder_type_id",
-                "reminder_status_id",
-                "created_by",
-            ),
-            reminder_id=reminder_id
-        )
-
-    # ------------------------------------------------------
-    # REMINDER DETAIL
-    # ------------------------------------------------------
-
-    def get(self, request, reminder_id):
-
-        reminder = self.get_reminder(reminder_id)
-
-        serializer = ReminderSerializer(
-            reminder,
-            context={"request": request}
-        )
-
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
-
-    # ------------------------------------------------------
-    # UPDATE REMINDER
-    # ------------------------------------------------------
-
-    def patch(self, request, reminder_id):
-
-        reminder = self.get_reminder(reminder_id)
-
-        serializer = ReminderSerializer(
-            reminder,
-            data=request.data,
-            partial=True,
-            context={"request": request}
-        )
-
-        if serializer.is_valid():
-
-            reminder = serializer.save()
-
-            return Response(
-                ReminderSerializer(
-                    reminder,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_200_OK
+        if reminder_for:
+            queryset = queryset.filter(
+                reminder_for_id=reminder_for
             )
 
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    # ------------------------------------------------------
-    # DELETE REMINDER
-    # ------------------------------------------------------
-
-    def delete(self, request, reminder_id):
-
-        reminder = self.get_reminder(reminder_id)
-
-        # Your Reminder model does not have is_active,
-        # so with the current model this is a real delete.
-        reminder.delete()
-
-        return Response(
-            {
-                "message": "Reminder deleted successfully.",
-                "reminder_id": reminder_id
-            },
-            status=status.HTTP_200_OK
-        )
-
-
-# ==========================================================
-# CHANGE REMINDER STATUS
-# ==========================================================
-
-class ReminderStatusUpdateView(APIView):
-    """
-    PATCH /api/reminders/<reminder_id>/status/
-
-    Change reminder status.
-    """
-
-    permission_classes = [IsAuthenticated]
-
-    def patch(self, request, reminder_id):
-
-        reminder = get_object_or_404(
-            Reminder,
-            reminder_id=reminder_id
-        )
-
-        status_id = request.data.get(
-            "reminder_status_id"
-        )
-
-        if not status_id:
-
-            return Response(
-                {
-                    "reminder_status_id": (
-                        "This field is required."
-                    )
-                },
-                status=status.HTTP_400_BAD_REQUEST
+        if is_sent is not None:
+            queryset = queryset.filter(
+                is_sent=is_sent.lower() == "true"
             )
 
-        new_status = get_object_or_404(
-            ReminderStatus,
-            reminder_status_id=status_id,
-            is_active=True
-        )
-
-        old_status = reminder.reminder_status_id
-
-        reminder.reminder_status_id = new_status
-
-        reminder.save(
-            update_fields=[
-                "reminder_status_id",
-                "updated_at"
-            ]
-        )
-
-        return Response(
-            {
-                "message": (
-                    "Reminder status updated successfully."
-                ),
-                "reminder_id": reminder.reminder_id,
-                "previous_status": old_status.status_name,
-                "new_status": new_status.status_name
-            },
-            status=status.HTTP_200_OK
-        )
+        return queryset
