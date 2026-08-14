@@ -35,8 +35,8 @@ class RegisterAPIView(APIView):
                     status=status.HTTP_201_CREATED
                 )
             
-            except Exception as e:
-                logger.exception("Failed to register user %s", request.data.get("email"))
+            except Exception:
+                logger.exception("Something failed for user authentication")
                 return Response(
                     {"error": "Failed to register. Please try again."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -71,8 +71,8 @@ class LoginAPIView(APIView):
 
             try:
                 refresh = RefreshToken.for_user(user)
-            except Exception as e:
-                logger.exception("Token generation failed for user %s", email)
+            except Exception:
+                logger.exception("Token generation failed for user %s", user.user_id)
                 return Response(
                     {"error": "Failed to generate tokens. Please try again."},
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -181,7 +181,7 @@ class ChangePasswordAPIView(APIView):
             try:
                 user.set_password(new_password)
                 user.save()
-            except Exception as e:
+            except Exception:
                 logger.exception("Password change failed for user %s", request.user)
                 return Response(
                     {"error": "Failed to change password. Please try again."},
@@ -243,7 +243,7 @@ class RoleAPIView(APIView):
         try:
             roles = Role.objects.prefetch_related("permissions").order_by("role_id")
             serializer = RoleListSerializer(roles, many=True)
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to retrieve roles")
             return Response(
                 {"error": "Failed to retrieve roles. Please try again."},
@@ -264,7 +264,7 @@ class RoleAPIView(APIView):
         if serializer.is_valid():
             try:
                 serializer.save()
-            except Exception as e:
+            except Exception:
                 logger.exception("Failed to create role %s", request.data.get("rolename"))
                 return Response(
                     {"error": "Failed to create role. Please try again."},
@@ -302,7 +302,7 @@ class RoleAPIView(APIView):
         if serializer.is_valid():
             try:
                 serializer.save()
-            except Exception as e:
+            except Exception:
                 logger.exception("Failed to update role %s", role.rolename)
                 return Response(
                     {"error": "Failed to update role. Please try again."},
@@ -380,7 +380,7 @@ class RoleAPIView(APIView):
 
         try:
             role.delete()
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to delete role %s", role_name)
             return Response(
                 {"error": "Failed to delete role. Please try again."},
@@ -422,7 +422,7 @@ class AssignRoleAPIView(APIView):
 
         try:
             user.save()
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to assign role to user %s", user.username)
             return Response(
                 {"error": "Failed to assign role. Please try again."},
@@ -467,7 +467,7 @@ class PermissionAPIView(APIView):
         if serializer.is_valid():
             try:
                 serializer.save()
-            except Exception as e:
+            except Exception:
                 logger.exception("Failed to create permission %s", request.data.get("codename"))
                 return Response(
                     {"error": "Failed to create permission. Please try again."},
@@ -496,7 +496,7 @@ class PermissionAPIView(APIView):
         if serializer.is_valid():
             try:
                 serializer.save()
-            except Exception as e:
+            except Exception:
                 logger.exception("Failed to update permission %s", permission.codename)
                 return Response(
                     {"error": "Failed to update permission. Please try again."},
@@ -518,7 +518,7 @@ class PermissionAPIView(APIView):
 
         try:
             permission.delete()
-        except Exception as e:
+        except Exception:
             logger.exception("Failed to delete permission %s", permission.codename)
             return Response(
                 {"error": "Failed to delete permission. Please try again."},
