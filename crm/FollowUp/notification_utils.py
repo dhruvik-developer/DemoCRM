@@ -4,10 +4,14 @@ Shared helpers for:
   2. Sending a plain reminder/notification email.
 """
 
+import logging
+
 from django.conf import settings
 from django.core.mail import send_mail
 
 from .models import Notification, NotificationTemplate, NotificationType
+
+logger = logging.getLogger(__name__)
 
 
 def create_notification(user, title, message, type_name="System"):
