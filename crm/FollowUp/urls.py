@@ -18,20 +18,21 @@ urlpatterns = [
     # FOLLOWUP
     # ======================================================
 
+    # FollowUp
     path(
-        "followups/",
+        "",
         FollowUpListCreateView.as_view(),
         name="followup-list-create"
     ),
 
     path(
-        "followups/<int:followup_id>/",
+        "<int:followup_id>/",
         FollowUpDetailView.as_view(),
         name="followup-detail"
     ),
 
     path(
-        "followups/<int:followup_id>/notes/",
+        "<int:followup_id>/notes/",
         FollowUpNoteCreateView.as_view(),
         name="followup-add-note"
     ),
