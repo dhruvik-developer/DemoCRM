@@ -1,3 +1,5 @@
+import logging
+
 from django.shortcuts import render
 
 from .models import CustomUser, Role 
@@ -10,6 +12,9 @@ from rest_framework_simplejwt.tokens import RefreshToken        #type: ignore
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import Permission
 from .permissions import HasDynamicPermission
+from rest_framework_simplejwt.exceptions import TokenError
+
+logger = logging.getLogger(__name__)
 
 # Create your views here.
 class RegisterAPIView(APIView):
@@ -31,9 +36,10 @@ class RegisterAPIView(APIView):
                 )
             
             except Exception as e:
+                logger.exception("Failed to register user %s", request.data.get("email"))
                 return Response(
-                    {"error": str(e)},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {"error": "Failed to register. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -63,7 +69,14 @@ class LoginAPIView(APIView):
                     status=status.HTTP_401_UNAUTHORIZED
                 )
 
-            refresh = RefreshToken.for_user(user)
+            try:
+                refresh = RefreshToken.for_user(user)
+            except Exception as e:
+                logger.exception("Token generation failed for user %s", email)
+                return Response(
+                    {"error": "Failed to generate tokens. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
             return Response({
                 "message": "Login successful",
@@ -101,9 +114,26 @@ class LogoutAPIView(APIView):
                 status=status.HTTP_200_OK
             )
 
-        except Exception as e:
+        except TokenError as e:
+            if "blacklisted" in str(e).lower():
+                return Response(
+                {
+                    "message" : "You are already logged out."
+                },
+                status=status.HTTP_200_OK
+            )
+
             return Response(
-                {"error": str(e)},
+                {
+                    "error": "Invalid or expired refresh token."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        except Exception:
+            logger.exception("Logout failed for user %s", request.user)
+            return Response(
+                {"error": "Logout failed. Please try again."},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
@@ -148,8 +178,15 @@ class ChangePasswordAPIView(APIView):
             if not user.check_password(old_password):
                 return Response({"error": "Old password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
 
-            user.set_password(new_password)
-            user.save()
+            try:
+                user.set_password(new_password)
+                user.save()
+            except Exception as e:
+                logger.exception("Password change failed for user %s", request.user)
+                return Response(
+                    {"error": "Failed to change password. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
             return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
 
@@ -203,8 +240,15 @@ class RoleAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        roles = Role.objects.prefetch_related("permissions").order_by("role_id")
-        serializer = RoleListSerializer(roles, many=True)
+        try:
+            roles = Role.objects.prefetch_related("permissions").order_by("role_id")
+            serializer = RoleListSerializer(roles, many=True)
+        except Exception as e:
+            logger.exception("Failed to retrieve roles")
+            return Response(
+                {"error": "Failed to retrieve roles. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         return Response(
             {
@@ -218,7 +262,14 @@ class RoleAPIView(APIView):
         serializer = RoleSerializer(data=request.data)
 
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except Exception as e:
+                logger.exception("Failed to create role %s", request.data.get("rolename"))
+                return Response(
+                    {"error": "Failed to create role. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
             return Response(
                 {
@@ -249,7 +300,14 @@ class RoleAPIView(APIView):
         )
 
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except Exception as e:
+                logger.exception("Failed to update role %s", role.rolename)
+                return Response(
+                    {"error": "Failed to update role. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
             return Response(
                 {
@@ -292,7 +350,14 @@ class RoleAPIView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        role.permissions.add(*permissions)
+        try:
+            role.permissions.add(*permissions)
+        except Exception as e:
+            logger.exception("Failed to add permissions to role %s", role.rolename)
+            return Response(
+                {"error": "Failed to add permissions. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         return Response(
             {
@@ -312,7 +377,15 @@ class RoleAPIView(APIView):
             )
 
         role_name = role.rolename
-        role.delete()
+
+        try:
+            role.delete()
+        except Exception as e:
+            logger.exception("Failed to delete role %s", role_name)
+            return Response(
+                {"error": "Failed to delete role. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         return Response(
             {
@@ -346,7 +419,15 @@ class AssignRoleAPIView(APIView):
         role = get_object_or_404(Role, role_id=role_id)
 
         user.role = role
-        user.save()
+
+        try:
+            user.save()
+        except Exception as e:
+            logger.exception("Failed to assign role to user %s", user.username)
+            return Response(
+                {"error": "Failed to assign role. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         return Response(
             {
@@ -384,7 +465,15 @@ class PermissionAPIView(APIView):
         serializer = PermissionSerializer(data=request.data)
 
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except Exception as e:
+                logger.exception("Failed to create permission %s", request.data.get("codename"))
+                return Response(
+                    {"error": "Failed to create permission. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
             return Response(
                 {
                     "message": "Permission created successfully.",
@@ -405,7 +494,15 @@ class PermissionAPIView(APIView):
         )
 
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except Exception as e:
+                logger.exception("Failed to update permission %s", permission.codename)
+                return Response(
+                    {"error": "Failed to update permission. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
             return Response(
                 {
                     "message": "Permission updated successfully.",
@@ -418,7 +515,15 @@ class PermissionAPIView(APIView):
 
     def delete(self, request, permission_id):
         permission = get_object_or_404(Permission, id=permission_id)
-        permission.delete()
+
+        try:
+            permission.delete()
+        except Exception as e:
+            logger.exception("Failed to delete permission %s", permission.codename)
+            return Response(
+                {"error": "Failed to delete permission. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
         return Response(
             {"message": "Permission deleted successfully."},
