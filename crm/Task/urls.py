@@ -1,68 +1,21 @@
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
+from django.urls import path
 
 from .views import (
-    # Task
     TaskListCreateView,
     TaskDetailView,
     TaskAssignView,
     TaskStatusUpdateView,
 
-    # Meeting
-    MeetingStatusViewSet,
-    MeetingParticipantViewSet,
-    MeetingTypeViewSet,
-    MeetingViewSet,
+    MeetingCreateView,
+    MeetingDetailView,
+    MeetingRescheduleView,
+    MeetingStatusUpdateView,
+    MeetingParticipantAddView,
+    MeetingParticipantRemoveView,
 
-    # Reminder
-    ReminderTypeViewSet,
-    ReminderStatusViewSet,
-    ReminderViewSet,
-)
-
-
-router = DefaultRouter()
-
-router.register(
-    r"meeting",
-    MeetingViewSet,
-    basename="meeting"
-)
-
-router.register(
-    r"meeting-participant",
-    MeetingParticipantViewSet,
-    basename="meeting-participant"
-)
-
-router.register(
-    r"meeting-status",
-    MeetingStatusViewSet,
-    basename="meeting-status"
-)
-
-router.register(
-    r"meeting-type",
-    MeetingTypeViewSet,
-    basename="meeting-type"
-)
-
-router.register(
-    r"reminder",
-    ReminderViewSet,
-    basename="reminder"
-)
-
-router.register(
-    r"reminder-type",
-    ReminderTypeViewSet,
-    basename="reminder-type"
-)
-
-router.register(
-    r"reminder-status",
-    ReminderStatusViewSet,
-    basename="reminder-status"
+    ReminderCreateView,
+    ReminderDetailView,
+    ReminderStatusUpdateView,
 )
 
 
@@ -97,11 +50,64 @@ urlpatterns = [
     ),
 
     # ======================================================
-    # VIEWSETS
+    # MEETING
     # ======================================================
 
     path(
-        "",
-        include(router.urls)
+        "meetings/",
+        MeetingCreateView.as_view(),
+        name="meeting-create"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/",
+        MeetingDetailView.as_view(),
+        name="meeting-detail"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/reschedule/",
+        MeetingRescheduleView.as_view(),
+        name="meeting-reschedule"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/status/",
+        MeetingStatusUpdateView.as_view(),
+        name="meeting-status-update"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/participants/",
+        MeetingParticipantAddView.as_view(),
+        name="meeting-participant-add"
+    ),
+
+    path(
+        "meetings/<int:meeting_id>/participants/<int:user_id>/",
+        MeetingParticipantRemoveView.as_view(),
+        name="meeting-participant-remove"
+    ),
+
+    # ======================================================
+    # REMINDER
+    # ======================================================
+
+    path(
+        "reminders/",
+        ReminderCreateView.as_view(),
+        name="reminder-create"
+    ),
+
+    path(
+        "reminders/<int:reminder_id>/",
+        ReminderDetailView.as_view(),
+        name="reminder-detail"
+    ),
+
+    path(
+        "reminders/<int:reminder_id>/status/",
+        ReminderStatusUpdateView.as_view(),
+        name="reminder-status-update"
     ),
 ]
