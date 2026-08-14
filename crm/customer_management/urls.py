@@ -3,9 +3,9 @@ from django.urls import path
 from .views import (
     ActivityListCreateView,
     AuditLogListView,
+    CustomerActivityListView,
     CustomerDetailView,
     CustomerListCreateView,
-    CustomerActivityListView,
     LeadAssignView,
     LeadConvertView,
     LeadDetailView,
@@ -16,6 +16,17 @@ from .views import (
     LeadSourceListCreateView,
     PipelineListCreateView,
     PipelineStageListCreateView,
+    QuotationAcceptView,
+    QuotationApproveView,
+    QuotationDetailView,
+    QuotationIntegrationEventListView,
+    QuotationListCreateView,
+    QuotationRejectApprovalView,
+    QuotationRejectView,
+    QuotationRevisionView,
+    QuotationSendView,
+    QuotationSubmitView,
+    QuotationUpdateDraftView,
 )
 
 urlpatterns = [
@@ -101,5 +112,61 @@ urlpatterns = [
         "customers/<uuid:pk>/activities/",
         CustomerActivityListView.as_view(),
         name="customer-activity-list",
+    ),
+    # Quotations
+    path(
+        "quotations/",
+        QuotationListCreateView.as_view(),
+        name="quotation-list-create",
+    ),
+    path(
+        "quotations/<uuid:pk>/",
+        QuotationDetailView.as_view(),
+        name="quotation-detail",
+    ),
+    path(
+        "quotations/<uuid:pk>/update-draft/",
+        QuotationUpdateDraftView.as_view(),
+        name="quotation-update-draft",
+    ),
+    path(
+        "quotations/<uuid:pk>/submit/",
+        QuotationSubmitView.as_view(),
+        name="quotation-submit",
+    ),
+    path(
+        "quotations/<uuid:pk>/approve/",
+        QuotationApproveView.as_view(),
+        name="quotation-approve",
+    ),
+    path(
+        "quotations/<uuid:pk>/reject-approval/",
+        QuotationRejectApprovalView.as_view(),
+        name="quotation-reject-approval",
+    ),
+    path(
+        "quotations/<uuid:pk>/send/",
+        QuotationSendView.as_view(),
+        name="quotation-send",
+    ),
+    path(
+        "quotations/<uuid:pk>/revision/",
+        QuotationRevisionView.as_view(),
+        name="quotation-revision",
+    ),
+    path(
+        "quotations/<uuid:pk>/accept/",
+        QuotationAcceptView.as_view(),
+        name="quotation-accept",
+    ),
+    path(
+        "quotations/<uuid:pk>/reject/",
+        QuotationRejectView.as_view(),
+        name="quotation-reject",
+    ),
+    path(
+        "quotation-events/",
+        QuotationIntegrationEventListView.as_view(),
+        name="quotation-event-list",
     ),
 ]
