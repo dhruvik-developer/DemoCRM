@@ -117,7 +117,22 @@ class Meeting(models.Model):
         related_name="meetings"
     )
 
-    # Meeting Status
+    # ==================================================
+    # LEAD RELATIONSHIP
+    # ==================================================
+
+    lead = models.ForeignKey(
+        "customer_management.Lead",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="meetings"
+    )
+
+    # ==================================================
+    # MEETING STATUS
+    # ==================================================
+
     meeting_status_id = models.ForeignKey(
         MeetingStatus,
         on_delete=models.PROTECT,
