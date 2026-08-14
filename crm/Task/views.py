@@ -1,5 +1,9 @@
+import logging
+
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
+
+logger = logging.getLogger(__name__)
 
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
@@ -84,6 +88,8 @@ class TaskListCreateView(APIView):
             task = serializer.save(
                 created_by=request.user
             )
+
+            logger.info("Task created: %s (ID: %s) by user %s", task.title, task.task_id, request.user.user_id)
 
             return Response(
                 TaskSerializer(

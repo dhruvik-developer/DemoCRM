@@ -1,5 +1,11 @@
+import logging
+
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.shortcuts import get_object_or_404
+
+User = get_user_model()
+logger = logging.getLogger(__name__)
 
 from rest_framework import generics, status
 from rest_framework.response import Response
@@ -272,10 +278,8 @@ class LeadAssignView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from accounts.models import CustomUser
-
         new_assignee = get_object_or_404(
-            CustomUser,
+            User,
             pk=assigned_to_id,
         )
 
@@ -592,8 +596,13 @@ class QuotationListCreateView(APIView):
     def get(self, request):
         lead_id = request.query_params.get("lead")
         queryset = Quotation.objects.select_related(
-            "lead", "customer", "created_by", "current_version"
-        ).prefetch_related("versions", "versions__line_items", "versions__approvals")
+            "lead", "customer", "created_by", "current_version",
+            "current_version__created_by", "current_version__assigned_to",
+            "current_version__pipeline", "current_version__current_stage"
+        ).prefetch_related(
+            "current_version__line_items", "current_version__approvals",
+            "versions", "versions__line_items", "versions__approvals"
+        )
 
         if lead_id:
             queryset = queryset.filter(lead_id=lead_id)

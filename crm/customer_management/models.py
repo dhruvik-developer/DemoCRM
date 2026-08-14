@@ -172,6 +172,11 @@ class Lead(models.Model):
     class Meta:
         db_table = "lead"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["assigned_to", "status"], name="lead_assigned_status_idx"),
+            models.Index(fields=["pipeline", "current_stage"], name="lead_pipeline_stage_idx"),
+            models.Index(fields=["created_at"], name="lead_created_at_idx"),
+        ]
 
         permissions = [
             ("assign_lead", "Can assign lead"),
@@ -422,6 +427,10 @@ class Quotation(models.Model):
     class Meta:
         db_table = "quotation"
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["lead", "status"], name="quotation_lead_status_idx"),
+            models.Index(fields=["created_at"], name="quotation_created_at_idx"),
+        ]
 
         permissions = [
             ("submit_quotation", "Can submit quotation for approval"),

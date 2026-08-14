@@ -1,6 +1,9 @@
 import datetime
+import logging
 from decimal import Decimal
 from uuid import uuid4
+
+logger = logging.getLogger(__name__)
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -723,6 +726,8 @@ class QuotationService:
             quotation=quotation,
             notes=f"Total: ${total}",
         )
+
+        logger.info("Quotation created: %s for lead %s (total: %s)", quotation.quotation_number, lead.id, total)
 
         return quotation
 
