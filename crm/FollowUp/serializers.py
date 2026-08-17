@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from Task.models import Task
 from .models import Followup, FollowUpNote, FollowUpStatus, FollowUpTypes, ActivityAction, ActivityLog, ActivityType
-from .notification_utils import build_context, render_template
+
 
 from django.utils import timezone
 

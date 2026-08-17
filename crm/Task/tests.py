@@ -5,9 +5,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from accounts.models import Role
-from FollowUp.models import Notification
 from Task.models import Task, TaskCategory, TaskPriority, TaskStatus
-
+from Notification.models import Notification
 User = get_user_model()
 
 TASK_LIST_URL = "/api/tasks/"

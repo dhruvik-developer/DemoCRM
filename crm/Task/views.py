@@ -30,8 +30,7 @@ from .serializers import (
 
 from Notification.notification_utils import trigger_notification_event
 from Notification.models import NotificationEventType
-from FollowUp.notification_utils import notify_task_assignment
-
+from Notification.notification_utils import create_notification
 
 User = get_user_model()
 

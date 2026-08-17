@@ -6,7 +6,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from accounts.models import Role
-from .models import Notification, NotificationTemplate, NotificationType
+from Notification.models import Notification, NotificationTemplate, NotificationEventType
 
 User = get_user_model()
 
@@ -37,7 +37,7 @@ class NotificationTemplateBaseTestCase(TestCase):
             role=self.employee_role,
         )
 
-        self.type, _ = NotificationType.objects.get_or_create(
+        self.type, _ = NotificationEventType.objects.get_or_create(
             type_name="Follow-up"
         )
         self.template = NotificationTemplate.objects.create(

@@ -15,10 +15,6 @@ from .models import (
     FollowUpNote,
 )
 
-from Notification.notification_utils import (
-    trigger_notification_event,
-)
-from Notification.models import NotificationEventType
 
 from .serializers import (
     FollowupSerializer,
@@ -96,17 +92,6 @@ class FollowUpListCreateView(APIView):
         # Do not trust created_by from frontend.
         followup = serializer.save(
             created_by=request.user
-        )
-
-        recipient = followup.task_id.assigned_to if followup.task_id and followup.task_id.assigned_to else request.user
-        trigger_notification_event(
-            event_type=NotificationEventType.FOLLOWUP_CREATED,
-            recipient=recipient,
-            context={
-                "user_name": recipient.get_full_name() or recipient.username,
-                "followup_date": str(followup.followup_date),
-                "task_title": followup.task_id.task_title if followup.task_id else "",
-            },
         )
 
         logger.info("FollowUp created for task %s by user %s (ID: %s)", followup.task_id_id, request.user.user_id, followup.followup_id)
@@ -197,18 +182,6 @@ class FollowUpDetailView(APIView):
             )
 
         followup = serializer.save()
-
-        if followup.followup_status and followup.followup_status.status_name.upper() in ["COMPLETED", "COMPLETE", "DONE"]:
-            recipient = followup.created_by or (followup.task_id.assigned_to if followup.task_id else request.user)
-            trigger_notification_event(
-                event_type=NotificationEventType.FOLLOWUP_COMPLETED,
-                recipient=recipient,
-                context={
-                    "employee_name": request.user.get_full_name() or request.user.username,
-                    "followup_date": str(followup.followup_date),
-                    "task_title": followup.task_id.task_title if followup.task_id else "",
-                },
-            )
 
         return Response(
             FollowupSerializer(
