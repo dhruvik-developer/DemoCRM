@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Quotation {{ quotation.quotation_number }} (v{{ version.version_number }})</title>
+    <style>
+        @page {
+            size: A4 portrait;
+            margin: 20mm 15mm 20mm 15mm;
+        }
+        body {
+            font-family: Helvetica, Arial, sans-serif;
+            font-size: 12px;
+            color: #333333;
+            line-height: 1.5;
+        }
+        .header-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+        }
+        .company-name {
+            font-size: 22px;
+            font-weight: bold;
+            color: #1e293b;
+        }
+        .doc-title {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2563eb;
+            text-align: right;
+        }
+        .meta-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+        }
+        .meta-box {
+            width: 50%;
+            vertical-align: top;
+        }
+        .section-heading {
+            font-size: 13px;
+            font-weight: bold;
+            color: #475569;
+            text-transform: uppercase;
+            border-bottom: 1px solid #cbd5e1;
+            padding-bottom: 3px;
+            margin-bottom: 8px;
+        }
+        .info-label {
+            font-weight: bold;
+            color: #64748b;
+            width: 110px;
+            display: inline-block;
+        }
+        .items-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 25px;
+        }
+        .items-table th {
+            background-color: #f1f5f9;
+            color: #334155;
+            font-weight: bold;
+            text-align: left;
+            padding: 8px;
+            border-bottom: 2px solid #cbd5e1;
+            font-size: 11px;
+            text-transform: uppercase;
+        }
+        .items-table td {
+            padding: 8px;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .items-table .text-right {
+            text-align: right;
+        }
+        .terms-notes {
+            margin-top: 20px;
+            padding: 12px;
+            background-color: #f8fafc;
+            border-left: 4px solid #94a3b8;
+            margin-bottom: 20px;
+        }
+        .footer {
+            text-align: center;
+            font-size: 10px;
+            color: #94a3b8;
+            margin-top: 40px;
+            border-top: 1px solid #e2e8f0;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Table -->
+    <table class="header-table">
+        <tr>
+            <td style="width: 50%;">
+                <div class="company-name">DemoCRM Solutions</div>
+                <div style="color: #64748b; font-size: 11px;">
+                    100 Tech Park Way, Suite 400<br>
+                    Contact: info@democrm.com | +1 (800) 555-0199
+                </div>
+            </td>
+            <td style="width: 50%; vertical-align: top;">
+                <div class="doc-title">QUOTATION</div>
+                <div style="text-align: right; color: #64748b; font-size: 11px;">
+                    Ref: <strong>{{ quotation.quotation_number }}</strong><br>
+                    Revision: <strong>v{{ version.version_number }}</strong>
+                </div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Metadata Section -->
+    <table class="meta-table">
+        <tr>
+            <!-- Customer Info -->
+            <td class="meta-box" style="padding-right: 15px;">
+                <div class="section-heading">Prepared For</div>
+                <div><strong>{{ client_name }}</strong></div>
+                {% if company_name %}
+                <div>{{ company_name }}</div>
+                {% endif %}
+                {% if client_email %}
+                <div>Email: {{ client_email }}</div>
+                {% endif %}
+                {% if client_phone %}
+                <div>Phone: {{ client_phone }}</div>
+                {% endif %}
+            </td>
+
+            <!-- Quotation Info -->
+            <td class="meta-box" style="padding-left: 15px;">
+                <div class="section-heading">Quotation Overview</div>
+                <div><span class="info-label">Date:</span> {{ version.created_at|date:"Y-m-d" }}</div>
+                {% if valid_until %}
+                <div><span class="info-label">Valid Until:</span> {{ valid_until|date:"Y-m-d" }}</div>
+                {% endif %}
+                <div><span class="info-label">Status:</span> {{ version.get_status_display }}</div>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Line Items Table -->
+    <div class="section-heading">Line Items</div>
+    <table class="items-table">
+        <thead>
+            <tr>
+                <th style="width: 45%;">Description</th>
+                <th style="width: 15%; text-align: right;">Quantity</th>
+                <th style="width: 20%; text-align: right;">Unit Price ($)</th>
+                <th style="width: 20%; text-align: right;">Amount ($)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in line_items %}
+            <tr>
+                <td>{{ item.description }}</td>
+                <td class="text-right">{{ item.quantity }}</td>
+                <td class="text-right">{{ item.unit_price|floatformat:2 }}</td>
+                <td class="text-right">{{ item.amount|floatformat:2 }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" style="text-align: center; color: #94a3b8;">No line items provided.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Totals -->
+    <table style="width: 100%;">
+        <tr>
+            <td style="width: 50%;"></td>
+            <td style="width: 50%; text-align: right;">
+                <table style="width: 100%; font-size: 13px;">
+                    <tr>
+                        <td style="font-weight: bold; text-align: right; padding-right: 15px;">Total Amount:</td>
+                        <td style="font-weight: bold; text-align: right; width: 120px;" class="grand-total">${{ version.total_amount|floatformat:2 }}</td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+
+    <!-- Terms & Notes -->
+    {% if version.terms or version.notes %}
+    <div class="terms-notes">
+        {% if version.terms %}
+        <div style="margin-bottom: 8px;">
+            <strong>Terms & Conditions:</strong><br>
+            {{ version.terms|linebreaksbr }}
+        </div>
+        {% endif %}
+        {% if version.notes %}
+        <div>
+            <strong>Notes:</strong><br>
+            {{ version.notes|linebreaksbr }}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Footer -->
+    <div class="footer">
+        This is an official quotation from DemoCRM Solutions. Thank you for your business.
+    </div>
+
+</body>
+</html>
