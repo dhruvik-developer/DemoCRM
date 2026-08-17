@@ -1,27 +1,23 @@
+import logging
 from django.shortcuts import get_object_or_404
-
 from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
 from .models import (
     Followup,
     FollowUpNote,
     Notification,
 )
-
 from .serializers import (
     FollowupSerializer,
     FollowUpNoteSerializer,
     NotificationSerializer,
 )
-
-
+logger = logging.getLogger(__name__)
 # ==========================================================
 # FOLLOWUP
 # ==========================================================
-
 class FollowUpListCreateView(APIView):
     """
     GET  /api/followups/
@@ -32,34 +28,50 @@ class FollowUpListCreateView(APIView):
     """
 
     permission_classes = [IsAuthenticated]
-
     # ------------------------------------------------------
     # LIST FOLLOWUPS
     # ------------------------------------------------------
-
     def get(self, request):
-
-        followups = (
-            Followup.objects
-            .select_related(
-                "task_id",
-                "followup_status",
-                "followup_type",
-                "created_by",
+        try:
+            followups = (
+                Followup.objects
+                .select_related(
+                    "task_id",
+                    "followup_status",
+                    "followup_type",
+                    "created_by",
+                )
+                .order_by("-created_at")
             )
-            .order_by("-created_at")
-        )
 
-        serializer = FollowupSerializer(
-            followups,
-            many=True,
-            context={"request": request}
-        )
+            serializer = FollowupSerializer(
+                followups,
+                many=True,
+                context={"request": request}
+            )
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+            logger.info(
+                "FollowUps fetched successfully: user_id=%s",
+                request.user.pk,
+            )
+
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception:
+            logger.exception(
+                "Error while fetching FollowUps: user_id=%s",
+                request.user.pk,
+            )
+
+            return Response(
+                {
+                    "error": "Something went wrong while fetching FollowUps."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     # ------------------------------------------------------
     # CREATE FOLLOWUP
@@ -67,31 +79,57 @@ class FollowUpListCreateView(APIView):
 
     def post(self, request):
 
-        serializer = FollowupSerializer(
-            data=request.data,
-            context={"request": request}
-        )
-
-        if not serializer.is_valid():
-
-            return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
+        try:
+            serializer = FollowupSerializer(
+                data=request.data,
+                context={"request": request}
             )
 
-        # created_by MUST come from authenticated user.
-        # Do not trust created_by from frontend.
-        followup = serializer.save(
-            created_by=request.user
-        )
+            if not serializer.is_valid():
 
-        return Response(
-            FollowupSerializer(
-                followup,
-                context={"request": request}
-            ).data,
-            status=status.HTTP_201_CREATED
-        )
+                logger.warning(
+                    "FollowUp creation validation failed: "
+                    "user_id=%s errors=%s",
+                    request.user.pk,
+                    serializer.errors,
+                )
+
+                return Response(
+                    serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            followup = serializer.save(
+                created_by=request.user
+            )
+
+            logger.info(
+                "FollowUp created successfully: "
+                "followup_id=%s user_id=%s",
+                followup.followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                FollowupSerializer(
+                    followup,
+                    context={"request": request}
+                ).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception:
+            logger.exception(
+                "Error while creating FollowUp: user_id=%s",
+                request.user.pk,
+            )
+
+            return Response(
+                {
+                    "error": "Something went wrong while creating the FollowUp."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # ==========================================================
@@ -130,17 +168,40 @@ class FollowUpDetailView(APIView):
 
     def get(self, request, followup_id):
 
-        followup = self.get_followup(followup_id)
+        try:
+            followup = self.get_followup(followup_id)
 
-        serializer = FollowupSerializer(
-            followup,
-            context={"request": request}
-        )
+            serializer = FollowupSerializer(
+                followup,
+                context={"request": request}
+            )
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+            logger.info(
+                "FollowUp fetched successfully: "
+                "followup_id=%s user_id=%s",
+                followup.followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                serializer.data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception:
+            logger.exception(
+                "Error while fetching FollowUp: "
+                "followup_id=%s user_id=%s",
+                followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                {
+                    "error": "Something went wrong while fetching the FollowUp."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     # ------------------------------------------------------
     # UPDATE
@@ -148,31 +209,62 @@ class FollowUpDetailView(APIView):
 
     def patch(self, request, followup_id):
 
-        followup = self.get_followup(followup_id)
+        try:
+            followup = self.get_followup(followup_id)
 
-        serializer = FollowupSerializer(
-            followup,
-            data=request.data,
-            partial=True,
-            context={"request": request}
-        )
-
-        if not serializer.is_valid():
-
-            return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
+            serializer = FollowupSerializer(
+                followup,
+                data=request.data,
+                partial=True,
+                context={"request": request}
             )
 
-        followup = serializer.save()
+            if not serializer.is_valid():
 
-        return Response(
-            FollowupSerializer(
-                followup,
-                context={"request": request}
-            ).data,
-            status=status.HTTP_200_OK
-        )
+                logger.warning(
+                    "FollowUp update validation failed: "
+                    "followup_id=%s user_id=%s errors=%s",
+                    followup_id,
+                    request.user.pk,
+                    serializer.errors,
+                )
+
+                return Response(
+                    serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            followup = serializer.save()
+
+            logger.info(
+                "FollowUp updated successfully: "
+                "followup_id=%s user_id=%s",
+                followup.followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                FollowupSerializer(
+                    followup,
+                    context={"request": request}
+                ).data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception:
+            logger.exception(
+                "Error while updating FollowUp: "
+                "followup_id=%s user_id=%s",
+                followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                {
+                    "error": "Something went wrong while updating the FollowUp."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     # ------------------------------------------------------
     # DELETE
@@ -180,20 +272,40 @@ class FollowUpDetailView(APIView):
 
     def delete(self, request, followup_id):
 
-        followup = self.get_followup(followup_id)
+        try:
+            followup = self.get_followup(followup_id)
 
-        # IMPORTANT:
-        # Your Followup model does NOT have is_active.
-        # Therefore this is a real delete.
-        followup.delete()
+            followup.delete()
 
-        return Response(
-            {
-                "message": "FollowUp deleted successfully.",
-                "followup_id": followup_id
-            },
-            status=status.HTTP_200_OK
-        )
+            logger.info(
+                "FollowUp deleted successfully: "
+                "followup_id=%s user_id=%s",
+                followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                {
+                    "message": "FollowUp deleted successfully.",
+                    "followup_id": followup_id
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except Exception:
+            logger.exception(
+                "Error while deleting FollowUp: "
+                "followup_id=%s user_id=%s",
+                followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                {
+                    "error": "Something went wrong while deleting the FollowUp."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
 # ==========================================================
@@ -211,38 +323,67 @@ class FollowUpNoteCreateView(APIView):
 
     def post(self, request, followup_id):
 
-        followup = get_object_or_404(
-            Followup,
-            followup_id=followup_id
-        )
-
-        serializer = FollowUpNoteSerializer(
-            data=request.data,
-            context={"request": request}
-        )
-
-        if not serializer.is_valid():
-
-            return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
+        try:
+            followup = get_object_or_404(
+                Followup,
+                followup_id=followup_id
             )
 
-        # followup_id and created_by should come from backend.
-        note = serializer.save(
-            followup_id=followup,
-            created_by=request.user
-        )
-
-        return Response(
-            FollowUpNoteSerializer(
-                note,
+            serializer = FollowUpNoteSerializer(
+                data=request.data,
                 context={"request": request}
-            ).data,
-            status=status.HTTP_201_CREATED
-        )
+            )
 
+            if not serializer.is_valid():
 
+                logger.warning(
+                    "FollowUp note validation failed: "
+                    "followup_id=%s user_id=%s errors=%s",
+                    followup_id,
+                    request.user.pk,
+                    serializer.errors,
+                )
+
+                return Response(
+                    serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            note = serializer.save(
+                followup_id=followup,
+                created_by=request.user
+            )
+
+            logger.info(
+                "FollowUp note created successfully: "
+                "note_id=%s followup_id=%s user_id=%s",
+                note.note_id,
+                followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                FollowUpNoteSerializer(
+                    note,
+                    context={"request": request}
+                ).data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception:
+            logger.exception(
+                "Error while creating FollowUp note: "
+                "followup_id=%s user_id=%s",
+                followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                {
+                    "error": "Something went wrong while creating the FollowUp note."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 # ==========================================================
 # NOTIFICATION
 # ==========================================================
