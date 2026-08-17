@@ -28,6 +28,8 @@ from .serializers import (
     ReminderSerializer,
 )
 
+from Notification.notification_utils import trigger_notification_event
+from Notification.models import NotificationEventType
 from FollowUp.notification_utils import notify_task_assignment
 
 
@@ -100,7 +102,18 @@ class TaskListCreateView(APIView):
             # Auto-notify the assignee when a task is created.
             if task.assigned_to and task.assigned_to != request.user:
                 notify_task_assignment(task)
-            logger.info("Task created: %s (ID: %s) by user %s", task.title, task.task_id, request.user.user_id)
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_ASSIGNED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name() or task.assigned_to.username,
+                        "manager_name": request.user.get_full_name() or request.user.username,
+                        "task_title": task.task_title,
+                        "task_id": task.task_id,
+                        "due_date": str(task.due_date) if task.due_date else "",
+                    },
+                )
+            logger.info("Task created: %s (ID: %s) by user %s", task.task_title, task.task_id, request.user.user_id)
 
             return Response(
                 TaskSerializer(
@@ -188,6 +201,17 @@ class TaskDetailView(APIView):
         if serializer.is_valid():
 
             task = serializer.save()
+
+            if task.assigned_to:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_UPDATED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name() or task.assigned_to.username,
+                        "task_title": task.task_title,
+                        "task_id": task.task_id,
+                    },
+                )
 
             return Response(
                 TaskSerializer(
@@ -277,6 +301,18 @@ class TaskAssignView(APIView):
         # Auto-notify the new assignee on (re)assignment.
         if old_user is None or old_user.user_id != new_user.user_id:
             notify_task_assignment(task)
+            event_name = NotificationEventType.TASK_REASSIGNED if old_user else NotificationEventType.TASK_ASSIGNED
+            trigger_notification_event(
+                event_type=event_name,
+                recipient=new_user,
+                context={
+                    "user_name": new_user.get_full_name() or new_user.username,
+                    "manager_name": request.user.get_full_name() or request.user.username,
+                    "task_title": task.task_title,
+                    "task_id": task.task_id,
+                    "due_date": str(task.due_date) if task.due_date else "",
+                },
+            )
 
         return Response(
             {
@@ -342,6 +378,20 @@ class TaskStatusUpdateView(APIView):
                 "updated_at"
             ]
         )
+
+        if new_status.status_name.upper() in ["COMPLETED", "COMPLETE", "DONE"]:
+            recipient = task.created_by if task.created_by else task.assigned_to
+            if recipient:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_COMPLETED,
+                    recipient=recipient,
+                    context={
+                        "employee_name": request.user.get_full_name() or request.user.username,
+                        "user_name": recipient.get_full_name() or recipient.username,
+                        "task_title": task.task_title,
+                        "task_id": task.task_id,
+                    },
+                )
 
         return Response(
             {

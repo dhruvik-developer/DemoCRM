@@ -429,6 +429,16 @@ class AssignRoleAPIView(APIView):
 
         try:
             user.save()
+            from Notification.notification_utils import trigger_notification_event
+            from Notification.models import NotificationEventType
+            trigger_notification_event(
+                event_type=NotificationEventType.ROLE_CHANGED,
+                recipient=user,
+                context={
+                    "user_name": user.get_full_name() or user.username,
+                    "role_name": role.rolename,
+                },
+            )
         except Exception:
             logger.exception("Failed to assign role to user %s", user.username)
             return Response(

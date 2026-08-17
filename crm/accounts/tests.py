@@ -291,11 +291,13 @@ class LogoutAPITests(AccountTestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data["error"], "Invalid refresh token")
 
-    def test_logout_twice_rejects_blacklisted_token(self):
+    def test_logout_twice_returns_already_logged_out(self):
         user = self._create_user("joe", "joe@example.com", "9111111120", "TestPass@123")
         access, refresh = self._token_pair(user)
         self.assertEqual(self._logout(access, refresh).status_code, status.HTTP_200_OK)
-        self.assertEqual(self._logout(access, refresh).status_code, status.HTTP_400_BAD_REQUEST)
+        response = self._logout(access, refresh)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "You are already logged out.")
 
     def test_logout_missing_token(self):
         user = self._create_user("joe", "joe@example.com", "9111111120", "TestPass@123")
@@ -624,6 +626,146 @@ class RoleAPITests(AccountTestCase):
             reverse("role_detail", kwargs={"role_id": 99999})
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_role_patch_permissions_success(self):
+        superuser = CustomUser.objects.create_superuser(
+            "root", "root@example.com", "RootPass@123"
+        )
+        self._auth(superuser)
+        role = Role.objects.create(rolename="Support")
+        perm = Permission.objects.create(
+            name="View Task",
+            codename="view_task",
+            content_type=self.role_content_type,
+        )
+        response = self.client.patch(
+            reverse("role_detail", kwargs={"role_id": role.role_id}),
+            {"permissions": [perm.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Permissions added successfully.")
+        role.refresh_from_db()
+        self.assertIn(perm, role.permissions.all())
+
+    def test_role_patch_admin_role_protected(self):
+        superuser = CustomUser.objects.create_superuser(
+            "root", "root@example.com", "RootPass@123"
+        )
+        self._auth(superuser)
+        perm = Permission.objects.create(
+            name="View Task",
+            codename="view_task",
+            content_type=self.role_content_type,
+        )
+        response = self.client.patch(
+            reverse("role_detail", kwargs={"role_id": self.admin_role.role_id}),
+            {"permissions": [perm.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.data["error"], "Admin role cannot be updated.")
+
+    def test_role_patch_denied_for_admin_role_user(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        role = Role.objects.create(rolename="Support")
+        perm = Permission.objects.create(
+            name="View Task",
+            codename="view_task",
+            content_type=self.role_content_type,
+        )
+        response = self.client.patch(
+            reverse("role_detail", kwargs={"role_id": role.role_id}),
+            {"permissions": [perm.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_role_patch_denied_for_manager(self):
+        manager = self._create_manager_user()
+        self._auth(manager)
+        role = Role.objects.create(rolename="Support")
+        perm = Permission.objects.create(
+            name="View Task",
+            codename="view_task",
+            content_type=self.role_content_type,
+        )
+        response = self.client.patch(
+            reverse("role_detail", kwargs={"role_id": role.role_id}),
+            {"permissions": [perm.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_role_patch_missing_permissions(self):
+        superuser = CustomUser.objects.create_superuser(
+            "root", "root@example.com", "RootPass@123"
+        )
+        self._auth(superuser)
+        role = Role.objects.create(rolename="Support")
+        response = self.client.patch(
+            reverse("role_detail", kwargs={"role_id": role.role_id}),
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["error"], "permissions is required.")
+
+    def test_role_patch_invalid_permission_ids(self):
+        superuser = CustomUser.objects.create_superuser(
+            "root", "root@example.com", "RootPass@123"
+        )
+        self._auth(superuser)
+        role = Role.objects.create(rolename="Support")
+        response = self.client.patch(
+            reverse("role_detail", kwargs={"role_id": role.role_id}),
+            {"permissions": [99999]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            response.data["error"], "One or more permission IDs are invalid."
+        )
+
+    def test_role_patch_not_found(self):
+        superuser = CustomUser.objects.create_superuser(
+            "root", "root@example.com", "RootPass@123"
+        )
+        self._auth(superuser)
+        perm = Permission.objects.create(
+            name="View Task",
+            codename="view_task",
+            content_type=self.role_content_type,
+        )
+        response = self.client.patch(
+            reverse("role_detail", kwargs={"role_id": 99999}),
+            {"permissions": [perm.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_role_patch_unauthenticated(self):
+        role = Role.objects.create(rolename="Support")
+        response = self.client.patch(
+            reverse("role_detail", kwargs={"role_id": role.role_id}),
+            {"permissions": [1]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_role_update_rolename_only(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        role = Role.objects.create(rolename="Support", description="desc")
+        response = self.client.put(
+            reverse("role_detail", kwargs={"role_id": role.role_id}),
+            {"rolename": "NewSupport"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        role.refresh_from_db()
+        self.assertEqual(role.rolename, "NewSupport")
 
 
 class AssignRoleAPITests(AccountTestCase):

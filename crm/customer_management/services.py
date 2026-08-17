@@ -6,6 +6,8 @@ from uuid import uuid4
 logger = logging.getLogger(__name__)
 
 from django.core.exceptions import ValidationError
+from Notification.notification_utils import trigger_notification_event
+from Notification.models import NotificationEventType
 from django.db import transaction
 from django.utils import timezone
 
@@ -836,6 +838,17 @@ class QuotationService:
                 customer=quotation.customer,
                 quotation=quotation,
             )
+
+            recipient = version.assigned_to or user
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_SUBMITTED,
+                recipient=recipient,
+                context={
+                    "user_name": recipient.get_full_name() or recipient.username,
+                    "quotation_number": quotation.quotation_number,
+                    "employee_name": user.get_full_name() or user.username,
+                },
+            )
         else:
             version.status = QuotationStatus.APPROVED
             version.save(update_fields=["status", "updated_at"])
@@ -920,6 +933,18 @@ class QuotationService:
             quotation=quotation,
         )
 
+        recipient = version.created_by or version.assigned_to
+        if recipient:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_APPROVED,
+                recipient=recipient,
+                context={
+                    "user_name": recipient.get_full_name() or recipient.username,
+                    "manager_name": reviewer_user.get_full_name() or reviewer_user.username,
+                    "quotation_number": quotation.quotation_number,
+                },
+            )
+
         return quotation
 
     @staticmethod
@@ -977,6 +1002,19 @@ class QuotationService:
             quotation=quotation,
             notes=reason,
         )
+
+        recipient = version.created_by or version.assigned_to
+        if recipient:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_REJECTED,
+                recipient=recipient,
+                context={
+                    "user_name": recipient.get_full_name() or recipient.username,
+                    "manager_name": reviewer_user.get_full_name() or reviewer_user.username,
+                    "quotation_number": quotation.quotation_number,
+                    "reason": reason or "",
+                },
+            )
 
         return quotation
 

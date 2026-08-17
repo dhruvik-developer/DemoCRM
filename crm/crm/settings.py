@@ -61,6 +61,7 @@ INSTALLED_APPS = [
     "Task",
     "FollowUp",
     "customer_management",
+    "Notification",
     "rest_framework_simplejwt",
     "rest_framework_simplejwt.token_blacklist",
 ]
@@ -210,6 +211,11 @@ LOGGING = {
             "propagate": False,
         },
         "FollowUp": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+        "Notification": {
             "handlers": ["console"],
             "level": "INFO",
             "propagate": False,

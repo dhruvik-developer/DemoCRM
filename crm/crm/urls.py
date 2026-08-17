@@ -24,4 +24,5 @@ urlpatterns = [
     path("api/tasks/",include("Task.urls")),
     path("api/followups/", include("FollowUp.urls")),
     path("api/crm/", include("customer_management.urls")), #Include the customer management urls 
+    path("api/", include("Notification.urls")),
 ]
