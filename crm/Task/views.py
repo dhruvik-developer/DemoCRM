@@ -21,6 +21,7 @@ from .serializers import (
     MeetingParticipantSerializer,
     ReminderSerializer,
 )
+from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,21 @@ class TaskListCreateView(APIView):
                 )
                 .order_by("-created_at")
             )
+            #filter ===========================
+            status_id = request.query_params.get("status")
+            priority_id = request.query_params.get("priority")
+            assigned_to_id = request.query_params.get("assigned_to")
+            if status_id:
+                tasks = tasks.filter(status_id=status_id)
+                tasks = tasks.filter(priority_id=priority_id)
+                tasks = tasks.filter(assigned_to_id=assigned_to_id)
+            #search ==============================
+            search = request.query_params.get("search")
+            if search:
+                tasks = tasks.filter(
+                    Q(task_title_icontains=search) | Q(description_icontains=search)
+                )
+            #pagination =============================
             paginator = CRMPageNumberPagination()
             paginated_task = paginator.paginate_queryset(
                 tasks,

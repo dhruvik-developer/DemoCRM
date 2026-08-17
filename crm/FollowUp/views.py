@@ -14,6 +14,7 @@ from .serializers import (
     FollowUpNoteSerializer,
     NotificationSerializer,
 )
+from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 logger = logging.getLogger(__name__)
 # ==========================================================
@@ -42,6 +43,26 @@ class FollowUpListCreateView(APIView):
                 )
                 .order_by("-created_at")
             )
+            #filter =========================================
+            followup_status_id = request.query_params.get("followup_status")
+            followup_type_id = request.query_params.get("followup_type")
+            task_id =request.query_params.get("task_id")
+            created_by_id = request.query_params.get("created_by")
+            if followup_status_id:
+                followups = followups.filter(followup_status_id=followup_status_id)
+            if followup_type_id:
+                followups = followups.filter(followup_status_id=followup_type_id)
+            if task_id:
+                followups = followups.filter(task_id=task_id)
+            if created_by_id:
+                created_by_id = followups.filter(created_by_id=created_by_id)
+            #search ==============================
+            search = request.query_params.get("search")
+            if search:
+                tasks = tasks.filter(
+                    Q(task_title_icontains=search) | Q(description_icontains=search)
+                    )
+            #pagination =========================================
             paginator = CRMPageNumberPagination()
             paginator_followups = paginator.paginate_queryset(followups,request,view=self)
             serializer = FollowupSerializer(
@@ -113,7 +134,6 @@ class FollowUpListCreateView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        
 # ==========================================================
 # FOLLOWUP DETAIL / UPDATE / DELETE
 # ==========================================================
