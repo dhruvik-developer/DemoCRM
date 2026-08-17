@@ -1009,3 +1009,500 @@ class SerializerTests(AccountTestCase):
             set(data.keys()),
             {"user_id", "username", "email", "phone_number", "role", "created_at", "updated_at"},
         )
+
+
+# ==========================================================
+# REGISTER EDGE CASE TESTS
+# ==========================================================
+
+class RegisterEdgeCaseTests(AccountTestCase):
+    def test_register_with_weak_password(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "weakpass",
+                "email": "weakpass@example.com",
+                "phone_number": "9222222201",
+                "password": "123",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_register_returns_user_id(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "checkid",
+                "email": "checkid@example.com",
+                "phone_number": "9222222202",
+                "password": "TestPass@123",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertIn("user_id", response.data)
+        self.assertIn("email", response.data)
+        self.assertIn("username", response.data)
+
+    def test_register_sets_employee_role(self):
+        response = self.client.post(
+            reverse("register"),
+            {
+                "username": "empcheck",
+                "email": "empcheck@example.com",
+                "phone_number": "9222222203",
+                "password": "TestPass@123",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        user = CustomUser.objects.get(email="empcheck@example.com")
+        self.assertEqual(user.role.rolename, "Employee")
+
+
+# ==========================================================
+# LOGIN EDGE CASE TESTS
+# ==========================================================
+
+class LoginEdgeCaseTests(AccountTestCase):
+    def test_login_empty_password(self):
+        self._create_user("emptypass", "emptypass@example.com", "9222222210", "TestPass@123")
+        response = self.client.post(
+            reverse("login"),
+            {"email": "emptypass@example.com", "password": ""},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_login_returns_user_info(self):
+        self._create_user("infocheck", "infocheck@example.com", "9222222211", "TestPass@123")
+        response = self.client.post(
+            reverse("login"),
+            {"email": "infocheck@example.com", "password": "TestPass@123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("access_token", response.data)
+        self.assertIn("refresh_token", response.data)
+        self.assertIn("message", response.data)
+
+
+# ==========================================================
+# LOGOUT EDGE CASE TESTS
+# ==========================================================
+
+class LogoutEdgeCaseTests(AccountTestCase):
+    def _token_pair(self, user):
+        refresh = RefreshToken.for_user(user)
+        return str(refresh.access_token), str(refresh)
+
+    def test_logout_missing_refresh_token_field(self):
+        user = self._create_user("nomissing", "nomissing@example.com", "9222222220", "TestPass@123")
+        access, _ = self._token_pair(user)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {access}")
+        response = self.client.post(reverse("logout"), {"wrong_field": "x"}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+# ==========================================================
+# REFRESH TOKEN EDGE CASE TESTS
+# ==========================================================
+
+class RefreshTokenEdgeCaseTests(AccountTestCase):
+    def test_refresh_missing_body(self):
+        response = self.client.post(reverse("token_refresh"), format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+# ==========================================================
+# CHANGE PASSWORD EDGE CASE TESTS
+# ==========================================================
+
+class ChangePasswordEdgeCaseTests(AccountTestCase):
+    def _change_password(self, user, payload):
+        self._auth(user)
+        return self.client.post(reverse("change_password"), payload, format="json")
+
+    def test_change_password_same_as_old(self):
+        user = self._create_user("sameold", "sameold@example.com", "9222222230", "TestPass@123")
+        response = self._change_password(
+            user,
+            {"old_password": "TestPass@123", "new_password": "TestPass@123"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_change_password_success_message(self):
+        user = self._create_user("changemsg", "changemsg@example.com", "9222222231", "TestPass@123")
+        response = self._change_password(
+            user,
+            {"old_password": "TestPass@123", "new_password": "NewSecurePass@456"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Password changed successfully.")
+
+    def test_change_password_empty_new_password(self):
+        user = self._create_user("emptynew", "emptynew@example.com", "9222222232", "TestPass@123")
+        response = self._change_password(
+            user,
+            {"old_password": "TestPass@123", "new_password": ""},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+# ==========================================================
+# PROFILE EDGE CASE TESTS
+# ==========================================================
+
+class ProfileEdgeCaseTests(AccountTestCase):
+    def _get_profile(self, user, target_id):
+        self._auth(user)
+        return self.client.get(reverse("profile", kwargs={"user_id": target_id}))
+
+    def test_profile_returns_correct_fields(self):
+        user = self._create_employee_user()
+        response = self._get_profile(user, user.user_id)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("profile", response.data)
+        self.assertIn("message", response.data)
+        self.assertEqual(response.data["message"], "Profile retrieved successfully.")
+
+    def test_profile_user_without_role_can_view_self(self):
+        user = self._create_plain_user(
+            username="selfview",
+            email="selfview@example.com",
+            phone_number="9222222240",
+            password="TestPass@123",
+        )
+        response = self._get_profile(user, user.user_id)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+# ==========================================================
+# ROLE API EDGE CASE TESTS
+# ==========================================================
+
+class RoleAPIEdgeCaseTests(AccountTestCase):
+    def test_role_create_empty_rolename(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        response = self.client.post(reverse("roles"), {"rolename": ""}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_role_update_empty_body(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        role = Role.objects.create(rolename="Support")
+        response = self.client.put(
+            reverse("role_detail", kwargs={"role_id": role.role_id}),
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_role_list_returns_role_count(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        response = self.client.get(reverse("roles"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("roles", response.data)
+        self.assertIsInstance(response.data["roles"], list)
+
+    def test_role_create_success_response_message(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        response = self.client.post(
+            reverse("roles"), {"rolename": "QA"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["message"], "Role created successfully.")
+
+    def test_role_delete_custom_response_message(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        role = Role.objects.create(rolename="Temp")
+        response = self.client.delete(
+            reverse("role_detail", kwargs={"role_id": role.role_id})
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Role deleted successfully.")
+
+    def test_role_patch_returns_role_data(self):
+        superuser = CustomUser.objects.create_superuser(
+            "root", "root@example.com", "RootPass@123"
+        )
+        self._auth(superuser)
+        role = Role.objects.create(rolename="Patched")
+        perm = Permission.objects.create(
+            name="View Task",
+            codename="view_task",
+            content_type=self.role_content_type,
+        )
+        response = self.client.patch(
+            reverse("role_detail", kwargs={"role_id": role.role_id}),
+            {"permissions": [perm.pk]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("role", response.data)
+
+
+# ==========================================================
+# ASSIGN ROLE NOTIFICATION INTEGRATION TESTS
+# ==========================================================
+
+class AssignRoleNotificationTests(AccountTestCase):
+    def _assign(self, user, target_id, payload):
+        self._auth(user)
+        return self.client.put(
+            reverse("assign_role", kwargs={"user_id": target_id}),
+            payload,
+            format="json",
+        )
+
+    def test_assign_role_triggers_notification(self):
+        from Notification.models import Notification, NotificationEventType
+        manager = self._create_manager_user()
+        target = self._create_employee_user()
+        response = self._assign(
+            manager, target.user_id, {"role_id": self.manager_role.role_id}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        notif = Notification.objects.filter(
+            recipient=target,
+            event_type=NotificationEventType.ROLE_CHANGED,
+        ).first()
+        self.assertIsNotNone(notif)
+
+    def test_assign_role_notification_contains_role_name(self):
+        from Notification.models import Notification, NotificationEventType
+        manager = self._create_manager_user()
+        target = self._create_employee_user()
+        response = self._assign(
+            manager, target.user_id, {"role_id": self.manager_role.role_id}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        notif = Notification.objects.filter(
+            recipient=target,
+            event_type=NotificationEventType.ROLE_CHANGED,
+        ).first()
+        self.assertIn("Manager", notif.message)
+
+    def test_assign_role_success_response_fields(self):
+        manager = self._create_manager_user()
+        target = self._create_employee_user()
+        response = self._assign(
+            manager, target.user_id, {"role_id": self.manager_role.role_id}
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("user", response.data)
+        self.assertIn("role", response.data)
+        self.assertEqual(response.data["user"], target.username)
+
+
+# ==========================================================
+# PERMISSION API EDGE CASE TESTS
+# ==========================================================
+
+class PermissionAPIEdgeCaseTests(AccountTestCase):
+    def _payload(self, suffix):
+        return {
+            "name": f"Custom Permission {suffix}",
+            "codename": f"custom_perm_{suffix}",
+            "content_type": self.role_content_type.id,
+        }
+
+    def test_permission_create_missing_fields(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        response = self.client.post(reverse("permissions"), {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_permission_create_success_response_message(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        response = self.client.post(
+            reverse("permissions"),
+            self._payload(100),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data["message"], "Permission created successfully.")
+
+    def test_permission_update_success_response_message(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        perm = Permission.objects.create(
+            name="Updatable",
+            codename="updatable_perm",
+            content_type=self.role_content_type,
+        )
+        response = self.client.put(
+            reverse("permission_detail", kwargs={"permission_id": perm.id}),
+            {"name": "Updated"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Permission updated successfully.")
+
+    def test_permission_delete_success_response_message(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        perm = Permission.objects.create(
+            name="Deletable",
+            codename="deletable_perm",
+            content_type=self.role_content_type,
+        )
+        response = self.client.delete(
+            reverse("permission_detail", kwargs={"permission_id": perm.id})
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["message"], "Permission deleted successfully.")
+
+    def test_permission_list_returns_permissions_key(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        response = self.client.get(reverse("permissions"))
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("permissions", response.data)
+
+    def test_permission_create_duplicate_content_type(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        payload1 = self._payload(200)
+        payload1["content_type"] = self.role_content_type.id
+        self.client.post(reverse("permissions"), payload1, format="json")
+        payload2 = self._payload(200)
+        payload2["content_type"] = self.role_content_type.id
+        response = self.client.post(reverse("permissions"), payload2, format="json")
+        self.assertIn(response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR])
+
+    def test_permission_update_preserves_codename(self):
+        admin = self._create_admin_user()
+        self._auth(admin)
+        perm = Permission.objects.create(
+            name="Original",
+            codename="preserve_codename_perm",
+            content_type=self.role_content_type,
+        )
+        self.client.put(
+            reverse("permission_detail", kwargs={"permission_id": perm.id}),
+            {"name": "New Name"},
+            format="json",
+        )
+        perm.refresh_from_db()
+        self.assertEqual(perm.codename, "preserve_codename_perm")
+
+
+# ==========================================================
+# HAS DYNAMIC PERMISSION EDGE CASE TESTS
+# ==========================================================
+
+class HasDynamicPermissionEdgeCaseTests(AccountTestCase):
+    class FakeView:
+        permission_names = {"GET": "view_role"}
+
+    class FakeViewNoPermNames:
+        pass
+
+    class FakeViewPermNameString:
+        permission_name = "view_role"
+
+    def _call_permission(self, user, view=None, method="GET"):
+        if view is None:
+            view = self.FakeView()
+        request = APIRequestFactory().request()
+        request.method = method
+        request.user = user
+        return HasDynamicPermission().has_permission(request, view)
+
+    def test_view_without_permission_names_denied(self):
+        employee = self._create_employee_user()
+        result = self._call_permission(employee, view=self.FakeViewNoPermNames())
+        self.assertFalse(result)
+
+    def test_view_with_permission_name_string(self):
+        admin = self._create_admin_user()
+        result = self._call_permission(admin, view=self.FakeViewPermNameString())
+        self.assertTrue(result)
+
+    def test_manager_with_matching_perm(self):
+        manager = self._create_manager_user()
+        result = self._call_permission(manager)
+        self.assertTrue(result)
+
+    def test_employee_without_matching_perm_denied(self):
+        employee = self._create_employee_user()
+        result = self._call_permission(employee)
+        self.assertFalse(result)
+
+
+# ==========================================================
+# CUSTOM USER MODEL EDGE CASE TESTS
+# ==========================================================
+
+class CustomUserModelEdgeCaseTests(AccountTestCase):
+    def test_user_uuid_is_unique(self):
+        user1 = self._create_user("u1", "u1@example.com", "9333333301", "TestPass@123")
+        user2 = self._create_user("u2", "u2@example.com", "9333333302", "TestPass@123")
+        self.assertNotEqual(user1.user_id, user2.user_id)
+
+    def test_user_role_set_null_on_delete(self):
+        role = Role.objects.create(rolename="ToDelete")
+        user = self._create_user("delrole", "delrole@example.com", "9333333303", "TestPass@123", role=role)
+        self.assertEqual(user.role, role)
+        role.delete()
+        user.refresh_from_db()
+        self.assertIsNone(user.role)
+
+    def test_user_default_is_active(self):
+        user = self._create_user("active", "active@example.com", "9333333304", "TestPass@123")
+        self.assertTrue(user.is_active)
+
+    def test_user_email_is_username_field(self):
+        self.assertEqual(CustomUser.USERNAME_FIELD, "email")
+
+    def test_user_required_fields(self):
+        self.assertIn("username", CustomUser.REQUIRED_FIELDS)
+
+    def test_superuser_is_staff(self):
+        user = CustomUser.objects.create_superuser("staff", "staff@example.com", "StaffPass@123")
+        self.assertTrue(user.is_staff)
+
+    def test_superuser_is_active(self):
+        user = CustomUser.objects.create_superuser("active", "active@example.com", "ActivePass@123")
+        self.assertTrue(user.is_active)
+
+
+# ==========================================================
+# ROLE MODEL EDGE CASE TESTS
+# ==========================================================
+
+class RoleModelEdgeCaseTests(AccountTestCase):
+    def test_role_unique_constraint(self):
+        Role.objects.create(rolename="Unique")
+        with self.assertRaises(Exception):
+            Role.objects.create(rolename="Unique")
+
+    def test_role_description_nullable(self):
+        role = Role.objects.create(rolename="NoDesc")
+        self.assertIsNone(role.description)
+
+    def test_role_description_allows_text(self):
+        role = Role.objects.create(rolename="DescRole", description="A" * 500)
+        self.assertEqual(len(role.description), 500)
+
+    def test_role_permissions_many_to_many(self):
+        role = Role.objects.create(rolename="PermRole")
+        perm1 = Permission.objects.create(
+            name="P1", codename="p1_test", content_type=self.role_content_type
+        )
+        perm2 = Permission.objects.create(
+            name="P2", codename="p2_test", content_type=self.role_content_type
+        )
+        role.permissions.add(perm1, perm2)
+        self.assertEqual(role.permissions.count(), 2)
+
+    def test_role_str_returns_rolename(self):
+        role = Role.objects.create(rolename="TestStr")
+        self.assertEqual(str(role), "TestStr")
