@@ -169,6 +169,11 @@ DEFAULT_FROM_EMAIL = os.getenv(
     "DEFAULT_FROM_EMAIL",
     EMAIL_HOST_USER
 ).strip("'\" ")
+
+# ======================================================
+# LOGGER 
+# ======================================================
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

@@ -394,10 +394,13 @@ class QuotationVersionSerializer(serializers.ModelSerializer):
             "notes",
             "line_items",
             "approvals",
+            "approved_at",
             "sent_at",
+            "sent_to",
             "accepted_at",
             "rejected_at",
             "rejection_reason",
+            "revision_reason",
             "created_at",
             "updated_at",
         ]
@@ -414,10 +417,13 @@ class QuotationVersionSerializer(serializers.ModelSerializer):
             "total_amount",
             "line_items",
             "approvals",
+            "approved_at",
             "sent_at",
+            "sent_to",
             "accepted_at",
             "rejected_at",
             "rejection_reason",
+            "revision_reason",
             "created_at",
             "updated_at",
         ]
@@ -425,6 +431,7 @@ class QuotationVersionSerializer(serializers.ModelSerializer):
 
 class QuotationSerializer(serializers.ModelSerializer):
     current_version_detail = QuotationVersionSerializer(source="current_version", read_only=True)
+    accepted_version_detail = QuotationVersionSerializer(source="accepted_version", read_only=True)
     all_versions = QuotationVersionSerializer(source="versions", many=True, read_only=True)
 
     class Meta:
@@ -437,6 +444,8 @@ class QuotationSerializer(serializers.ModelSerializer):
             "status",
             "current_version",
             "current_version_detail",
+            "accepted_version",
+            "accepted_version_detail",
             "all_versions",
             "created_by",
             "created_at",
@@ -449,6 +458,8 @@ class QuotationSerializer(serializers.ModelSerializer):
             "status",
             "current_version",
             "current_version_detail",
+            "accepted_version",
+            "accepted_version_detail",
             "all_versions",
             "created_by",
             "created_at",
