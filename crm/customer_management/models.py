@@ -270,6 +270,8 @@ class Activity(models.Model):
         QUOTATION_VERSION_CREATED = "QUOTATION_VERSION_CREATED", "Quotation Version Created"
         QUOTATION_ACCEPTED = "QUOTATION_ACCEPTED", "Quotation Accepted"
         QUOTATION_REJECTED = "QUOTATION_REJECTED", "Quotation Rejected"
+        QUOTATION_PDF_GENERATED = "QUOTATION_PDF_GENERATED", "Quotation PDF Generated"
+        QUOTATION_EMAIL_SENT = "QUOTATION_EMAIL_SENT", "Quotation Email Sent"
 
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
 
@@ -413,6 +415,14 @@ class Quotation(models.Model):
         related_name="+",
     )
 
+    accepted_version = models.ForeignKey(
+        "QuotationVersion",
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="+",
+    )
+
     # Mirrors the current version's status so clients can read the active
     # quotation state without traversing versions. Kept in sync by the service.
     status = models.CharField(
@@ -435,10 +445,12 @@ class Quotation(models.Model):
         permissions = [
             ("submit_quotation", "Can submit quotation for approval"),
             ("approve_quotation", "Can approve quotation"),
+            ("approve_own_quotation", "Can approve own quotation"),
             ("send_quotation", "Can send quotation"),
             ("accept_quotation", "Can accept quotation"),
             ("reject_quotation", "Can reject quotation"),
             ("request_quotation_revision", "Can request quotation revision"),
+            ("generate_quotation_pdf", "Can generate quotation PDF"),
         ]
 
     def __str__(self):
@@ -511,10 +523,13 @@ class QuotationVersion(models.Model):
     terms = models.TextField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
 
+    approved_at = models.DateTimeField(blank=True, null=True)
     sent_at = models.DateTimeField(blank=True, null=True)
+    sent_to = models.EmailField(blank=True, null=True)
     accepted_at = models.DateTimeField(blank=True, null=True)
     rejected_at = models.DateTimeField(blank=True, null=True)
     rejection_reason = models.TextField(blank=True, null=True)
+    revision_reason = models.TextField(blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -8,6 +8,7 @@ logger = logging.getLogger(__name__)
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+from rest_framework.exceptions import PermissionDenied
 
 from .models import (
     Activity,
@@ -686,7 +687,21 @@ class QuotationService:
 
         total = Decimal("0.00")
         if line_items:
+            if isinstance(line_items, str):
+                import json
+                try:
+                    line_items = json.loads(line_items)
+                except Exception:
+                    line_items = []
             for item in line_items:
+                if isinstance(item, str):
+                    import json
+                    try:
+                        item = json.loads(item)
+                    except Exception:
+                        continue
+                if not isinstance(item, dict):
+                    continue
                 desc = item.get("description", "").strip()
                 qty = int(item.get("quantity", 1))
                 price = Decimal(str(item.get("unit_price", "0.00")))
@@ -751,9 +766,23 @@ class QuotationService:
             version.notes = notes
 
         if line_items is not None:
+            if isinstance(line_items, str):
+                import json
+                try:
+                    line_items = json.loads(line_items)
+                except Exception:
+                    line_items = []
             version.line_items.all().delete()
             total = Decimal("0.00")
             for item in line_items:
+                if isinstance(item, str):
+                    import json
+                    try:
+                        item = json.loads(item)
+                    except Exception:
+                        continue
+                if not isinstance(item, dict):
+                    continue
                 desc = item.get("description", "").strip()
                 qty = int(item.get("quantity", 1))
                 price = Decimal(str(item.get("unit_price", "0.00")))
@@ -838,7 +867,8 @@ class QuotationService:
             )
         else:
             version.status = QuotationStatus.APPROVED
-            version.save(update_fields=["status", "updated_at"])
+            version.approved_at = timezone.now()
+            version.save(update_fields=["status", "approved_at", "updated_at"])
 
             quotation.status = QuotationStatus.APPROVED
             quotation.save(update_fields=["status", "updated_at"])
@@ -886,8 +916,19 @@ class QuotationService:
         if not approval:
             raise ValidationError("No pending approval request found for this quotation version.")
 
-        if approval.submitted_by_id == reviewer_user.user_id and not reviewer_user.is_superuser:
-            raise ValidationError("The submitting agent cannot approve their own quotation. A separate Manager review is required.")
+        is_self_approval = (
+            approval.submitted_by_id == reviewer_user.pk
+            or version.created_by_id == reviewer_user.pk
+            or quotation.created_by_id == reviewer_user.pk
+        )
+
+        if is_self_approval and not reviewer_user.is_superuser:
+            has_own_perm = (
+                reviewer_user.role
+                and reviewer_user.role.permissions.filter(codename="approve_own_quotation").exists()
+            )
+            if not has_own_perm:
+                raise PermissionDenied("The submitting agent cannot approve their own quotation without the 'approve_own_quotation' permission.")
 
         approval.reviewed_by = reviewer_user
         approval.decision = QuotationApproval.Decision.APPROVED
@@ -895,7 +936,8 @@ class QuotationService:
         approval.save()
 
         version.status = QuotationStatus.APPROVED
-        version.save(update_fields=["status", "updated_at"])
+        version.approved_at = timezone.now()
+        version.save(update_fields=["status", "approved_at", "updated_at"])
 
         quotation.status = QuotationStatus.APPROVED
         quotation.save(update_fields=["status", "updated_at"])
@@ -992,8 +1034,8 @@ class QuotationService:
         if not version:
             raise ValidationError("Quotation has no active version.")
 
-        if version.approval_required and version.status != QuotationStatus.APPROVED:
-            raise ValidationError("This quotation requires Manager approval before it can be sent.")
+        if version.status not in [QuotationStatus.APPROVED, QuotationStatus.SENT]:
+            raise ValidationError("Only approved quotations can be sent.")
 
         if version.status in [QuotationStatus.SENT, QuotationStatus.ACCEPTED, QuotationStatus.REJECTED]:
             raise ValidationError(f"Cannot send a quotation that has already been {version.status.lower()}. Create a revision first.")
@@ -1064,6 +1106,7 @@ class QuotationService:
         terms=None,
         notes=None,
         line_items=None,
+        revision_reason=None,
     ):
         current_version = quotation.current_version
         if not current_version:
@@ -1090,12 +1133,27 @@ class QuotationService:
             approval_required=approval_required,
             terms=terms if terms is not None else current_version.terms,
             notes=notes if notes is not None else current_version.notes,
+            revision_reason=revision_reason,
             total_amount=Decimal("0.00"),
         )
 
         total = Decimal("0.00")
         if line_items is not None:
+            if isinstance(line_items, str):
+                import json
+                try:
+                    line_items = json.loads(line_items)
+                except Exception:
+                    line_items = []
             for item in line_items:
+                if isinstance(item, str):
+                    import json
+                    try:
+                        item = json.loads(item)
+                    except Exception:
+                        continue
+                if not isinstance(item, dict):
+                    continue
                 desc = item.get("description", "").strip()
                 qty = int(item.get("quantity", 1))
                 price = Decimal(str(item.get("unit_price", "0.00")))
@@ -1164,7 +1222,8 @@ class QuotationService:
         version.save(update_fields=["status", "accepted_at", "updated_at"])
 
         quotation.status = QuotationStatus.ACCEPTED
-        quotation.save(update_fields=["status", "updated_at"])
+        quotation.accepted_version = version
+        quotation.save(update_fields=["status", "accepted_version", "updated_at"])
 
         CRMService.create_audit_log(
             user=user,
@@ -1258,3 +1317,112 @@ class QuotationService:
             )
 
         return quotation
+
+    @staticmethod
+    @transaction.atomic
+    def send_quotation_email(
+        *,
+        user,
+        quotation,
+        version_number=None,
+        recipient_email=None,
+        subject=None,
+        body=None,
+    ):
+        from django.core.mail import EmailMessage
+        from django.conf import settings
+        from smtplib import SMTPException
+        from .pdf_utils import generate_quotation_pdf
+
+        quotation = Quotation.objects.select_for_update().get(pk=quotation.pk)
+
+        if version_number is not None:
+            version = quotation.versions.filter(version_number=version_number).first()
+            if not version:
+                raise ValidationError(f"Quotation version {version_number} does not exist.")
+        else:
+            version = quotation.current_version
+
+        if not version:
+            raise ValidationError("Quotation has no active version.")
+
+        if version.status in [QuotationStatus.DRAFT, QuotationStatus.PENDING_APPROVAL]:
+            raise ValidationError(
+                f"Quotation PDF delivery is blocked for version in state '{version.status}'. Approved or sent version required."
+            )
+
+        to_email = recipient_email
+        if not to_email:
+            if quotation.customer and quotation.customer.email:
+                to_email = quotation.customer.email
+            elif quotation.lead and quotation.lead.email:
+                to_email = quotation.lead.email
+
+        if not to_email:
+            raise ValidationError("Recipient email is required to send quotation.")
+
+        if version.status == QuotationStatus.APPROVED:
+            QuotationService.send_quotation(user=user, quotation=quotation)
+            version.refresh_from_db()
+            quotation.refresh_from_db()
+
+        pdf_bytes = generate_quotation_pdf(version)
+
+        filename = f"{quotation.quotation_number}_v{version.version_number}.pdf"
+        email_subject = subject or f"Quotation {quotation.quotation_number} (v{version.version_number})"
+        email_body = body or (
+            f"Dear Customer,\n\n"
+            f"Please find attached Quotation {quotation.quotation_number} (v{version.version_number}).\n\n"
+            f"Thank you,\nDemoCRM Team"
+        )
+
+        email = EmailMessage(
+            subject=email_subject,
+            body=email_body,
+            from_email=getattr(settings, "DEFAULT_FROM_EMAIL", "noreply@example.com"),
+            to=[to_email],
+        )
+        email.attach(filename, pdf_bytes, "application/pdf")
+
+        try:
+            email.send(fail_silently=False)
+        except (SMTPException, Exception) as exc:
+            logger.error("Failed to send quotation email for %s: %s", quotation.quotation_number, str(exc))
+            CRMService.create_audit_log(
+                user=user,
+                entity_type="Quotation",
+                entity_id=quotation.id,
+                action="QUOTATION_EMAIL_FAILED",
+                new_value={
+                    "version": version.version_number,
+                    "sent_to": to_email,
+                    "error": str(exc),
+                },
+            )
+            raise ValidationError(f"Email delivery failed: {str(exc)}")
+
+        version.sent_to = to_email
+        version.save(update_fields=["sent_to", "updated_at"])
+
+        CRMService.create_audit_log(
+            user=user,
+            entity_type="Quotation",
+            entity_id=quotation.id,
+            action="QUOTATION_EMAIL_SENT",
+            new_value={
+                "version": version.version_number,
+                "sent_to": to_email,
+            },
+        )
+
+        CRMService.create_activity(
+            user=user,
+            activity_type=Activity.ActivityType.QUOTATION_EMAIL_SENT,
+            outcome=f"Emailed Quotation {quotation.quotation_number} (v{version.version_number}) to {to_email}",
+            lead=quotation.lead,
+            customer=quotation.customer,
+            quotation=quotation,
+            notes=f"Subject: {email_subject}",
+        )
+
+        return quotation, version
