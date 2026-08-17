@@ -16,6 +16,7 @@ from .serializers import (
 )
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
+from .permission import CanCommunicateWithlead
 logger = logging.getLogger(__name__)
 # ==========================================================
 # FOLLOWUP
@@ -49,19 +50,41 @@ class FollowUpListCreateView(APIView):
             task_id =request.query_params.get("task_id")
             created_by_id = request.query_params.get("created_by")
             if followup_status_id:
-                followups = followups.filter(followup_status_id=followup_status_id)
+                followups = followups.filter(
+                    followup_status_id=followup_status_id
+                    )
             if followup_type_id:
-                followups = followups.filter(followup_status_id=followup_type_id)
+                followups = followups.filter(
+                    followup_status_id=followup_type_id
+                    )
             if task_id:
-                followups = followups.filter(task_id=task_id)
+                followups = followups.filter(
+                    task_id=task_id
+                    )
             if created_by_id:
-                created_by_id = followups.filter(created_by_id=created_by_id)
+                created_by_id = followups.filter(
+                    created_by_id=created_by_id
+                    )
             #search ==============================
             search = request.query_params.get("search")
             if search:
                 tasks = tasks.filter(
-                    Q(task_title_icontains=search) | Q(description_icontains=search)
+                    Q(task_title__icontains=search) 
+                    | Q(description__icontains=search)
                     )
+            #dynamic ordering =============================
+            ordering = request.query_params.get(
+                "ordering",
+                "-created_at"
+            )
+            allowed_ordering_fields = {
+                "created_at",
+                "updated_at"
+            }
+            if ordering.lstrip("-") in allowed_ordering_fields:
+                followups = followups.order_by(ordering)
+            else:
+                followups = followups.order_by("-created_at")
             #pagination =========================================
             paginator = CRMPageNumberPagination()
             paginator_followups = paginator.paginate_queryset(followups,request,view=self)
@@ -148,7 +171,7 @@ class FollowUpDetailView(APIView):
     DELETE /api/followups/<followup_id>/
         Delete FollowUp
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,CanCommunicateWithlead]
     def get_followup(self, followup_id):
         return get_object_or_404(
             Followup.objects.select_related(
@@ -165,6 +188,10 @@ class FollowUpDetailView(APIView):
     def get(self, request, followup_id):
         try:
             followup = self.get_followup(followup_id)
+            self.check_object_permissions(
+                request,
+                followup
+            )
             serializer = FollowupSerializer(
                 followup,
                 context={"request": request}
@@ -200,7 +227,10 @@ class FollowUpDetailView(APIView):
 
         try:
             followup = self.get_followup(followup_id)
-
+            self.check_object_permissions(
+                request,
+                followup
+            )
             serializer = FollowupSerializer(
                 followup,
                 data=request.data,
@@ -263,7 +293,10 @@ class FollowUpDetailView(APIView):
 
         try:
             followup = self.get_followup(followup_id)
-
+            self.check_object_permissions(
+                request,
+                followup
+            )
             followup.delete()
 
             logger.info(
@@ -303,7 +336,7 @@ class FollowUpNoteCreateView(APIView):
 
     Add a note to a FollowUp.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,CanCommunicateWithlead]
     def post(self, request, followup_id):
 
         try:
@@ -311,7 +344,10 @@ class FollowUpNoteCreateView(APIView):
                 Followup,
                 followup_id=followup_id
             )
-
+            self.check_object_permissions(
+                request,
+                followup
+            )
             serializer = FollowUpNoteSerializer(
                 data=request.data,
                 context={"request": request}

@@ -23,6 +23,7 @@ from .serializers import (
 )
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
+from .permission import CanCommunicateWithLead
 logger = logging.getLogger(__name__)
 
 
@@ -60,15 +61,39 @@ class TaskListCreateView(APIView):
             priority_id = request.query_params.get("priority")
             assigned_to_id = request.query_params.get("assigned_to")
             if status_id:
-                tasks = tasks.filter(status_id=status_id)
-                tasks = tasks.filter(priority_id=priority_id)
-                tasks = tasks.filter(assigned_to_id=assigned_to_id)
+                tasks = tasks.filter(
+                    status_id=status_id
+                    )
+                tasks = tasks.filter(
+                    priority_id=priority_id
+                    )
+                tasks = tasks.filter(
+                    assigned_to_id=assigned_to_id
+                    )
             #search ==============================
             search = request.query_params.get("search")
             if search:
                 tasks = tasks.filter(
-                    Q(task_title_icontains=search) | Q(description_icontains=search)
+                    Q(task_title_icontains=search) 
+                    | Q(description_icontains=search)
                 )
+            #dyanmic ordering =================================
+            ordering = request.query_params.get(
+                "ordering",
+                "-created_at"
+            )
+            allowed_ordering_fields = {
+                "due_date",
+                "created_at",
+                "updated_at",
+                "status",
+                "priority",
+                "task_title"
+            }
+            if ordering.lstrip("-") in allowed_ordering_fields:
+                tasks = tasks.order_by(ordering)
+            else:
+                tasks = tasks.order_by("-created_at")
             #pagination =============================
             paginator = CRMPageNumberPagination()
             paginated_task = paginator.paginate_queryset(
@@ -154,7 +179,7 @@ class TaskDetailView(APIView):
     DELETE /api/tasks/<task_id>/
         Soft delete task
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
     def get_task(self, task_id):
 
         return get_object_or_404(
@@ -176,7 +201,10 @@ class TaskDetailView(APIView):
     def get(self, request, task_id):
         try:
             task = self.get_task(task_id)
-
+            self.check_object_permissions(
+                request,
+                task
+            )
             serializer = TaskSerializer(
                 task,
                 context={"request": request}
@@ -462,7 +490,7 @@ class MeetingDetailView(APIView):
     GET /api/meetings/<meeting_id>/
     Get meeting details.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
     def get(self, request, meeting_id):
         try:
             meeting = get_object_or_404(
@@ -473,6 +501,10 @@ class MeetingDetailView(APIView):
                     "created_by",
                 ),
                 meeting_id=meeting_id
+            )
+            self.check_object_permissions(
+                request,
+                meeting
             )
             serializer = MeetingSerializer(
                 meeting,
@@ -509,7 +541,7 @@ class MeetingRescheduleView(APIView):
 
     Change meeting date/time.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
     def patch(self, request, meeting_id):
 
         try:
@@ -517,7 +549,10 @@ class MeetingRescheduleView(APIView):
                 Meeting,
                 meeting_id=meeting_id
             )
-
+            self.check_object_permissions(
+                request,
+                meeting
+            )
             serializer = MeetingSerializer(
                 meeting,
                 data={
@@ -582,7 +617,7 @@ class MeetingStatusUpdateView(APIView):
     Change meeting status.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
 
     def patch(self, request, meeting_id):
 
@@ -591,7 +626,10 @@ class MeetingStatusUpdateView(APIView):
                 Meeting,
                 meeting_id=meeting_id
             )
-
+            self.check_object_permissions(
+                request,
+                meeting
+            )
             status_id = request.data.get("meeting_status_id")
 
             if not status_id:
@@ -671,7 +709,7 @@ class MeetingParticipantAddView(APIView):
     Add a participant.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
 
     def post(self, request, meeting_id):
 
@@ -680,7 +718,10 @@ class MeetingParticipantAddView(APIView):
                 Meeting,
                 meeting_id=meeting_id
             )
-
+            self.check_object_permissions(
+                request,
+                meeting
+            )
             user_id = request.data.get("user_id")
             participant_role = request.data.get(
                 "participant_role"
@@ -833,7 +874,7 @@ class MeetingParticipantRemoveView(APIView):
     Remove participant from meeting.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
 
     def delete(self, request, meeting_id, user_id):
 
@@ -842,7 +883,10 @@ class MeetingParticipantRemoveView(APIView):
                 Meeting,
                 meeting_id=meeting_id
             )
-
+            self.check_object_permissions(
+                request,
+                meeting
+            )
             participant = get_object_or_404(
                 MeetingParticipant,
                 meeting_id=meeting,
@@ -900,13 +944,11 @@ class ReminderCreateView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-
         try:
             serializer = ReminderSerializer(
                 data=request.data,
                 context={"request": request}
             )
-
             if not serializer.is_valid():
 
                 logger.warning(
@@ -1144,7 +1186,7 @@ class ReminderStatusUpdateView(APIView):
     Change reminder status.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
 
     def patch(self, request, reminder_id):
 
@@ -1153,7 +1195,10 @@ class ReminderStatusUpdateView(APIView):
                 Reminder,
                 reminder_id=reminder_id
             )
-
+            self.check_object_permissions(
+                request,
+                reminder
+            )
             status_id = request.data.get(
                 "reminder_status_id"
             )
