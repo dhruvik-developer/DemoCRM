@@ -14,6 +14,7 @@ from .serializers import (
     FollowUpNoteSerializer,
     NotificationSerializer,
 )
+from .pagination import CRMPageNumberPagination
 logger = logging.getLogger(__name__)
 # ==========================================================
 # FOLLOWUP
@@ -22,11 +23,9 @@ class FollowUpListCreateView(APIView):
     """
     GET  /api/followups/
         List FollowUps
-
     POST /api/followups/
         Create FollowUp
     """
-
     permission_classes = [IsAuthenticated]
     # ------------------------------------------------------
     # LIST FOLLOWUPS
@@ -43,73 +42,59 @@ class FollowUpListCreateView(APIView):
                 )
                 .order_by("-created_at")
             )
-
+            paginator = CRMPageNumberPagination()
+            paginator_followups = paginator.paginate_queryset(followups,request,view=self)
             serializer = FollowupSerializer(
-                followups,
+                paginator_followups,
                 many=True,
                 context={"request": request}
             )
-
             logger.info(
                 "FollowUps fetched successfully: user_id=%s",
                 request.user.pk,
+                request.query_params.get("page",1)
             )
-
-            return Response(
-                serializer.data,
-                status=status.HTTP_200_OK
-            )
-
+            return paginator.get_paginated_response(serializer.data)
         except Exception:
             logger.exception(
                 "Error while fetching FollowUps: user_id=%s",
                 request.user.pk,
             )
-
             return Response(
                 {
                     "error": "Something went wrong while fetching FollowUps."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
     # ------------------------------------------------------
     # CREATE FOLLOWUP
     # ------------------------------------------------------
-
     def post(self, request):
-
         try:
             serializer = FollowupSerializer(
                 data=request.data,
                 context={"request": request}
             )
-
             if not serializer.is_valid():
-
                 logger.warning(
                     "FollowUp creation validation failed: "
                     "user_id=%s errors=%s",
                     request.user.pk,
                     serializer.errors,
                 )
-
                 return Response(
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
             followup = serializer.save(
                 created_by=request.user
             )
-
             logger.info(
                 "FollowUp created successfully: "
                 "followup_id=%s user_id=%s",
                 followup.followup_id,
                 request.user.pk,
             )
-
             return Response(
                 FollowupSerializer(
                     followup,
@@ -117,25 +102,21 @@ class FollowUpListCreateView(APIView):
                 ).data,
                 status=status.HTTP_201_CREATED
             )
-
         except Exception:
             logger.exception(
                 "Error while creating FollowUp: user_id=%s",
                 request.user.pk,
             )
-
             return Response(
                 {
                     "error": "Something went wrong while creating the FollowUp."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-
+        
 # ==========================================================
 # FOLLOWUP DETAIL / UPDATE / DELETE
 # ==========================================================
-
 class FollowUpDetailView(APIView):
     """
     GET    /api/followups/<followup_id>/
@@ -147,11 +128,8 @@ class FollowUpDetailView(APIView):
     DELETE /api/followups/<followup_id>/
         Delete FollowUp
     """
-
     permission_classes = [IsAuthenticated]
-
     def get_followup(self, followup_id):
-
         return get_object_or_404(
             Followup.objects.select_related(
                 "task_id",
@@ -161,33 +139,26 @@ class FollowUpDetailView(APIView):
             ),
             followup_id=followup_id
         )
-
     # ------------------------------------------------------
     # DETAIL
     # ------------------------------------------------------
-
     def get(self, request, followup_id):
-
         try:
             followup = self.get_followup(followup_id)
-
             serializer = FollowupSerializer(
                 followup,
                 context={"request": request}
             )
-
             logger.info(
                 "FollowUp fetched successfully: "
                 "followup_id=%s user_id=%s",
                 followup.followup_id,
                 request.user.pk,
             )
-
             return Response(
                 serializer.data,
                 status=status.HTTP_200_OK
             )
-
         except Exception:
             logger.exception(
                 "Error while fetching FollowUp: "
@@ -195,14 +166,12 @@ class FollowUpDetailView(APIView):
                 followup_id,
                 request.user.pk,
             )
-
             return Response(
                 {
                     "error": "Something went wrong while fetching the FollowUp."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
     # ------------------------------------------------------
     # UPDATE
     # ------------------------------------------------------
@@ -299,28 +268,22 @@ class FollowUpDetailView(APIView):
                 followup_id,
                 request.user.pk,
             )
-
             return Response(
                 {
                     "error": "Something went wrong while deleting the FollowUp."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-
 # ==========================================================
 # FOLLOWUP NOTE
 # ==========================================================
-
 class FollowUpNoteCreateView(APIView):
     """
     POST /api/followups/<followup_id>/notes/
 
     Add a note to a FollowUp.
     """
-
     permission_classes = [IsAuthenticated]
-
     def post(self, request, followup_id):
 
         try:
@@ -333,9 +296,7 @@ class FollowUpNoteCreateView(APIView):
                 data=request.data,
                 context={"request": request}
             )
-
             if not serializer.is_valid():
-
                 logger.warning(
                     "FollowUp note validation failed: "
                     "followup_id=%s user_id=%s errors=%s",
@@ -343,17 +304,14 @@ class FollowUpNoteCreateView(APIView):
                     request.user.pk,
                     serializer.errors,
                 )
-
                 return Response(
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
             note = serializer.save(
                 followup_id=followup,
                 created_by=request.user
             )
-
             logger.info(
                 "FollowUp note created successfully: "
                 "note_id=%s followup_id=%s user_id=%s",
@@ -361,7 +319,6 @@ class FollowUpNoteCreateView(APIView):
                 followup_id,
                 request.user.pk,
             )
-
             return Response(
                 FollowUpNoteSerializer(
                     note,
@@ -369,7 +326,6 @@ class FollowUpNoteCreateView(APIView):
                 ).data,
                 status=status.HTTP_201_CREATED
             )
-
         except Exception:
             logger.exception(
                 "Error while creating FollowUp note: "
@@ -377,7 +333,6 @@ class FollowUpNoteCreateView(APIView):
                 followup_id,
                 request.user.pk,
             )
-
             return Response(
                 {
                     "error": "Something went wrong while creating the FollowUp note."
@@ -387,7 +342,6 @@ class FollowUpNoteCreateView(APIView):
 # ==========================================================
 # NOTIFICATION
 # ==========================================================
-
 class UserNotificationListView(APIView):
     """
     GET /api/notifications/
@@ -395,11 +349,8 @@ class UserNotificationListView(APIView):
     Return notifications belonging to the
     currently authenticated user.
     """
-
     permission_classes = [IsAuthenticated]
-
     def get(self, request):
-
         notifications = (
             Notification.objects
             .select_related(

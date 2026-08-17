@@ -1,3 +1,4 @@
+
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 import logging
@@ -14,22 +15,20 @@ from .models import (
     Reminder,
     ReminderStatus,
 )
-
 from .serializers import (
     TaskSerializer,
     MeetingSerializer,
     MeetingParticipantSerializer,
     ReminderSerializer,
 )
+from .pagination import CRMPageNumberPagination
 logger = logging.getLogger(__name__)
 
+
 User = get_user_model()
-
-
 # ==========================================================
 # TASK
 # ==========================================================
-
 class TaskListCreateView(APIView):
     """
     GET  /api/tasks/
@@ -38,11 +37,8 @@ class TaskListCreateView(APIView):
     POST /api/tasks/
         Create a task
     """
-
     permission_classes = [IsAuthenticated]
-
     def get(self, request):
-
         try:
             tasks = (
                 Task.objects
@@ -58,67 +54,58 @@ class TaskListCreateView(APIView):
                 )
                 .order_by("-created_at")
             )
-
-            serializer = TaskSerializer(
+            paginator = CRMPageNumberPagination()
+            paginated_task = paginator.paginate_queryset(
                 tasks,
+                request,
+                view=self
+            )
+            serializer = TaskSerializer(
+                paginated_task,
                 many=True,
                 context={"request": request}
             )
-
             logger.info(
                 "Tasks fetched successfully: user_id=%s count=%s",
                 request.user.pk,
-                tasks.count()
+                request.query_params.get("page",1)
             )
-
-            return Response(
-                serializer.data,
-                status=status.HTTP_200_OK
-            )
-
+            return paginator.get_paginated_response(serializer.data)
         except Exception:
             logger.exception(
                 "Error while fetching tasks: user_id=%s",
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while fetching tasks."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
     def post(self, request):
-
         try:
             serializer = TaskSerializer(
                 data=request.data,
                 context={"request": request}
             )
-
             if not serializer.is_valid():
                 logger.warning(
                     "Task validation failed: user_id=%s errors=%s",
                     request.user.pk,
                     serializer.errors
                 )
-
                 return Response(
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
             task = serializer.save(
                 created_by=request.user
             )
-
             logger.info(
                 "Task created successfully: task_id=%s user_id=%s",
                 task.task_id,
                 request.user.pk
             )
-
             return Response(
                 TaskSerializer(
                     task,
@@ -126,24 +113,20 @@ class TaskListCreateView(APIView):
                 ).data,
                 status=status.HTTP_201_CREATED
             )
-
         except Exception:
             logger.exception(
                 "Error while creating task: user_id=%s",
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while creating the task."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
 # ==========================================================
 # TASK DETAIL / UPDATE / DELETE
 # ==========================================================
-
 class TaskDetailView(APIView):
     """
     GET    /api/tasks/<task_id>/
@@ -155,9 +138,7 @@ class TaskDetailView(APIView):
     DELETE /api/tasks/<task_id>/
         Soft delete task
     """
-
     permission_classes = [IsAuthenticated]
-
     def get_task(self, task_id):
 
         return get_object_or_404(
@@ -173,13 +154,10 @@ class TaskDetailView(APIView):
             task_id=task_id,
             is_active=True
         )
-
     # ------------------------------------------------------
     # TASK DETAIL
     # ------------------------------------------------------
-
     def get(self, request, task_id):
-
         try:
             task = self.get_task(task_id)
 
@@ -187,70 +165,56 @@ class TaskDetailView(APIView):
                 task,
                 context={"request": request}
             )
-
             logger.info(
                 "Task fetched successfully: task_id=%s user_id=%s",
                 task.task_id,
                 request.user.pk
             )
-
             return Response(
                 serializer.data,
                 status=status.HTTP_200_OK
             )
-
         except Exception:
             logger.exception(
                 "Error while fetching task: task_id=%s user_id=%s",
                 task_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while fetching the task."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
     # ------------------------------------------------------
     # UPDATE TASK
     # ------------------------------------------------------
-
     def patch(self, request, task_id):
-
         try:
             task = self.get_task(task_id)
-
             serializer = TaskSerializer(
                 task,
                 data=request.data,
                 partial=True,
                 context={"request": request}
             )
-
             if not serializer.is_valid():
-
                 logger.warning(
                     "Task update validation failed: task_id=%s user_id=%s errors=%s",
                     task_id,
                     request.user.pk,
                     serializer.errors
                 )
-
                 return Response(
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
             task = serializer.save()
-
             logger.info(
                 "Task updated successfully: task_id=%s user_id=%s",
                 task.task_id,
                 request.user.pk
             )
-
             return Response(
                 TaskSerializer(
                     task,
@@ -258,31 +222,24 @@ class TaskDetailView(APIView):
                 ).data,
                 status=status.HTTP_200_OK
             )
-
         except Exception:
             logger.exception(
                 "Error while updating task: task_id=%s user_id=%s",
                 task_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while updating the task."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
     # ------------------------------------------------------
     # DELETE TASK
     # ------------------------------------------------------
-
     def delete(self, request, task_id):
-
         try:
             task = self.get_task(task_id)
-
-            # Soft delete because Task has is_active.
             task.is_active = False
             task.save(update_fields=["is_active"])
 
@@ -291,7 +248,6 @@ class TaskDetailView(APIView):
                 task.task_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "message": "Task deleted successfully.",
@@ -299,22 +255,18 @@ class TaskDetailView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-
         except Exception:
             logger.exception(
                 "Error while deleting task: task_id=%s user_id=%s",
                 task_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while deleting the task."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-
 # ==========================================================
 # ASSIGN TASK
 # ==========================================================
@@ -324,43 +276,33 @@ class TaskAssignView(APIView):
 
     Assign or reassign a task.
     """
-
     permission_classes = [IsAuthenticated]
-
     def post(self, request, task_id):
-
         try:
             task = get_object_or_404(
                 Task,
                 task_id=task_id,
                 is_active=True
             )
-
             assigned_to_id = request.data.get("assigned_to")
-
             if not assigned_to_id:
-
                 logger.warning(
                     "Task assignment failed: assigned_to missing "
                     "task_id=%s user_id=%s",
                     task_id,
                     request.user.pk
                 )
-
                 return Response(
                     {
                         "assigned_to": "This field is required."
                     },
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
             new_user = get_object_or_404(
                 User,
                 pk=assigned_to_id
             )
-
             old_user = task.assigned_to
-
             task.assigned_to = new_user
             task.save(
                 update_fields=[
@@ -368,7 +310,6 @@ class TaskAssignView(APIView):
                     "updated_at"
                 ]
             )
-
             logger.info(
                 "Task assigned successfully: task_id=%s old_user_id=%s "
                 "new_user_id=%s performed_by=%s",
@@ -377,7 +318,6 @@ class TaskAssignView(APIView):
                 new_user.pk,
                 request.user.pk
             )
-
             return Response(
                 {
                     "message": "Task assigned successfully.",
@@ -389,14 +329,12 @@ class TaskAssignView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-
         except Exception:
             logger.exception(
                 "Error while assigning task: task_id=%s user_id=%s",
                 task_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while assigning the task."
@@ -406,43 +344,33 @@ class TaskAssignView(APIView):
 # ==========================================================
 # CHANGE TASK STATUS
 # ==========================================================
-
 class TaskStatusUpdateView(APIView):
     """
     PATCH /api/tasks/<task_id>/status/
 
     Change task status.
     """
-
     permission_classes = [IsAuthenticated]
-
     def patch(self, request, task_id):
-
         task = get_object_or_404(
             Task,
             task_id=task_id,
             is_active=True
         )
-
         status_id = request.data.get("status_id")
-
         if not status_id:
-
             return Response(
                 {
                     "status_id": "This field is required."
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
-
         new_status = get_object_or_404(
             TaskStatus,
             status_id=status_id,
             is_active=True
         )
-
         old_status = task.status
-
         task.status = new_status
         task.save(
             update_fields=[
@@ -463,41 +391,32 @@ class TaskStatusUpdateView(APIView):
 # ==========================================================
 # MEETING
 # ==========================================================
-
 class MeetingCreateView(APIView):
     """
     POST /api/meetings/
 
     Create a meeting.
     """
-
     permission_classes = [IsAuthenticated]
-
     def post(self, request):
-
         try:
             serializer = MeetingSerializer(
                 data=request.data,
                 context={"request": request}
             )
-
             if not serializer.is_valid():
-
                 logger.warning(
                     "Meeting validation failed: user_id=%s errors=%s",
                     request.user.pk,
                     serializer.errors
                 )
-
                 return Response(
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
             meeting = serializer.save(
                 created_by=request.user
             )
-
             logger.info(
                 "Meeting created successfully: meeting_id=%s user_id=%s",
                 meeting.meeting_id,
@@ -511,13 +430,11 @@ class MeetingCreateView(APIView):
                 ).data,
                 status=status.HTTP_201_CREATED
             )
-
         except Exception:
             logger.exception(
                 "Error while creating meeting: user_id=%s",
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while creating the meeting."
@@ -527,14 +444,10 @@ class MeetingCreateView(APIView):
 class MeetingDetailView(APIView):
     """
     GET /api/meetings/<meeting_id>/
-
     Get meeting details.
     """
-
     permission_classes = [IsAuthenticated]
-
     def get(self, request, meeting_id):
-
         try:
             meeting = get_object_or_404(
                 Meeting.objects.select_related(
@@ -545,30 +458,25 @@ class MeetingDetailView(APIView):
                 ),
                 meeting_id=meeting_id
             )
-
             serializer = MeetingSerializer(
                 meeting,
                 context={"request": request}
             )
-
             logger.info(
                 "Meeting fetched successfully: meeting_id=%s user_id=%s",
                 meeting.meeting_id,
                 request.user.pk
             )
-
             return Response(
                 serializer.data,
                 status=status.HTTP_200_OK
             )
-
         except Exception:
             logger.exception(
                 "Error while fetching meeting: meeting_id=%s user_id=%s",
                 meeting_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while fetching the meeting."
@@ -585,9 +493,7 @@ class MeetingRescheduleView(APIView):
 
     Change meeting date/time.
     """
-
     permission_classes = [IsAuthenticated]
-
     def patch(self, request, meeting_id):
 
         try:
@@ -606,9 +512,7 @@ class MeetingRescheduleView(APIView):
                 partial=True,
                 context={"request": request}
             )
-
             if not serializer.is_valid():
-
                 logger.warning(
                     "Meeting reschedule validation failed: "
                     "meeting_id=%s user_id=%s errors=%s",
@@ -616,21 +520,17 @@ class MeetingRescheduleView(APIView):
                     request.user.pk,
                     serializer.errors
                 )
-
                 return Response(
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
             meeting = serializer.save()
-
             logger.info(
                 "Meeting rescheduled successfully: "
                 "meeting_id=%s user_id=%s",
                 meeting.meeting_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "message": "Meeting rescheduled successfully.",
@@ -641,7 +541,6 @@ class MeetingRescheduleView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-
         except Exception:
             logger.exception(
                 "Error while rescheduling meeting: "
