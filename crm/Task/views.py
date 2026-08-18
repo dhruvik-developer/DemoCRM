@@ -21,8 +21,12 @@ from .serializers import (
     ReminderSerializer,
 )
 from django.db.models import Q
+from django.db import transaction
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithLead
+from .services import(
+    c
+)
 logger = logging.getLogger(__name__)
 
 
@@ -456,6 +460,7 @@ class MeetingCreateView(APIView):
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            with
             meeting = serializer.save(
                 created_by=request.user
             )

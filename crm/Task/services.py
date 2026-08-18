@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime, timedelta
 
+from django.db import transaction
 from django.conf import settings
 from django.core.mail import send_mail
 from django.utils import timezone
@@ -11,6 +12,7 @@ from .models import (
     ReminderStatus,
     ReminderType,
 )
+
 from FollowUp.notification_utils import create_notification
 
 
@@ -263,7 +265,8 @@ def create_meeting_reminder(
     try:
         if not meeting or not reminder_for:
             logger.warning(
-                "Meeting reminder not created: meeting or reminder_for missing."
+                "Meeting reminder not created: "
+                "meeting or reminder_for missing."
             )
             return None
 
@@ -330,7 +333,8 @@ def create_meeting_reminder(
 
         logger.info(
             "Meeting reminder created: "
-            "reminder_id=%s meeting_id=%s reminder_for=%s reminder_datetime=%s",
+            "reminder_id=%s meeting_id=%s reminder_for=%s "
+            "reminder_datetime=%s",
             reminder.reminder_id,
             getattr(meeting, "meeting_id", None),
             getattr(reminder_for, "pk", None),
@@ -348,50 +352,150 @@ def create_meeting_reminder(
 
 
 # ======================================================
-# MEETING CREATION: EMAILS + NOTIFICATIONS + REMINDER
+# MEETING DATABASE WORKFLOW
+# ======================================================
+
+def create_meeting_database_records(meeting):
+    """
+    Create all database records related to a meeting
+    in one atomic transaction.
+
+    Database records:
+    1. Creator notification
+    2. Assigned employee notification
+    3. 15-minute reminder
+    """
+
+    lead_name = (
+        getattr(meeting.lead, "name", "Client")
+        if getattr(meeting, "lead", None)
+        else "Client"
+    )
+
+    with transaction.atomic():
+
+        # --------------------------------------------------
+        # 1. CREATOR NOTIFICATION
+        # --------------------------------------------------
+
+        if meeting.created_by:
+
+            create_notification(
+                user=meeting.created_by,
+                title=f"New Meeting: {meeting.meeting_title}",
+                message=(
+                    f"Meeting '{meeting.meeting_title}' "
+                    f"is scheduled with {lead_name} "
+                    f"on {meeting.meeting_date} "
+                    f"at {meeting.start_time}."
+                ),
+                type_name="Meeting",
+            )
+
+        # --------------------------------------------------
+        # 2. ASSIGNED EMPLOYEE NOTIFICATION
+        # --------------------------------------------------
+
+        if (
+            meeting.task_id
+            and meeting.task_id.assigned_to
+            and meeting.task_id.assigned_to != meeting.created_by
+        ):
+
+            assigned_user = meeting.task_id.assigned_to
+
+            create_notification(
+                user=assigned_user,
+                title=f"Meeting Scheduled: {meeting.meeting_title}",
+                message=(
+                    f"Meeting '{meeting.meeting_title}' "
+                    f"is scheduled on your task with {lead_name} "
+                    f"on {meeting.meeting_date} "
+                    f"at {meeting.start_time}."
+                ),
+                type_name="Meeting",
+            )
+
+        # --------------------------------------------------
+        # 3. DATABASE REMINDER
+        # --------------------------------------------------
+
+        reminder = None
+
+        if meeting.created_by:
+
+            reminder = create_meeting_reminder(
+                meeting=meeting,
+                reminder_for=meeting.created_by,
+                minutes_before=15,
+            )
+
+            if reminder is None:
+                raise ValueError(
+                    "Failed to create meeting reminder."
+                )
+
+        logger.info(
+            "Meeting database records created successfully: "
+            "meeting_id=%s reminder_id=%s",
+            meeting.meeting_id,
+            getattr(reminder, "reminder_id", None),
+        )
+
+        return reminder
+
+
+# ======================================================
+# MEETING CREATION: EMAILS + DATABASE WORKFLOW
 # ======================================================
 
 def send_meeting_creation_emails(meeting):
     """
-    Called after a Meeting is successfully created:
+    Called after a Meeting is successfully created.
 
-    1. Send email to Lead.
-    2. Send email to Creator/Host.
-    3. Create notification for Creator.
-    4. Create notification for Assigned Employee.
-    5. Create 15-minute reminder.
+    1. Sends confirmation email to Lead.
+    2. Sends confirmation email to Creator/Host.
+    3. Creates database notifications and reminder
+       inside one atomic transaction.
     """
 
     try:
-        lead_name = (
-            getattr(meeting.lead, "name", "Client")
-            if getattr(meeting, "lead", None)
-            else "Client"
-        )
 
-        # --------------------------------------------------
+        # ==================================================
         # 1. EMAIL TO LEAD
-        # --------------------------------------------------
+        # ==================================================
 
         try:
-            send_lead_meeting_reminder_email(meeting)
+            send_lead_meeting_reminder_email(
+                meeting
+            )
 
         except Exception:
             logger.exception(
-                "Error sending email to lead: meeting_id=%s",
-                getattr(meeting, "meeting_id", None),
+                "Error sending email to lead: "
+                "meeting_id=%s",
+                getattr(
+                    meeting,
+                    "meeting_id",
+                    None,
+                ),
             )
 
-        # --------------------------------------------------
+        # ==================================================
         # 2. EMAIL TO CREATOR / HOST
-        # --------------------------------------------------
+        # ==================================================
 
         if (
             meeting.created_by
-            and getattr(meeting.created_by, "email", None)
+            and getattr(
+                meeting.created_by,
+                "email",
+                None,
+            )
         ):
 
             try:
+
                 send_meeting_reminder_email(
                     meeting=meeting,
                     recipient_email=meeting.created_by.email,
@@ -402,36 +506,6 @@ def send_meeting_creation_emails(meeting):
                 logger.exception(
                     "Error sending creator email: "
                     "meeting_id=%s user_id=%s",
-                    getattr(meeting, "meeting_id", None),
-                    getattr(
-                        meeting.created_by,
-                        "pk",
-                        None,
-                    ),
-                )
-
-        # --------------------------------------------------
-        # 3. CREATOR NOTIFICATION
-        # --------------------------------------------------
-
-        if meeting.created_by:
-
-            try:
-                create_notification(
-                    user=meeting.created_by,
-                    title=f"New Meeting: {meeting.meeting_title}",
-                    message=(
-                        f"Meeting '{meeting.meeting_title}' "
-                        f"is scheduled with {lead_name} "
-                        f"on {meeting.meeting_date} "
-                        f"at {meeting.start_time}."
-                    ),
-                    type_name="Meeting",
-                )
-
-                logger.info(
-                    "Creator notification created: "
-                    "meeting_id=%s user_id=%s",
                     getattr(
                         meeting,
                         "meeting_id",
@@ -444,113 +518,44 @@ def send_meeting_creation_emails(meeting):
                     ),
                 )
 
-            except Exception:
-                logger.exception(
-                    "Error creating creator notification: "
-                    "meeting_id=%s user_id=%s",
-                    getattr(
-                        meeting,
-                        "meeting_id",
-                        None,
-                    ),
-                    getattr(
-                        meeting.created_by,
-                        "pk",
-                        None,
-                    ),
-                )
+        # ==================================================
+        # 3. DATABASE TRANSACTION
+        # ==================================================
 
-        # --------------------------------------------------
-        # 4. ASSIGNED EMPLOYEE NOTIFICATION
-        # --------------------------------------------------
+        try:
 
-        if (
-            meeting.task_id
-            and meeting.task_id.assigned_to
-            and meeting.task_id.assigned_to != meeting.created_by
-        ):
+            reminder = create_meeting_database_records(
+                meeting
+            )
 
-            try:
-                assigned_user = meeting.task_id.assigned_to
+            logger.info(
+                "Meeting database workflow completed: "
+                "meeting_id=%s reminder_id=%s",
+                meeting.meeting_id,
+                getattr(
+                    reminder,
+                    "reminder_id",
+                    None,
+                ),
+            )
 
-                create_notification(
-                    user=assigned_user,
-                    title=f"Meeting Scheduled: {meeting.meeting_title}",
-                    message=(
-                        f"Meeting '{meeting.meeting_title}' "
-                        f"is scheduled on your task with {lead_name} "
-                        f"on {meeting.meeting_date} "
-                        f"at {meeting.start_time}."
-                    ),
-                    type_name="Meeting",
-                )
+        except Exception:
 
-                logger.info(
-                    "Assigned employee notification created: "
-                    "meeting_id=%s user_id=%s",
-                    getattr(
-                        meeting,
-                        "meeting_id",
-                        None,
-                    ),
-                    getattr(
-                        assigned_user,
-                        "pk",
-                        None,
-                    ),
-                )
+            logger.exception(
+                "Meeting database workflow failed: "
+                "meeting_id=%s",
+                meeting.meeting_id,
+            )
 
-            except Exception:
-                logger.exception(
-                    "Error creating assigned employee notification: "
-                    "meeting_id=%s",
-                    getattr(
-                        meeting,
-                        "meeting_id",
-                        None,
-                    ),
-                )
+            raise
 
-        # --------------------------------------------------
-        # 5. DATABASE REMINDER
-        # --------------------------------------------------
-
-        if meeting.created_by:
-
-            try:
-                reminder = create_meeting_reminder(
-                    meeting=meeting,
-                    reminder_for=meeting.created_by,
-                    minutes_before=15,
-                )
-
-                logger.info(
-                    "15-minute meeting reminder created: "
-                    "meeting_id=%s reminder_id=%s",
-                    getattr(
-                        meeting,
-                        "meeting_id",
-                        None,
-                    ),
-                    getattr(
-                        reminder,
-                        "reminder_id",
-                        None,
-                    ),
-                )
-
-            except Exception:
-                logger.exception(
-                    "Error creating database reminder: meeting_id=%s",
-                    getattr(
-                        meeting,
-                        "meeting_id",
-                        None,
-                    ),
-                )
+        # ==================================================
+        # WORKFLOW COMPLETED
+        # ==================================================
 
         logger.info(
-            "Meeting creation workflow completed: meeting_id=%s",
+            "Meeting creation workflow completed: "
+            "meeting_id=%s",
             getattr(
                 meeting,
                 "meeting_id",
@@ -561,14 +566,17 @@ def send_meeting_creation_emails(meeting):
         return True
 
     except Exception:
+
         logger.exception(
-            "Unexpected error in meeting creation workflow: meeting_id=%s",
+            "Unexpected error in meeting creation workflow: "
+            "meeting_id=%s",
             getattr(
                 meeting,
                 "meeting_id",
                 None,
             ),
         )
+
         return False
 
 
@@ -583,14 +591,17 @@ def send_due_reminder_notification(reminder):
     """
 
     try:
+
         meeting = reminder.meeting_id
 
         if not meeting:
+
             logger.warning(
                 "Due reminder skipped: meeting missing "
                 "reminder_id=%s",
                 reminder.reminder_id,
             )
+
             return False
 
         # --------------------------------------------------
@@ -703,6 +714,7 @@ def send_due_reminder_notification(reminder):
         return True
 
     except Exception:
+
         logger.exception(
             "Error sending due reminder: reminder_id=%s",
             getattr(
@@ -711,6 +723,7 @@ def send_due_reminder_notification(reminder):
                 None,
             ),
         )
+
         return False
 
 
@@ -728,6 +741,7 @@ def process_due_meeting_reminders():
     """
 
     try:
+
         now = timezone.now()
 
         due_reminders = (
@@ -748,11 +762,13 @@ def process_due_meeting_reminders():
         for reminder in due_reminders:
 
             try:
+
                 success = send_due_reminder_notification(
                     reminder
                 )
 
                 if success:
+
                     reminder.is_sent = True
 
                     reminder.save(
@@ -768,6 +784,7 @@ def process_due_meeting_reminders():
                     )
 
                 else:
+
                     logger.warning(
                         "Due meeting reminder was not sent: "
                         "reminder_id=%s",
@@ -775,6 +792,7 @@ def process_due_meeting_reminders():
                     )
 
             except Exception:
+
                 logger.exception(
                     "Error processing due meeting reminder: "
                     "reminder_id=%s",
@@ -790,7 +808,10 @@ def process_due_meeting_reminders():
         return sent_count
 
     except Exception:
+
         logger.exception(
-            "Unexpected error while processing due meeting reminders."
+            "Unexpected error while processing "
+            "due meeting reminders."
         )
+
         return 0
