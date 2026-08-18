@@ -21,6 +21,9 @@ from .serializers import (
     FollowUpNoteSerializer,
 )
 
+from Notification.notification_utils import trigger_notification_event
+from Notification.models import NotificationEventType
+
 
 # ==========================================================
 # FOLLOWUP
@@ -93,6 +96,19 @@ class FollowUpListCreateView(APIView):
         followup = serializer.save(
             created_by=request.user
         )
+
+        # Notify the task assignee about the followup.
+        if followup.task_id and followup.task_id.assigned_to and followup.task_id.assigned_to != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.FOLLOWUP_CREATED,
+                recipient=followup.task_id.assigned_to,
+                context={
+                    "user_name": followup.task_id.assigned_to.get_full_name() or followup.task_id.assigned_to.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "task_title": followup.task_id.task_title,
+                    "followup_date": str(followup.followup_date),
+                },
+            )
 
         logger.info("FollowUp created for task %s by user %s (ID: %s)", followup.task_id_id, request.user.user_id, followup.followup_id)
 
@@ -183,6 +199,19 @@ class FollowUpDetailView(APIView):
 
         followup = serializer.save()
 
+        # Notify the task assignee about the followup update.
+        if followup.task_id and followup.task_id.assigned_to and followup.task_id.assigned_to != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.FOLLOWUP_UPDATED,
+                recipient=followup.task_id.assigned_to,
+                context={
+                    "user_name": followup.task_id.assigned_to.get_full_name() or followup.task_id.assigned_to.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "task_title": followup.task_id.task_title,
+                    "followup_date": str(followup.followup_date),
+                },
+            )
+
         return Response(
             FollowupSerializer(
                 followup,
@@ -198,6 +227,18 @@ class FollowUpDetailView(APIView):
     def delete(self, request, followup_id):
 
         followup = self.get_followup(followup_id)
+
+        # Notify the task assignee about the followup deletion.
+        if followup.task_id and followup.task_id.assigned_to and followup.task_id.assigned_to != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.FOLLOWUP_DELETED,
+                recipient=followup.task_id.assigned_to,
+                context={
+                    "user_name": followup.task_id.assigned_to.get_full_name() or followup.task_id.assigned_to.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "task_title": followup.task_id.task_title,
+                },
+            )
 
         # IMPORTANT:
         # Your Followup model does NOT have is_active.
@@ -254,6 +295,33 @@ class FollowUpNoteCreateView(APIView):
             followup_id=followup,
             created_by=request.user
         )
+
+        # Notify the task assignee about the new note.
+        if followup.task_id and followup.task_id.assigned_to and followup.task_id.assigned_to != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.FOLLOWUP_NOTE_ADDED,
+                recipient=followup.task_id.assigned_to,
+                context={
+                    "user_name": followup.task_id.assigned_to.get_full_name() or followup.task_id.assigned_to.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "task_title": followup.task_id.task_title,
+                    "note_preview": (note.note[:100] + "...") if len(note.note) > 100 else note.note,
+                },
+            )
+
+        # Notify the followup creator about the new note (if different from task assignee).
+        if followup.created_by and followup.created_by != request.user:
+            if not (followup.task_id and followup.task_id.assigned_to and followup.task_id.assigned_to == followup.created_by):
+                trigger_notification_event(
+                    event_type=NotificationEventType.FOLLOWUP_NOTE_ADDED,
+                    recipient=followup.created_by,
+                    context={
+                        "user_name": followup.created_by.get_full_name() or followup.created_by.username,
+                        "employee_name": request.user.get_full_name() or request.user.username,
+                        "task_title": followup.task_id.task_title,
+                        "note_preview": (note.note[:100] + "...") if len(note.note) > 100 else note.note,
+                    },
+                )
 
         return Response(
             FollowUpNoteSerializer(

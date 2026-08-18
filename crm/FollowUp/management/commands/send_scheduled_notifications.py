@@ -1,5 +1,5 @@
 """
-Send scheduled notifications whose scheduled_at has passed.
+Send pending email notifications that have not yet been sent.
 
 Run periodically via cron / Task Scheduler / Celery beat:
 
@@ -9,27 +9,28 @@ Run periodically via cron / Task Scheduler / Celery beat:
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from FollowUp.models import Notification
-from FollowUp.notification_utils import send_notification_email
+from Notification.models import Notification, NotificationChannel
+from Notification.notification_utils import send_notification_email
 
 
 class Command(BaseCommand):
 
-    help = "Send scheduled notifications whose scheduled_at has passed."
+    help = "Send pending email notifications that have not yet been emailed."
 
     def handle(self, *args, **options):
 
         due = Notification.objects.filter(
-            status=Notification.Status.SCHEDULED,
-            scheduled_at__lte=timezone.now(),
+            channel__in=[NotificationChannel.EMAIL, NotificationChannel.BOTH],
+            is_read=False,
+            created_at__lte=timezone.now(),
         )
 
         count = 0
 
         for notification in due:
-            if send_notification_email(notification):
+            if send_notification_email(notification.recipient, notification.event_type, notification.message):
                 count += 1
 
         self.stdout.write(
-            self.style.SUCCESS(f"Sent {count} scheduled notification(s).")
+            self.style.SUCCESS(f"Sent {count} pending notification(s).")
         )

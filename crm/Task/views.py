@@ -100,7 +100,6 @@ class TaskListCreateView(APIView):
 
             # Auto-notify the assignee when a task is created.
             if task.assigned_to and task.assigned_to != request.user:
-                notify_task_assignment(task)
                 trigger_notification_event(
                     event_type=NotificationEventType.TASK_ASSIGNED,
                     recipient=task.assigned_to,
@@ -237,6 +236,19 @@ class TaskDetailView(APIView):
         task.is_active = False
         task.save(update_fields=["is_active"])
 
+        # Notify the assignee about task deletion.
+        if task.assigned_to and task.assigned_to != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.TASK_DELETED,
+                recipient=task.assigned_to,
+                context={
+                    "user_name": task.assigned_to.get_full_name() or task.assigned_to.username,
+                    "manager_name": request.user.get_full_name() or request.user.username,
+                    "task_title": task.task_title,
+                    "task_id": task.task_id,
+                },
+            )
+
         return Response(
             {
                 "message": "Task deleted successfully.",
@@ -299,7 +311,6 @@ class TaskAssignView(APIView):
 
         # Auto-notify the new assignee on (re)assignment.
         if old_user is None or old_user.user_id != new_user.user_id:
-            notify_task_assignment(task)
             event_name = NotificationEventType.TASK_REASSIGNED if old_user else NotificationEventType.TASK_ASSIGNED
             trigger_notification_event(
                 event_type=event_name,
@@ -391,6 +402,22 @@ class TaskStatusUpdateView(APIView):
                         "task_id": task.task_id,
                     },
                 )
+        else:
+            # Notify on non-completion status changes.
+            recipient = task.assigned_to if task.assigned_to else task.created_by
+            if recipient and recipient != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_STATUS_CHANGED,
+                    recipient=recipient,
+                    context={
+                        "user_name": recipient.get_full_name() or recipient.username,
+                        "employee_name": request.user.get_full_name() or request.user.username,
+                        "task_title": task.task_title,
+                        "task_id": task.task_id,
+                        "old_status": old_status.status_name,
+                        "new_status": new_status.status_name,
+                    },
+                )
 
         return Response(
             {
@@ -433,6 +460,20 @@ class MeetingCreateView(APIView):
             meeting = serializer.save(
                 created_by=request.user
             )
+
+            # Notify the task assignee about meeting creation.
+            if meeting.task_id and meeting.task_id.assigned_to and meeting.task_id.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.MEETING_CREATED,
+                    recipient=meeting.task_id.assigned_to,
+                    context={
+                        "user_name": meeting.task_id.assigned_to.get_full_name() or meeting.task_id.assigned_to.username,
+                        "employee_name": request.user.get_full_name() or request.user.username,
+                        "meeting_title": meeting.meeting_title,
+                        "meeting_date": str(meeting.meeting_date),
+                        "start_time": str(meeting.start_time),
+                    },
+                )
 
             return Response(
                 MeetingSerializer(
@@ -523,6 +564,38 @@ class MeetingRescheduleView(APIView):
 
             meeting = serializer.save()
 
+            # Notify the task assignee about meeting reschedule.
+            if meeting.task_id and meeting.task_id.assigned_to and meeting.task_id.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.MEETING_RESCHEDULED,
+                    recipient=meeting.task_id.assigned_to,
+                    context={
+                        "user_name": meeting.task_id.assigned_to.get_full_name() or meeting.task_id.assigned_to.username,
+                        "employee_name": request.user.get_full_name() or request.user.username,
+                        "meeting_title": meeting.meeting_title,
+                        "meeting_date": str(meeting.meeting_date),
+                        "start_time": str(meeting.start_time),
+                    },
+                )
+
+            # Also notify existing participants.
+            participant_users = MeetingParticipant.objects.filter(
+                meeting_id=meeting
+            ).exclude(user_id=meeting.task_id.assigned_to).select_related("user_id")
+            for p in participant_users:
+                if p.user_id != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_RESCHEDULED,
+                        recipient=p.user_id,
+                        context={
+                            "user_name": p.user_id.get_full_name() or p.user_id.username,
+                            "employee_name": request.user.get_full_name() or request.user.username,
+                            "meeting_title": meeting.meeting_title,
+                            "meeting_date": str(meeting.meeting_date),
+                            "start_time": str(meeting.start_time),
+                        },
+                    )
+
             return Response(
                 {
                     "message": "Meeting rescheduled successfully.",
@@ -591,6 +664,38 @@ class MeetingStatusUpdateView(APIView):
                 "updated_at"
             ]
         )
+
+        # Notify the task assignee about meeting status change.
+        if meeting.task_id and meeting.task_id.assigned_to and meeting.task_id.assigned_to != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.MEETING_STATUS_CHANGED,
+                recipient=meeting.task_id.assigned_to,
+                context={
+                    "user_name": meeting.task_id.assigned_to.get_full_name() or meeting.task_id.assigned_to.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "meeting_title": meeting.meeting_title,
+                    "old_status": old_status.status_name,
+                    "new_status": new_status.status_name,
+                },
+            )
+
+        # Notify participants about status change.
+        participant_users = MeetingParticipant.objects.filter(
+            meeting_id=meeting
+        ).exclude(user_id=meeting.task_id.assigned_to).select_related("user_id")
+        for p in participant_users:
+            if p.user_id != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.MEETING_STATUS_CHANGED,
+                    recipient=p.user_id,
+                    context={
+                        "user_name": p.user_id.get_full_name() or p.user_id.username,
+                        "employee_name": request.user.get_full_name() or request.user.username,
+                        "meeting_title": meeting.meeting_title,
+                        "old_status": old_status.status_name,
+                        "new_status": new_status.status_name,
+                    },
+                )
 
         return Response(
             {
@@ -686,6 +791,35 @@ class MeetingParticipantAddView(APIView):
             is_required=is_required
         )
 
+        # Notify the added participant.
+        if user != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.MEETING_PARTICIPANT_ADDED,
+                recipient=user,
+                context={
+                    "user_name": user.get_full_name() or user.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "meeting_title": meeting.meeting_title,
+                    "meeting_date": str(meeting.meeting_date),
+                    "participant_role": participant_role.strip(),
+                },
+            )
+
+        # Notify the meeting creator about the new participant.
+        if meeting.created_by and meeting.created_by != request.user and meeting.created_by != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.MEETING_PARTICIPANT_ADDED,
+                recipient=meeting.created_by,
+                context={
+                    "user_name": meeting.created_by.get_full_name() or meeting.created_by.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "meeting_title": meeting.meeting_title,
+                    "meeting_date": str(meeting.meeting_date),
+                    "participant_name": user.get_full_name() or user.username,
+                    "participant_role": participant_role.strip(),
+                },
+            )
+
         serializer = MeetingParticipantSerializer(
             participant,
             context={"request": request}
@@ -727,7 +861,34 @@ class MeetingParticipantRemoveView(APIView):
             user_id_id=user_id
         )
 
+        removed_user = participant.user_id
         participant.delete()
+
+        # Notify the removed participant.
+        if removed_user and removed_user != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.MEETING_PARTICIPANT_REMOVED,
+                recipient=removed_user,
+                context={
+                    "user_name": removed_user.get_full_name() or removed_user.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "meeting_title": meeting.meeting_title,
+                    "meeting_date": str(meeting.meeting_date),
+                },
+            )
+
+        # Notify the meeting creator about the removal.
+        if meeting.created_by and meeting.created_by != request.user and meeting.created_by != removed_user:
+            trigger_notification_event(
+                event_type=NotificationEventType.MEETING_PARTICIPANT_REMOVED,
+                recipient=meeting.created_by,
+                context={
+                    "user_name": meeting.created_by.get_full_name() or meeting.created_by.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "meeting_title": meeting.meeting_title,
+                    "participant_name": removed_user.get_full_name() or removed_user.username if removed_user else "",
+                },
+            )
 
         return Response(
             {
@@ -768,6 +929,30 @@ class ReminderCreateView(APIView):
             reminder = serializer.save(
                 created_by=request.user
             )
+
+            # Notify the creator about the reminder.
+            trigger_notification_event(
+                event_type=NotificationEventType.REMINDER_CREATED,
+                recipient=request.user,
+                context={
+                    "user_name": request.user.get_full_name() or request.user.username,
+                    "reminder_message": reminder.message,
+                    "reminder_datetime": str(reminder.reminder_datetime),
+                },
+            )
+
+            # Notify assigned user on the related task (if different).
+            if reminder.task_id and reminder.task_id.assigned_to and reminder.task_id.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.REMINDER_CREATED,
+                    recipient=reminder.task_id.assigned_to,
+                    context={
+                        "user_name": reminder.task_id.assigned_to.get_full_name() or reminder.task_id.assigned_to.username,
+                        "employee_name": request.user.get_full_name() or request.user.username,
+                        "reminder_message": reminder.message,
+                        "reminder_datetime": str(reminder.reminder_datetime),
+                    },
+                )
 
             return Response(
                 ReminderSerializer(
@@ -853,6 +1038,17 @@ class ReminderDetailView(APIView):
 
             reminder = serializer.save()
 
+            # Notify the creator about the reminder update.
+            trigger_notification_event(
+                event_type=NotificationEventType.REMINDER_UPDATED,
+                recipient=request.user,
+                context={
+                    "user_name": request.user.get_full_name() or request.user.username,
+                    "reminder_message": reminder.message,
+                    "reminder_datetime": str(reminder.reminder_datetime),
+                },
+            )
+
             return Response(
                 ReminderSerializer(
                     reminder,
@@ -873,6 +1069,28 @@ class ReminderDetailView(APIView):
     def delete(self, request, reminder_id):
 
         reminder = self.get_reminder(reminder_id)
+
+        # Notify the creator about the reminder deletion.
+        trigger_notification_event(
+            event_type=NotificationEventType.REMINDER_DELETED,
+            recipient=request.user,
+            context={
+                "user_name": request.user.get_full_name() or request.user.username,
+                "reminder_message": reminder.message,
+            },
+        )
+
+        # Notify assigned user on the related task (if different).
+        if reminder.task_id and reminder.task_id.assigned_to and reminder.task_id.assigned_to != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.REMINDER_DELETED,
+                recipient=reminder.task_id.assigned_to,
+                context={
+                    "user_name": reminder.task_id.assigned_to.get_full_name() or reminder.task_id.assigned_to.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "reminder_message": reminder.message,
+                },
+            )
 
         # Your Reminder model does not have is_active,
         # so with the current model this is a real delete.
@@ -942,6 +1160,32 @@ class ReminderStatusUpdateView(APIView):
                 "updated_at"
             ]
         )
+
+        # Notify the creator about the reminder status change.
+        trigger_notification_event(
+            event_type=NotificationEventType.REMINDER_STATUS_CHANGED,
+            recipient=request.user,
+            context={
+                "user_name": request.user.get_full_name() or request.user.username,
+                "reminder_message": reminder.message,
+                "old_status": old_status.status_name,
+                "new_status": new_status.status_name,
+            },
+        )
+
+        # Notify assigned user on the related task (if different).
+        if reminder.task_id and reminder.task_id.assigned_to and reminder.task_id.assigned_to != request.user:
+            trigger_notification_event(
+                event_type=NotificationEventType.REMINDER_STATUS_CHANGED,
+                recipient=reminder.task_id.assigned_to,
+                context={
+                    "user_name": reminder.task_id.assigned_to.get_full_name() or reminder.task_id.assigned_to.username,
+                    "employee_name": request.user.get_full_name() or request.user.username,
+                    "reminder_message": reminder.message,
+                    "old_status": old_status.status_name,
+                    "new_status": new_status.status_name,
+                },
+            )
 
         return Response(
             {

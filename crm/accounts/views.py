@@ -16,8 +16,6 @@ from rest_framework_simplejwt.exceptions import TokenError
 
 logger = logging.getLogger(__name__)
 
-logger = logging.getLogger(__name__)
-
 # Create your views here.
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]

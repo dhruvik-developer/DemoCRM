@@ -4,7 +4,7 @@ from django.utils import timezone
 from datetime import datetime, timedelta
 
 from .models import Reminder, ReminderType, ReminderStatus
-from FollowUp.notification_utils import create_notification
+from Notification.notification_utils import create_notification
 
 
 # ======================================================

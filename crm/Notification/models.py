@@ -8,17 +8,53 @@ class NotificationEventType(models.TextChoices):
     TASK_COMPLETED = "TASK_COMPLETED", "Task Completed"
     TASK_UPDATED = "TASK_UPDATED", "Task Updated"
     TASK_REASSIGNED = "TASK_REASSIGNED", "Task Reassigned"
+    TASK_DELETED = "TASK_DELETED", "Task Deleted"
+    TASK_STATUS_CHANGED = "TASK_STATUS_CHANGED", "Task Status Changed"
     TASK_REMINDER = "TASK_REMINDER", "Task Reminder"
+
+    # Meeting Events
+    MEETING_CREATED = "MEETING_CREATED", "Meeting Created"
+    MEETING_RESCHEDULED = "MEETING_RESCHEDULED", "Meeting Rescheduled"
+    MEETING_STATUS_CHANGED = "MEETING_STATUS_CHANGED", "Meeting Status Changed"
+    MEETING_PARTICIPANT_ADDED = "MEETING_PARTICIPANT_ADDED", "Meeting Participant Added"
+    MEETING_PARTICIPANT_REMOVED = "MEETING_PARTICIPANT_REMOVED", "Meeting Participant Removed"
+
+    # Reminder Events
+    REMINDER_CREATED = "REMINDER_CREATED", "Reminder Created"
+    REMINDER_UPDATED = "REMINDER_UPDATED", "Reminder Updated"
+    REMINDER_DELETED = "REMINDER_DELETED", "Reminder Deleted"
+    REMINDER_STATUS_CHANGED = "REMINDER_STATUS_CHANGED", "Reminder Status Changed"
 
     # FollowUp Events
     FOLLOWUP_CREATED = "FOLLOWUP_CREATED", "Follow-up Created"
+    FOLLOWUP_UPDATED = "FOLLOWUP_UPDATED", "Follow-up Updated"
+    FOLLOWUP_DELETED = "FOLLOWUP_DELETED", "Follow-up Deleted"
+    FOLLOWUP_NOTE_ADDED = "FOLLOWUP_NOTE_ADDED", "Follow-up Note Added"
     FOLLOWUP_COMPLETED = "FOLLOWUP_COMPLETED", "Follow-up Completed"
     FOLLOWUP_REMINDER = "FOLLOWUP_REMINDER", "Follow-up Reminder"
 
     # Quotation Events
+    QUOTATION_CREATED = "QUOTATION_CREATED", "Quotation Created"
+    QUOTATION_UPDATED = "QUOTATION_UPDATED", "Quotation Updated"
+    QUOTATION_SENT = "QUOTATION_SENT", "Quotation Sent"
+    QUOTATION_REVISION_CREATED = "QUOTATION_REVISION_CREATED", "Quotation Revision Created"
+    QUOTATION_ACCEPTED = "QUOTATION_ACCEPTED", "Quotation Accepted"
+    QUOTATION_CLIENT_REJECTED = "QUOTATION_CLIENT_REJECTED", "Quotation Rejected by Client"
+    QUOTATION_EMAIL_SENT = "QUOTATION_EMAIL_SENT", "Quotation Email Sent"
     QUOTATION_SUBMITTED = "QUOTATION_SUBMITTED", "Quotation Submitted"
     QUOTATION_APPROVED = "QUOTATION_APPROVED", "Quotation Approved"
     QUOTATION_REJECTED = "QUOTATION_REJECTED", "Quotation Rejected"
+
+    # Lead Events
+    LEAD_CREATED = "LEAD_CREATED", "Lead Created"
+    LEAD_ASSIGNED = "LEAD_ASSIGNED", "Lead Assigned"
+    LEAD_STAGE_CHANGED = "LEAD_STAGE_CHANGED", "Lead Stage Changed"
+    LEAD_MARKED_LOST = "LEAD_MARKED_LOST", "Lead Marked Lost"
+    LEAD_REENGAGED = "LEAD_REENGAGED", "Lead Re-engaged"
+    LEAD_CONVERTED = "LEAD_CONVERTED", "Lead Converted"
+
+    # Activity Events
+    ACTIVITY_CREATED = "ACTIVITY_CREATED", "Activity Created"
 
     # Accounts / User Events
     ROLE_CHANGED = "ROLE_CHANGED", "Role Changed"
