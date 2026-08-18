@@ -1408,6 +1408,7 @@ class QuotationService:
         user,
         quotation,
     ):
+        quotation = Quotation.objects.select_for_update().get(pk=quotation.pk)
         version = quotation.current_version
         if not version:
             raise ValidationError("Quotation has no active version.")
@@ -1481,6 +1482,7 @@ class QuotationService:
         quotation,
         rejection_reason,
     ):
+        quotation = Quotation.objects.select_for_update().get(pk=quotation.pk)
         version = quotation.current_version
         if not version:
             raise ValidationError("Quotation has no active version.")
