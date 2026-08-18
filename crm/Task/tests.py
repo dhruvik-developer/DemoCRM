@@ -819,6 +819,47 @@ class MeetingAPITestCase(APITestCase):
             ).exists()
         )
 
+    def test_meeting_not_found(self):
+        response = self.client.get("/api/tasks/meetings/999999/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_meeting_forbidden_for_other_user(self):
+        other_user = CustomUser.objects.create_user(
+            email="meetingother@example.com",
+            username="meetingother",
+            password="Test@123",
+            phone_number="9999999992",
+            role=self.role,
+        )
+        meeting = self.create_meeting()
+        self.client.force_authenticate(user=other_user)
+        response = self.client.get(f"/api/tasks/meetings/{meeting.meeting_id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_reschedule_meeting_only_time(self):
+        meeting = self.create_meeting()
+        response = self.client.patch(
+            f"/api/tasks/meetings/{meeting.meeting_id}/reschedule/",
+            {
+                "start_time": "14:00:00",
+                "end_time": "15:00:00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        meeting.refresh_from_db()
+        self.assertEqual(str(meeting.start_time), "14:00:00")
+        self.assertEqual(str(meeting.end_time), "15:00:00")
+
+    def test_reschedule_meeting_empty_data(self):
+        meeting = self.create_meeting()
+        response = self.client.patch(
+            f"/api/tasks/meetings/{meeting.meeting_id}/reschedule/",
+            {},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     # ======================================================
     # HELPERS
     # ======================================================
@@ -829,7 +870,6 @@ class MeetingAPITestCase(APITestCase):
         ).date()
 
     def create_meeting(self):
-
         return Meeting.objects.create(
             task_id=self.task,
             lead=self.lead,
@@ -843,6 +883,7 @@ class MeetingAPITestCase(APITestCase):
             description="Test meeting",
             created_by=self.user,
         )
+
 
 
 class ReminderAPITestCase(APITestCase):
@@ -1171,4 +1212,54 @@ class ReminderAPITestCase(APITestCase):
             reminder.reminder_status_id,
             sent_status,
         )
+
+    # ======================================================
+    # ERROR & EDGE CASE TESTS
+    # ======================================================
+
+    def test_reminder_not_found(self):
+        response = self.client.get("/api/tasks/reminders/999999/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_reminder_forbidden_for_other_user(self):
+        other_user = CustomUser.objects.create_user(
+            email="other@example.com",
+            username="otheruser",
+            password="Test@123",
+            phone_number="9999999993",
+            role=self.role,
+        )
+        reminder = Reminder.objects.create(
+            task_id=None,
+            meeting_id=None,
+            reminder_for=self.user,
+            reminder_type_id=self.reminder_type,
+            reminder_status_id=self.reminder_status,
+            reminder_datetime=timezone.now() + timedelta(hours=1),
+            message="Private reminder",
+            created_by=self.user,
+        )
+        self.client.force_authenticate(user=other_user)
+        response = self.client.get(f"/api/tasks/reminders/{reminder.reminder_id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_process_due_meeting_reminders_task_and_meeting(self):
+        from Task.services import process_due_meeting_reminders
+        # Create a due standalone reminder
+        due_reminder = Reminder.objects.create(
+            task_id=self.task,
+            meeting_id=None,
+            reminder_for=self.user,
+            reminder_type_id=self.reminder_type,
+            reminder_status_id=self.reminder_status,
+            reminder_datetime=timezone.now() - timedelta(minutes=5),
+            message="Due task reminder",
+            created_by=self.user,
+            is_sent=False,
+        )
+        sent_count = process_due_meeting_reminders()
+        self.assertGreaterEqual(sent_count, 1)
+        due_reminder.refresh_from_db()
+        self.assertTrue(due_reminder.is_sent)
+
 

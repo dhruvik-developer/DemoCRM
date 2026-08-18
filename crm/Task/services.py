@@ -290,12 +290,14 @@ def create_meeting_reminder(
             )
             return None
 
-        meeting_datetime = timezone.make_aware(
-            datetime.combine(
-                meeting_date,
-                start_time,
-            )
+        combined_dt = datetime.combine(
+            meeting_date,
+            start_time,
         )
+        if timezone.is_naive(combined_dt):
+            meeting_datetime = timezone.make_aware(combined_dt)
+        else:
+            meeting_datetime = combined_dt
 
         reminder_datetime = (
             meeting_datetime
@@ -591,130 +593,139 @@ def send_due_reminder_notification(reminder):
     """
 
     try:
-
         meeting = reminder.meeting_id
 
-        if not meeting:
+        if meeting:
+            # --------------------------------------------------
+            # IN-SYSTEM NOTIFICATION
+            # --------------------------------------------------
+            if reminder.reminder_for:
+                create_notification(
+                    user=reminder.reminder_for,
+                    title=(
+                        f"Meeting Starting in 15 Mins: "
+                        f"{meeting.meeting_title}"
+                    ),
+                    message=(
+                        f"Your meeting '{meeting.meeting_title}' "
+                        f"will start at {meeting.start_time}."
+                    ),
+                    type_name="Meeting Reminder",
+                )
 
-            logger.warning(
-                "Due reminder skipped: meeting missing "
-                "reminder_id=%s",
-                reminder.reminder_id,
-            )
+                logger.info(
+                    "Reminder notification created: "
+                    "reminder_id=%s user_id=%s",
+                    reminder.reminder_id,
+                    getattr(
+                        reminder.reminder_for,
+                        "pk",
+                        None,
+                    ),
+                )
 
-            return False
-
-        # --------------------------------------------------
-        # IN-SYSTEM NOTIFICATION
-        # --------------------------------------------------
-
-        if reminder.reminder_for:
-
-            create_notification(
-                user=reminder.reminder_for,
-                title=(
-                    f"Meeting Starting in 15 Mins: "
-                    f"{meeting.meeting_title}"
-                ),
-                message=(
-                    f"Your meeting '{meeting.meeting_title}' "
-                    f"will start at {meeting.start_time}."
-                ),
-                type_name="Meeting Reminder",
-            )
-
-            logger.info(
-                "Reminder notification created: "
-                "reminder_id=%s user_id=%s",
-                reminder.reminder_id,
-                getattr(
+            # --------------------------------------------------
+            # EMAIL TO HOST
+            # --------------------------------------------------
+            if (
+                reminder.reminder_for
+                and getattr(
                     reminder.reminder_for,
-                    "pk",
+                    "email",
                     None,
-                ),
-            )
+                )
+            ):
+                send_mail(
+                    subject=(
+                        f"Meeting Starting in 15 Minutes - "
+                        f"{meeting.meeting_title}"
+                    ),
+                    message=(
+                        f"Hello,\n\n"
+                        f"Your meeting '{meeting.meeting_title}' "
+                        f"will start in 15 minutes "
+                        f"at {meeting.start_time}."
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[
+                        reminder.reminder_for.email
+                    ],
+                    fail_silently=False,
+                )
 
-        # --------------------------------------------------
-        # EMAIL TO HOST
-        # --------------------------------------------------
+                logger.info(
+                    "Due reminder email sent to host: "
+                    "reminder_id=%s recipient=%s",
+                    reminder.reminder_id,
+                    reminder.reminder_for.email,
+                )
 
-        if (
-            reminder.reminder_for
-            and getattr(
-                reminder.reminder_for,
-                "email",
-                None,
-            )
-        ):
+            # --------------------------------------------------
+            # EMAIL TO LEAD
+            # --------------------------------------------------
+            if (
+                meeting.lead
+                and getattr(
+                    meeting.lead,
+                    "email",
+                    None,
+                )
+            ):
+                send_mail(
+                    subject=(
+                        f"Meeting Starting in 15 Minutes - "
+                        f"{meeting.meeting_title}"
+                    ),
+                    message=(
+                        f"Hello "
+                        f"{getattr(meeting.lead, 'name', '')},\n\n"
+                        f"Your meeting '{meeting.meeting_title}' "
+                        f"will start in 15 minutes "
+                        f"at {meeting.start_time}."
+                    ),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[
+                        meeting.lead.email
+                    ],
+                    fail_silently=False,
+                )
 
-            send_mail(
-                subject=(
-                    f"Meeting Starting in 15 Minutes - "
-                    f"{meeting.meeting_title}"
-                ),
-                message=(
-                    f"Hello,\n\n"
-                    f"Your meeting '{meeting.meeting_title}' "
-                    f"will start in 15 minutes "
-                    f"at {meeting.start_time}."
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[
-                    reminder.reminder_for.email
-                ],
-                fail_silently=False,
-            )
+                logger.info(
+                    "Due reminder email sent to lead: "
+                    "reminder_id=%s recipient=%s",
+                    reminder.reminder_id,
+                    meeting.lead.email,
+                )
 
-            logger.info(
-                "Due reminder email sent to host: "
-                "reminder_id=%s recipient=%s",
-                reminder.reminder_id,
-                reminder.reminder_for.email,
-            )
+            return True
 
-        # --------------------------------------------------
-        # EMAIL TO LEAD
-        # --------------------------------------------------
+        else:
+            # Standalone / Task reminder
+            target_user = reminder.reminder_for or reminder.created_by
+            if target_user:
+                title = "Reminder Notification"
+                if reminder.task_id:
+                    title = f"Task Reminder: {reminder.task_id.task_title}"
 
-        if (
-            meeting.lead
-            and getattr(
-                meeting.lead,
-                "email",
-                None,
-            )
-        ):
+                create_notification(
+                    user=target_user,
+                    title=title,
+                    message=reminder.message,
+                    type_name="Reminder",
+                )
 
-            send_mail(
-                subject=(
-                    f"Meeting Starting in 15 Minutes - "
-                    f"{meeting.meeting_title}"
-                ),
-                message=(
-                    f"Hello "
-                    f"{getattr(meeting.lead, 'name', '')},\n\n"
-                    f"Your meeting '{meeting.meeting_title}' "
-                    f"will start in 15 minutes "
-                    f"at {meeting.start_time}."
-                ),
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[
-                    meeting.lead.email
-                ],
-                fail_silently=False,
-            )
+                if getattr(target_user, "email", None):
+                    send_mail(
+                        subject=title,
+                        message=f"Hello,\n\n{reminder.message}",
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[target_user.email],
+                        fail_silently=False,
+                    )
 
-            logger.info(
-                "Due reminder email sent to lead: "
-                "reminder_id=%s recipient=%s",
-                reminder.reminder_id,
-                meeting.lead.email,
-            )
-
-        return True
+            return True
 
     except Exception:
-
         logger.exception(
             "Error sending due reminder: reminder_id=%s",
             getattr(
@@ -723,7 +734,6 @@ def send_due_reminder_notification(reminder):
                 None,
             ),
         )
-
         return False
 
 
@@ -741,7 +751,6 @@ def process_due_meeting_reminders():
     """
 
     try:
-
         now = timezone.now()
 
         due_reminders = (
@@ -753,54 +762,47 @@ def process_due_meeting_reminders():
             .select_related(
                 "meeting_id",
                 "meeting_id__lead",
+                "task_id",
                 "reminder_for",
+                "created_by",
             )
         )
 
         sent_count = 0
 
         for reminder in due_reminders:
-
             try:
-
                 success = send_due_reminder_notification(
                     reminder
                 )
 
                 if success:
-
                     reminder.is_sent = True
-
                     reminder.save(
                         update_fields=["is_sent"]
                     )
-
                     sent_count += 1
-
                     logger.info(
-                        "Due meeting reminder processed successfully: "
+                        "Due reminder processed successfully: "
                         "reminder_id=%s",
                         reminder.reminder_id,
                     )
-
                 else:
-
                     logger.warning(
-                        "Due meeting reminder was not sent: "
+                        "Due reminder was not sent: "
                         "reminder_id=%s",
                         reminder.reminder_id,
                     )
 
             except Exception:
-
                 logger.exception(
-                    "Error processing due meeting reminder: "
+                    "Error processing due reminder: "
                     "reminder_id=%s",
                     reminder.reminder_id,
                 )
 
         logger.info(
-            "Due meeting reminder processing completed: "
+            "Due reminder processing completed: "
             "sent_count=%s",
             sent_count,
         )
@@ -808,10 +810,8 @@ def process_due_meeting_reminders():
         return sent_count
 
     except Exception:
-
         logger.exception(
             "Unexpected error while processing "
-            "due meeting reminders."
+            "due reminders."
         )
-
-        return 0
+        return 0

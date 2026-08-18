@@ -1,7 +1,9 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
+from django.http import Http404
 import logging
 from rest_framework import status
+from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -21,12 +23,9 @@ from .serializers import (
     ReminderSerializer,
 )
 from django.db.models import Q
-from django.db import transaction
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithLead
-from .services import(
-    c
-)
+from .services import send_meeting_creation_emails
 logger = logging.getLogger(__name__)
 
 
@@ -43,6 +42,7 @@ class TaskListCreateView(APIView):
         Create a task
     """
     permission_classes = [IsAuthenticated]
+
     def get(self, request):
         try:
             tasks = (
@@ -59,28 +59,36 @@ class TaskListCreateView(APIView):
                 )
                 .order_by("-created_at")
             )
-            #filter ===========================
+            # filter ===========================
             status_id = request.query_params.get("status")
             priority_id = request.query_params.get("priority")
+            category_id = request.query_params.get("category")
             assigned_to_id = request.query_params.get("assigned_to")
+            lead_id = request.query_params.get("lead")
+            customer_id = request.query_params.get("customer")
+
             if status_id:
-                tasks = tasks.filter(
-                    status_id=status_id
-                    )
-                tasks = tasks.filter(
-                    priority_id=priority_id
-                    )
-                tasks = tasks.filter(
-                    assigned_to_id=assigned_to_id
-                    )
-            #search ==============================
+                tasks = tasks.filter(status_id=status_id)
+            if priority_id:
+                tasks = tasks.filter(priority_id=priority_id)
+            if category_id:
+                tasks = tasks.filter(category_id=category_id)
+            if assigned_to_id:
+                tasks = tasks.filter(assigned_to_id=assigned_to_id)
+            if lead_id:
+                tasks = tasks.filter(lead_id=lead_id)
+            if customer_id:
+                tasks = tasks.filter(customer_id=customer_id)
+
+            # search ==============================
             search = request.query_params.get("search")
             if search:
                 tasks = tasks.filter(
-                    Q(task_title_icontains=search) 
-                    | Q(description_icontains=search)
+                    Q(task_title__icontains=search)
+                    | Q(description__icontains=search)
                 )
-            #dyanmic ordering =================================
+
+            # dynamic ordering =================================
             ordering = request.query_params.get(
                 "ordering",
                 "-created_at"
@@ -97,7 +105,8 @@ class TaskListCreateView(APIView):
                 tasks = tasks.order_by(ordering)
             else:
                 tasks = tasks.order_by("-created_at")
-            #pagination =============================
+
+            # pagination =============================
             paginator = CRMPageNumberPagination()
             paginated_task = paginator.paginate_queryset(
                 tasks,
@@ -112,9 +121,11 @@ class TaskListCreateView(APIView):
             logger.info(
                 "Tasks fetched successfully: user_id=%s count=%s",
                 request.user.pk,
-                request.query_params.get("page",1)
+                request.query_params.get("page", 1)
             )
             return paginator.get_paginated_response(serializer.data)
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while fetching tasks: user_id=%s",
@@ -126,6 +137,7 @@ class TaskListCreateView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
     def post(self, request):
         try:
             serializer = TaskSerializer(
@@ -157,6 +169,8 @@ class TaskListCreateView(APIView):
                 ).data,
                 status=status.HTTP_201_CREATED
             )
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while creating task: user_id=%s",
@@ -168,6 +182,8 @@ class TaskListCreateView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 # ==========================================================
 # TASK DETAIL / UPDATE / DELETE
 # ==========================================================
@@ -182,9 +198,9 @@ class TaskDetailView(APIView):
     DELETE /api/tasks/<task_id>/
         Soft delete task
     """
-    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
-    def get_task(self, task_id):
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
 
+    def get_task(self, task_id):
         return get_object_or_404(
             Task.objects.select_related(
                 "assigned_to",
@@ -198,6 +214,7 @@ class TaskDetailView(APIView):
             task_id=task_id,
             is_active=True
         )
+
     # ------------------------------------------------------
     # TASK DETAIL
     # ------------------------------------------------------
@@ -221,6 +238,8 @@ class TaskDetailView(APIView):
                 serializer.data,
                 status=status.HTTP_200_OK
             )
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while fetching task: task_id=%s user_id=%s",
@@ -233,12 +252,17 @@ class TaskDetailView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
     # ------------------------------------------------------
     # UPDATE TASK
     # ------------------------------------------------------
     def patch(self, request, task_id):
         try:
             task = self.get_task(task_id)
+            self.check_object_permissions(
+                request,
+                task
+            )
             serializer = TaskSerializer(
                 task,
                 data=request.data,
@@ -269,6 +293,8 @@ class TaskDetailView(APIView):
                 ).data,
                 status=status.HTTP_200_OK
             )
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while updating task: task_id=%s user_id=%s",
@@ -281,12 +307,17 @@ class TaskDetailView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
     # ------------------------------------------------------
     # DELETE TASK
     # ------------------------------------------------------
     def delete(self, request, task_id):
         try:
             task = self.get_task(task_id)
+            self.check_object_permissions(
+                request,
+                task
+            )
             task.is_active = False
             task.save(update_fields=["is_active"])
             logger.info(
@@ -301,6 +332,8 @@ class TaskDetailView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while deleting task: task_id=%s user_id=%s",
@@ -313,6 +346,8 @@ class TaskDetailView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 # ==========================================================
 # ASSIGN TASK
 # ==========================================================
@@ -323,6 +358,7 @@ class TaskAssignView(APIView):
     Assign or reassign a task.
     """
     permission_classes = [IsAuthenticated]
+
     def post(self, request, task_id):
         try:
             task = get_object_or_404(
@@ -375,6 +411,8 @@ class TaskAssignView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while assigning task: task_id=%s user_id=%s",
@@ -387,6 +425,8 @@ class TaskAssignView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 # ==========================================================
 # CHANGE TASK STATUS
 # ==========================================================
@@ -397,43 +437,67 @@ class TaskStatusUpdateView(APIView):
     Change task status.
     """
     permission_classes = [IsAuthenticated]
+
     def patch(self, request, task_id):
-        task = get_object_or_404(
-            Task,
-            task_id=task_id,
-            is_active=True
-        )
-        status_id = request.data.get("status_id")
-        if not status_id:
+        try:
+            task = get_object_or_404(
+                Task,
+                task_id=task_id,
+                is_active=True
+            )
+            status_id = request.data.get("status_id")
+            if not status_id:
+                return Response(
+                    {
+                        "status_id": "This field is required."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            new_status = get_object_or_404(
+                TaskStatus,
+                status_id=status_id,
+                is_active=True
+            )
+            old_status = task.status
+            task.status = new_status
+            task.save(
+                update_fields=[
+                    "status",
+                    "updated_at"
+                ]
+            )
+
+            logger.info(
+                "Task status updated successfully: task_id=%s old_status=%s new_status=%s user_id=%s",
+                task.task_id,
+                old_status.status_name,
+                new_status.status_name,
+                request.user.pk
+            )
+
             return Response(
                 {
-                    "status_id": "This field is required."
+                    "message": "Task status updated successfully.",
+                    "task_id": task.task_id,
+                    "previous_status": old_status.status_name,
+                    "new_status": new_status.status_name
                 },
-                status=status.HTTP_400_BAD_REQUEST
+                status=status.HTTP_200_OK
             )
-        new_status = get_object_or_404(
-            TaskStatus,
-            status_id=status_id,
-            is_active=True
-        )
-        old_status = task.status
-        task.status = new_status
-        task.save(
-            update_fields=[
-                "status",
-                "updated_at"
-            ]
-        )
-
-        return Response(
-            {
-                "message": "Task status updated successfully.",
-                "task_id": task.task_id,
-                "previous_status": old_status.status_name,
-                "new_status": new_status.status_name
-            },
-            status=status.HTTP_200_OK
-        )
+        except (Http404, APIException):
+            raise
+        except Exception:
+            logger.exception(
+                "Error while updating task status: task_id=%s user_id=%s",
+                task_id,
+                request.user.pk
+            )
+            return Response(
+                {
+                    "error": "Something went wrong while updating the task status."
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 # ==========================================================
 # MEETING
 # ==========================================================
@@ -444,6 +508,7 @@ class MeetingCreateView(APIView):
     Create a meeting.
     """
     permission_classes = [IsAuthenticated]
+
     def post(self, request):
         try:
             serializer = MeetingSerializer(
@@ -460,9 +525,11 @@ class MeetingCreateView(APIView):
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            with
             meeting = serializer.save(
                 created_by=request.user
+            )
+            send_meeting_creation_emails(
+                meeting
             )
             logger.info(
                 "Meeting created successfully: meeting_id=%s user_id=%s",
@@ -477,6 +544,8 @@ class MeetingCreateView(APIView):
                 ).data,
                 status=status.HTTP_201_CREATED
             )
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while creating meeting: user_id=%s",
@@ -488,12 +557,15 @@ class MeetingCreateView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 class MeetingDetailView(APIView):
     """
     GET /api/meetings/<meeting_id>/
     Get meeting details.
     """
-    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+
     def get(self, request, meeting_id):
         try:
             meeting = get_object_or_404(
@@ -522,6 +594,8 @@ class MeetingDetailView(APIView):
                 serializer.data,
                 status=status.HTTP_200_OK
             )
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while fetching meeting: meeting_id=%s user_id=%s",
@@ -534,6 +608,8 @@ class MeetingDetailView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 # ==========================================================
 # RESCHEDULE MEETING
 # ==========================================================
@@ -544,9 +620,9 @@ class MeetingRescheduleView(APIView):
 
     Change meeting date/time.
     """
-    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
-    def patch(self, request, meeting_id):
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
 
+    def patch(self, request, meeting_id):
         try:
             meeting = get_object_or_404(
                 Meeting,
@@ -556,13 +632,21 @@ class MeetingRescheduleView(APIView):
                 request,
                 meeting
             )
+
+            reschedule_data = {}
+            for field in ("meeting_date", "start_time", "end_time"):
+                if field in request.data:
+                    reschedule_data[field] = request.data[field]
+
+            if not reschedule_data:
+                return Response(
+                    {"error": "At least one of meeting_date, start_time, or end_time is required."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
             serializer = MeetingSerializer(
                 meeting,
-                data={
-                    "meeting_date": request.data.get("meeting_date"),
-                    "start_time": request.data.get("start_time"),
-                    "end_time": request.data.get("end_time"),
-                },
+                data=reschedule_data,
                 partial=True,
                 context={"request": request}
             )
@@ -595,6 +679,8 @@ class MeetingRescheduleView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while rescheduling meeting: "
@@ -602,13 +688,14 @@ class MeetingRescheduleView(APIView):
                 meeting_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while rescheduling the meeting."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 # ==========================================================
 # CHANGE MEETING STATUS
 # ==========================================================
@@ -619,14 +706,12 @@ class MeetingStatusUpdateView(APIView):
 
     Change meeting status.
     """
-
-    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
 
     def patch(self, request, meeting_id):
-
         try:
             meeting = get_object_or_404(
-                Meeting,
+                Meeting.objects.select_related('meeting_status_id'),
                 meeting_id=meeting_id
             )
             self.check_object_permissions(
@@ -636,14 +721,12 @@ class MeetingStatusUpdateView(APIView):
             status_id = request.data.get("meeting_status_id")
 
             if not status_id:
-
                 logger.warning(
                     "Meeting status update failed: status_id missing "
                     "meeting_id=%s user_id=%s",
                     meeting_id,
                     request.user.pk
                 )
-
                 return Response(
                     {
                         "meeting_status_id": "This field is required."
@@ -658,9 +741,7 @@ class MeetingStatusUpdateView(APIView):
             )
 
             old_status = meeting.meeting_status_id
-
             meeting.meeting_status_id = new_status
-
             meeting.save(
                 update_fields=[
                     "meeting_status_id",
@@ -686,7 +767,8 @@ class MeetingStatusUpdateView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while updating meeting status: "
@@ -694,13 +776,14 @@ class MeetingStatusUpdateView(APIView):
                 meeting_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": "Something went wrong while updating the meeting status."
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 # ==========================================================
 # ADD MEETING PARTICIPANT
 # ==========================================================
@@ -711,11 +794,9 @@ class MeetingParticipantAddView(APIView):
 
     Add a participant.
     """
-
-    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
 
     def post(self, request, meeting_id):
-
         try:
             meeting = get_object_or_404(
                 Meeting,
@@ -737,16 +818,13 @@ class MeetingParticipantAddView(APIView):
             # --------------------------------------------------
             # USER ID VALIDATION
             # --------------------------------------------------
-
             if not user_id:
-
                 logger.warning(
                     "Add participant failed: user_id missing "
                     "meeting_id=%s performed_by=%s",
                     meeting_id,
                     request.user.pk
                 )
-
                 return Response(
                     {
                         "user_id": "This field is required."
@@ -757,9 +835,7 @@ class MeetingParticipantAddView(APIView):
             # --------------------------------------------------
             # PARTICIPANT ROLE VALIDATION
             # --------------------------------------------------
-
             if not participant_role:
-
                 logger.warning(
                     "Add participant failed: participant_role missing "
                     "meeting_id=%s user_id=%s performed_by=%s",
@@ -767,7 +843,6 @@ class MeetingParticipantAddView(APIView):
                     user_id,
                     request.user.pk
                 )
-
                 return Response(
                     {
                         "participant_role": (
@@ -780,7 +855,6 @@ class MeetingParticipantAddView(APIView):
             # --------------------------------------------------
             # GET USER
             # --------------------------------------------------
-
             user = get_object_or_404(
                 User,
                 pk=user_id
@@ -789,14 +863,12 @@ class MeetingParticipantAddView(APIView):
             # --------------------------------------------------
             # CHECK DUPLICATE PARTICIPANT
             # --------------------------------------------------
-
             already_exists = MeetingParticipant.objects.filter(
                 meeting_id=meeting,
                 user_id=user
             ).exists()
 
             if already_exists:
-
                 logger.warning(
                     "Duplicate participant attempt: "
                     "meeting_id=%s user_id=%s performed_by=%s",
@@ -804,7 +876,6 @@ class MeetingParticipantAddView(APIView):
                     user_id,
                     request.user.pk
                 )
-
                 return Response(
                     {
                         "error": (
@@ -818,7 +889,6 @@ class MeetingParticipantAddView(APIView):
             # --------------------------------------------------
             # CREATE PARTICIPANT
             # --------------------------------------------------
-
             participant = MeetingParticipant.objects.create(
                 meeting_id=meeting,
                 user_id=user,
@@ -838,7 +908,6 @@ class MeetingParticipantAddView(APIView):
             # --------------------------------------------------
             # SERIALIZE RESPONSE
             # --------------------------------------------------
-
             serializer = MeetingParticipantSerializer(
                 participant,
                 context={"request": request}
@@ -848,7 +917,8 @@ class MeetingParticipantAddView(APIView):
                 serializer.data,
                 status=status.HTTP_201_CREATED
             )
-
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while adding meeting participant: "
@@ -856,7 +926,6 @@ class MeetingParticipantAddView(APIView):
                 meeting_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": (
@@ -866,6 +935,8 @@ class MeetingParticipantAddView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 # ==========================================================
 # REMOVE MEETING PARTICIPANT
 # ==========================================================
@@ -876,11 +947,9 @@ class MeetingParticipantRemoveView(APIView):
 
     Remove participant from meeting.
     """
-
-    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
 
     def delete(self, request, meeting_id, user_id):
-
         try:
             meeting = get_object_or_404(
                 Meeting,
@@ -914,7 +983,8 @@ class MeetingParticipantRemoveView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while removing meeting participant: "
@@ -923,7 +993,6 @@ class MeetingParticipantRemoveView(APIView):
                 user_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": (
@@ -933,6 +1002,8 @@ class MeetingParticipantRemoveView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 # ==========================================================
 # REMINDER
 # ==========================================================
@@ -943,7 +1014,6 @@ class ReminderCreateView(APIView):
 
     Create a reminder.
     """
-
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
@@ -953,13 +1023,11 @@ class ReminderCreateView(APIView):
                 context={"request": request}
             )
             if not serializer.is_valid():
-
                 logger.warning(
                     "Reminder validation failed: user_id=%s errors=%s",
                     request.user.pk,
                     serializer.errors
                 )
-
                 return Response(
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
@@ -982,13 +1050,13 @@ class ReminderCreateView(APIView):
                 ).data,
                 status=status.HTTP_201_CREATED
             )
-
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while creating reminder: user_id=%s",
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": (
@@ -998,6 +1066,8 @@ class ReminderCreateView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 class ReminderDetailView(APIView):
     """
     GET    /api/reminders/<reminder_id>/
@@ -1009,11 +1079,9 @@ class ReminderDetailView(APIView):
     DELETE /api/reminders/<reminder_id>/
         Delete reminder
     """
-
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
 
     def get_reminder(self, reminder_id):
-
         return get_object_or_404(
             Reminder.objects.select_related(
                 "task_id",
@@ -1028,11 +1096,13 @@ class ReminderDetailView(APIView):
     # ------------------------------------------------------
     # REMINDER DETAIL
     # ------------------------------------------------------
-
     def get(self, request, reminder_id):
-
         try:
             reminder = self.get_reminder(reminder_id)
+            self.check_object_permissions(
+                request,
+                reminder
+            )
 
             serializer = ReminderSerializer(
                 reminder,
@@ -1050,7 +1120,8 @@ class ReminderDetailView(APIView):
                 serializer.data,
                 status=status.HTTP_200_OK
             )
-
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while fetching reminder: "
@@ -1058,7 +1129,6 @@ class ReminderDetailView(APIView):
                 reminder_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": (
@@ -1072,11 +1142,13 @@ class ReminderDetailView(APIView):
     # ------------------------------------------------------
     # UPDATE REMINDER
     # ------------------------------------------------------
-
     def patch(self, request, reminder_id):
-
         try:
             reminder = self.get_reminder(reminder_id)
+            self.check_object_permissions(
+                request,
+                reminder
+            )
 
             serializer = ReminderSerializer(
                 reminder,
@@ -1086,7 +1158,6 @@ class ReminderDetailView(APIView):
             )
 
             if not serializer.is_valid():
-
                 logger.warning(
                     "Reminder update validation failed: "
                     "reminder_id=%s user_id=%s errors=%s",
@@ -1094,7 +1165,6 @@ class ReminderDetailView(APIView):
                     request.user.pk,
                     serializer.errors
                 )
-
                 return Response(
                     serializer.errors,
                     status=status.HTTP_400_BAD_REQUEST
@@ -1116,7 +1186,8 @@ class ReminderDetailView(APIView):
                 ).data,
                 status=status.HTTP_200_OK
             )
-
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while updating reminder: "
@@ -1124,7 +1195,6 @@ class ReminderDetailView(APIView):
                 reminder_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": (
@@ -1138,11 +1208,13 @@ class ReminderDetailView(APIView):
     # ------------------------------------------------------
     # DELETE REMINDER
     # ------------------------------------------------------
-
     def delete(self, request, reminder_id):
-
         try:
             reminder = self.get_reminder(reminder_id)
+            self.check_object_permissions(
+                request,
+                reminder
+            )
 
             reminder.delete()
 
@@ -1160,7 +1232,8 @@ class ReminderDetailView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while deleting reminder: "
@@ -1168,7 +1241,6 @@ class ReminderDetailView(APIView):
                 reminder_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": (
@@ -1178,6 +1250,8 @@ class ReminderDetailView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
 # ==========================================================
 # CHANGE REMINDER STATUS
 # ==========================================================
@@ -1188,14 +1262,12 @@ class ReminderStatusUpdateView(APIView):
 
     Change reminder status.
     """
-
-    permission_classes = [IsAuthenticated,CanCommunicateWithLead]
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
 
     def patch(self, request, reminder_id):
-
         try:
             reminder = get_object_or_404(
-                Reminder,
+                Reminder.objects.select_related('reminder_status_id'),
                 reminder_id=reminder_id
             )
             self.check_object_permissions(
@@ -1207,14 +1279,12 @@ class ReminderStatusUpdateView(APIView):
             )
 
             if not status_id:
-
                 logger.warning(
                     "Reminder status update failed: "
                     "status_id missing reminder_id=%s user_id=%s",
                     reminder_id,
                     request.user.pk
                 )
-
                 return Response(
                     {
                         "reminder_status_id": (
@@ -1231,9 +1301,7 @@ class ReminderStatusUpdateView(APIView):
             )
 
             old_status = reminder.reminder_status_id
-
             reminder.reminder_status_id = new_status
-
             reminder.save(
                 update_fields=[
                     "reminder_status_id",
@@ -1262,7 +1330,8 @@ class ReminderStatusUpdateView(APIView):
                 },
                 status=status.HTTP_200_OK
             )
-
+        except (Http404, APIException):
+            raise
         except Exception:
             logger.exception(
                 "Error while updating reminder status: "
@@ -1270,7 +1339,6 @@ class ReminderStatusUpdateView(APIView):
                 reminder_id,
                 request.user.pk
             )
-
             return Response(
                 {
                     "error": (

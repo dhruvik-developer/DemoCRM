@@ -467,3 +467,57 @@ class FollowUpAPITestCase(APITestCase):
             response.status_code,
             status.HTTP_200_OK,
         )
+
+    # ======================================================
+    # ERROR & NOTIFICATION TESTS
+    # ======================================================
+
+    def test_followup_not_found(self):
+        response = self.client.get("/api/followups/999999/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_followup_forbidden_for_other_user(self):
+        other_user = CustomUser.objects.create_user(
+            email="followupother@example.com",
+            username="followupother",
+            password="Test@123",
+            phone_number="9999999991",
+            role=self.role,
+        )
+        self.client.force_authenticate(user=other_user)
+        response = self.client.get(f"/api/followups/{self.followup.followup_id}/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_notification_list_and_patch(self):
+        from FollowUp.models import Notification, NotificationType, NotificationTemplate
+        ntype = NotificationType.objects.create(type_name="Alert")
+        ntemplate = NotificationTemplate.objects.create(subject="Test Notification", body="Test message")
+        notification = Notification.objects.create(
+            user_id=self.user,
+            notification_type_id=ntype,
+            template_id=ntemplate,
+            title="Test Notification",
+            message="Test message",
+            is_read=False,
+        )
+
+        # List
+        response = self.client.get("/api/followups/notifications/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertGreaterEqual(len(response.data), 1)
+
+        # Detail
+        response = self.client.get(f"/api/followups/notifications/{notification.notification_id}/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["notification_id"], notification.notification_id)
+
+        # Patch - mark as read
+        response = self.client.patch(
+            f"/api/followups/notifications/{notification.notification_id}/",
+            {"is_read": True},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        notification.refresh_from_db()
+        self.assertTrue(notification.is_read)
+        self.assertIsNotNone(notification.read_at)

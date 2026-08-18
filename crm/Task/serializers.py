@@ -66,6 +66,7 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "task_id",
+            "created_by",
             "created_at",
             "updated_at",
         )
@@ -164,6 +165,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "meeting_id",
+            "created_by",
             "created_at",
             "updated_at",
         )
@@ -267,6 +269,7 @@ class ReminderSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "reminder_id",
+            "created_by",
             "created_at",
             "updated_at",
         )
@@ -282,6 +285,8 @@ class ReminderSerializer(serializers.ModelSerializer):
         return value
 
     def validate_reminder_datetime(self, value):
+        if self.instance and self.instance.reminder_datetime == value:
+            return value
         if value < timezone.now():
             raise serializers.ValidationError(
                 "Reminder date and time cannot be in the past."
