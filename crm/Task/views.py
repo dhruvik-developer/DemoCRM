@@ -1,4 +1,3 @@
-
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 import logging
@@ -286,7 +285,6 @@ class TaskDetailView(APIView):
             task = self.get_task(task_id)
             task.is_active = False
             task.save(update_fields=["is_active"])
-
             logger.info(
                 "Task soft deleted successfully: task_id=%s user_id=%s",
                 task.task_id,

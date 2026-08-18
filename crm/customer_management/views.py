@@ -1,7 +1,15 @@
+import logging
+
+from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError as DjangoValidationError
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 
+User = get_user_model()
+logger = logging.getLogger(__name__)
+
 from rest_framework import generics, status
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -272,10 +280,8 @@ class LeadAssignView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        from accounts.models import CustomUser
-
         new_assignee = get_object_or_404(
-            CustomUser,
+            User,
             pk=assigned_to_id,
         )
 
@@ -592,8 +598,13 @@ class QuotationListCreateView(APIView):
     def get(self, request):
         lead_id = request.query_params.get("lead")
         queryset = Quotation.objects.select_related(
-            "lead", "customer", "created_by", "current_version"
-        ).prefetch_related("versions", "versions__line_items", "versions__approvals")
+            "lead", "customer", "created_by", "current_version",
+            "current_version__created_by", "current_version__assigned_to",
+            "current_version__pipeline", "current_version__current_stage"
+        ).prefetch_related(
+            "current_version__line_items", "current_version__approvals",
+            "versions", "versions__line_items", "versions__approvals"
+        )
 
         if lead_id:
             queryset = queryset.filter(lead_id=lead_id)
@@ -726,6 +737,11 @@ class QuotationApproveView(APIView):
                 reviewer_user=request.user,
                 quotation=quotation,
             )
+        except PermissionDenied as exc:
+            return Response(
+                {"detail": str(exc)},
+                status=status.HTTP_403_FORBIDDEN,
+            )
         except DjangoValidationError as exc:
             return Response(
                 {"detail": exc.message},
@@ -803,6 +819,7 @@ class QuotationRevisionView(APIView):
         terms = request.data.get("terms")
         notes = request.data.get("notes")
         line_items = request.data.get("line_items")
+        revision_reason = request.data.get("revision_reason") or request.data.get("reason")
 
         try:
             quotation = QuotationService.create_revision(
@@ -811,6 +828,7 @@ class QuotationRevisionView(APIView):
                 terms=terms,
                 notes=notes,
                 line_items=line_items,
+                revision_reason=revision_reason,
             )
         except DjangoValidationError as exc:
             return Response(
@@ -894,3 +912,118 @@ class QuotationIntegrationEventListView(generics.ListAPIView):
     permission_names = {
         "GET": "view_quotation",
     }
+
+
+class QuotationPDFView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "generate_quotation_pdf",
+    }
+
+    def get(self, request, pk):
+        from .pdf_utils import generate_quotation_pdf
+
+        quotation = get_object_or_404(Quotation, pk=pk)
+
+        version_param = request.query_params.get("version")
+        if version_param is not None:
+            try:
+                v_num = int(version_param)
+                version = quotation.versions.filter(version_number=v_num).first()
+                if not version:
+                    return Response(
+                        {"detail": f"Quotation version {v_num} not found."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+            except ValueError:
+                return Response(
+                    {"detail": "Invalid version parameter."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        else:
+            version = quotation.current_version
+
+        if not version:
+            return Response(
+                {"detail": "Quotation has no active version."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if version.status in ["DRAFT", "PENDING_APPROVAL"]:
+            return Response(
+                {"detail": f"PDF download is not allowed for quotations in state '{version.status}'."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            pdf_bytes = generate_quotation_pdf(version)
+        except Exception as exc:
+            logger.error("Failed to generate quotation PDF: %s", str(exc))
+            return Response(
+                {"detail": f"Failed to generate PDF: {str(exc)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        CRMService.create_audit_log(
+            user=request.user,
+            entity_type="Quotation",
+            entity_id=quotation.id,
+            action="QUOTATION_PDF_GENERATED",
+            metadata={
+                "version": version.version_number,
+                "quotation_number": quotation.quotation_number,
+            },
+        )
+
+        filename = f"{quotation.quotation_number}_v{version.version_number}.pdf"
+        response = HttpResponse(pdf_bytes, content_type="application/pdf")
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        return response
+
+
+class QuotationSendEmailView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "POST": "send_quotation",
+    }
+
+    def post(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+
+        recipient_email = request.data.get("recipient_email")
+        subject = request.data.get("subject")
+        body = request.data.get("body")
+        version_param = request.data.get("version")
+
+        version_number = None
+        if version_param is not None:
+            try:
+                version_number = int(version_param)
+            except (ValueError, TypeError):
+                return Response(
+                    {"detail": "Invalid version parameter."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        try:
+            quotation, version = QuotationService.send_quotation_email(
+                user=request.user,
+                quotation=quotation,
+                version_number=version_number,
+                recipient_email=recipient_email,
+                subject=subject,
+                body=body,
+            )
+        except DjangoValidationError as exc:
+            return Response(
+                {"detail": exc.message},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            {
+                "detail": f"Quotation email sent to {version.sent_to}.",
+                "quotation": QuotationSerializer(quotation).data,
+            },
+            status=status.HTTP_200_OK,
+        )

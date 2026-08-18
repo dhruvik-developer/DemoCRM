@@ -21,9 +21,11 @@ from .views import (
     QuotationDetailView,
     QuotationIntegrationEventListView,
     QuotationListCreateView,
+    QuotationPDFView,
     QuotationRejectApprovalView,
     QuotationRejectView,
     QuotationRevisionView,
+    QuotationSendEmailView,
     QuotationSendView,
     QuotationSubmitView,
     QuotationUpdateDraftView,
@@ -125,6 +127,11 @@ urlpatterns = [
         name="quotation-detail",
     ),
     path(
+        "quotations/<uuid:pk>/pdf/",
+        QuotationPDFView.as_view(),
+        name="quotation-pdf",
+    ),
+    path(
         "quotations/<uuid:pk>/update-draft/",
         QuotationUpdateDraftView.as_view(),
         name="quotation-update-draft",
@@ -148,6 +155,11 @@ urlpatterns = [
         "quotations/<uuid:pk>/send/",
         QuotationSendView.as_view(),
         name="quotation-send",
+    ),
+    path(
+        "quotations/<uuid:pk>/send-email/",
+        QuotationSendEmailView.as_view(),
+        name="quotation-send-email",
     ),
     path(
         "quotations/<uuid:pk>/revision/",
