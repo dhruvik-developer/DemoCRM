@@ -1417,12 +1417,19 @@ class QuotationService:
             },
         )
 
+        if quotation.customer:
+            activity_customer = quotation.customer
+            activity_lead = None
+        else:
+            activity_customer = None
+            activity_lead = quotation.lead
+
         CRMService.create_activity(
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_EMAIL_SENT,
             outcome=f"Emailed Quotation {quotation.quotation_number} (v{version.version_number}) to {to_email}",
-            lead=quotation.lead,
-            customer=quotation.customer,
+            lead=activity_lead,
+            customer=activity_customer,
             quotation=quotation,
             notes=f"Subject: {email_subject}",
         )
