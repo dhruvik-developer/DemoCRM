@@ -8,27 +8,15 @@ from .views import (
 
 
 urlpatterns = [
-
     # ======================================================
     # FOLLOWUP
     # ======================================================
-
     # FollowUp
-    path(
-        "",
-        FollowUpListCreateView.as_view(),
-        name="followup-list-create"
-    ),
-
-    path(
-        "<int:followup_id>/",
-        FollowUpDetailView.as_view(),
-        name="followup-detail"
-    ),
-
+    path("", FollowUpListCreateView.as_view(), name="followup-list-create"),
+    path("<int:followup_id>/", FollowUpDetailView.as_view(), name="followup-detail"),
     path(
         "<int:followup_id>/notes/",
         FollowUpNoteCreateView.as_view(),
-        name="followup-add-note"
+        name="followup-add-note",
     ),
 ]

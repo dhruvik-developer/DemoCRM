@@ -30,7 +30,6 @@ from .models import (
 
 
 class CRMService:
-
     # ---------------------------------------------------------
     # AUDIT LOG
     # ---------------------------------------------------------
@@ -132,14 +131,10 @@ class CRMService:
         quotation_approval_required=False,
     ):
         if not pipeline.is_active:
-            raise ValidationError(
-                "Cannot create a stage inside an inactive pipeline."
-            )
+            raise ValidationError("Cannot create a stage inside an inactive pipeline.")
 
         if display_order < 1:
-            raise ValidationError(
-                "Display order must be at least 1."
-            )
+            raise ValidationError("Display order must be at least 1.")
 
         stage = PipelineStage.objects.create(
             pipeline=pipeline,
@@ -184,14 +179,10 @@ class CRMService:
         company_name=None,
     ):
         if not source.is_active:
-            raise ValidationError(
-                "Cannot create a Lead using an inactive Lead Source."
-            )
+            raise ValidationError("Cannot create a Lead using an inactive Lead Source.")
 
         if not pipeline.is_active:
-            raise ValidationError(
-                "Cannot create a Lead using an inactive Pipeline."
-            )
+            raise ValidationError("Cannot create a Lead using an inactive Pipeline.")
 
         if not current_stage.is_active:
             raise ValidationError(
@@ -204,13 +195,10 @@ class CRMService:
             )
 
         if not assigned_to.is_active:
-            raise ValidationError(
-                "An inactive employee cannot be assigned a Lead."
-            )
+            raise ValidationError("An inactive employee cannot be assigned a Lead.")
 
         first_stage = (
-            PipelineStage.objects
-            .filter(
+            PipelineStage.objects.filter(
                 pipeline=pipeline,
                 is_active=True,
             )
@@ -219,9 +207,7 @@ class CRMService:
         )
 
         if not first_stage:
-            raise ValidationError(
-                "The selected Pipeline has no active stages."
-            )
+            raise ValidationError("The selected Pipeline has no active stages.")
 
         if current_stage.id != first_stage.id:
             raise ValidationError(
@@ -279,9 +265,7 @@ class CRMService:
         new_assignee,
     ):
         if not new_assignee.is_active:
-            raise ValidationError(
-                "An inactive employee cannot be assigned a Lead."
-            )
+            raise ValidationError("An inactive employee cannot be assigned a Lead.")
 
         old_assignee = lead.assigned_to
 
@@ -336,15 +320,11 @@ class CRMService:
         current_stage = lead.current_stage
 
         if stage_id:
-            target_stage = (
-                PipelineStage.objects
-                .filter(
-                    id=stage_id,
-                    pipeline=lead.pipeline,
-                    is_active=True,
-                )
-                .first()
-            )
+            target_stage = PipelineStage.objects.filter(
+                id=stage_id,
+                pipeline=lead.pipeline,
+                is_active=True,
+            ).first()
 
             if not target_stage:
                 raise ValidationError(
@@ -355,8 +335,7 @@ class CRMService:
 
         else:
             next_stage = (
-                PipelineStage.objects
-                .filter(
+                PipelineStage.objects.filter(
                     pipeline=lead.pipeline,
                     is_active=True,
                     display_order__gt=current_stage.display_order,
@@ -366,9 +345,7 @@ class CRMService:
             )
 
             if not next_stage:
-                raise ValidationError(
-                    "There is no next active stage."
-                )
+                raise ValidationError("There is no next active stage.")
 
         old_stage = current_stage
 
@@ -395,7 +372,8 @@ class CRMService:
                 event_type=NotificationEventType.LEAD_STAGE_CHANGED,
                 recipient=lead.assigned_to,
                 context={
-                    "user_name": lead.assigned_to.get_full_name() or lead.assigned_to.username,
+                    "user_name": lead.assigned_to.get_full_name()
+                    or lead.assigned_to.username,
                     "employee_name": user.get_full_name() or user.username,
                     "lead_name": lead.name,
                     "lead_id": lead.id,
@@ -418,14 +396,10 @@ class CRMService:
         lost_reason,
     ):
         if lead.status != Lead.Status.ACTIVE:
-            raise ValidationError(
-                "Only active Leads can be marked as lost."
-            )
+            raise ValidationError("Only active Leads can be marked as lost.")
 
         if not lost_reason:
-            raise ValidationError(
-                "Lost reason is required."
-            )
+            raise ValidationError("Lost reason is required.")
 
         lead.status = Lead.Status.LOST
         lead.lost_reason = lost_reason
@@ -459,7 +433,8 @@ class CRMService:
                 event_type=NotificationEventType.LEAD_MARKED_LOST,
                 recipient=lead.assigned_to,
                 context={
-                    "user_name": lead.assigned_to.get_full_name() or lead.assigned_to.username,
+                    "user_name": lead.assigned_to.get_full_name()
+                    or lead.assigned_to.username,
                     "employee_name": user.get_full_name() or user.username,
                     "lead_name": lead.name,
                     "lead_id": lead.id,
@@ -480,9 +455,7 @@ class CRMService:
         lead,
     ):
         if lead.status != Lead.Status.LOST:
-            raise ValidationError(
-                "Only lost Leads can be re-engaged."
-            )
+            raise ValidationError("Only lost Leads can be re-engaged.")
 
         old_status = lead.status
 
@@ -517,7 +490,8 @@ class CRMService:
                 event_type=NotificationEventType.LEAD_REENGAGED,
                 recipient=lead.assigned_to,
                 context={
-                    "user_name": lead.assigned_to.get_full_name() or lead.assigned_to.username,
+                    "user_name": lead.assigned_to.get_full_name()
+                    or lead.assigned_to.username,
                     "employee_name": user.get_full_name() or user.username,
                     "lead_name": lead.name,
                     "lead_id": lead.id,
@@ -544,9 +518,7 @@ class CRMService:
         follow_up_date=None,
     ):
         if not lead and not customer:
-            raise ValidationError(
-                "Activity must belong to a Lead or Customer."
-            )
+            raise ValidationError("Activity must belong to a Lead or Customer.")
 
         if lead and customer:
             raise ValidationError(
@@ -561,9 +533,7 @@ class CRMService:
                 )
 
         if follow_up_required and not follow_up_date:
-            raise ValidationError(
-                "Follow-up date is required."
-            )
+            raise ValidationError("Follow-up date is required.")
 
         if not follow_up_required and follow_up_date:
             raise ValidationError(
@@ -599,7 +569,7 @@ class CRMService:
         if lead and lead.assigned_to and lead.assigned_to != user:
             notify_recipients.add(lead.assigned_to)
         if customer:
-            from customer_management.models import Customer
+
             assigned = getattr(customer, "assigned_to", None)
             if assigned and assigned != user:
                 notify_recipients.add(assigned)
@@ -634,48 +604,30 @@ class CRMService:
         phone,
         company_name=None,
     ):
-        lead = (
-            Lead.objects
-            .select_for_update()
-            .get(pk=lead.pk)
-        )
+        lead = Lead.objects.select_for_update().get(pk=lead.pk)
 
         if lead.status == Lead.Status.CONVERTED:
-            raise ValidationError(
-                "This Lead has already been converted."
-            )
+            raise ValidationError("This Lead has already been converted.")
 
         if lead.status != Lead.Status.ACTIVE:
-            raise ValidationError(
-                "Only active Leads can be converted."
-            )
+            raise ValidationError("Only active Leads can be converted.")
 
         accepted_quotation = None
         if lead.current_stage.requires_quotation:
-            accepted_quotation = (
-                Quotation.objects
-                .filter(
-                    lead=lead,
-                    current_version__status=QuotationStatus.ACCEPTED,
-                )
-                .first()
-            )
+            accepted_quotation = Quotation.objects.filter(
+                lead=lead,
+                current_version__status=QuotationStatus.ACCEPTED,
+            ).first()
 
             if not accepted_quotation:
                 raise ValidationError(
                     "This Lead's quotation must be accepted before it can be converted."
                 )
 
-        existing_customer = (
-            Customer.objects
-            .filter(email=email)
-            .first()
-        )
+        existing_customer = Customer.objects.filter(email=email).first()
 
         if existing_customer:
-            raise ValidationError(
-                "A customer with this email address already exists."
-            )
+            raise ValidationError("A customer with this email address already exists.")
 
         customer = Customer.objects.create(
             lead=lead,
@@ -732,7 +684,6 @@ class CRMService:
 
 
 class QuotationService:
-
     @staticmethod
     def generate_quotation_number():
         prefix = f"Q-{timezone.now().strftime('%Y%m')}"
@@ -758,7 +709,9 @@ class QuotationService:
             raise ValidationError("Cannot create a quotation for a non-active Lead.")
 
         assigned_user = assigned_to or lead.assigned_to
-        approval_required = bool(lead.current_stage and lead.current_stage.quotation_approval_required)
+        approval_required = bool(
+            lead.current_stage and lead.current_stage.quotation_approval_required
+        )
         quotation_num = QuotationService.generate_quotation_number()
 
         quotation = Quotation.objects.create(
@@ -786,6 +739,7 @@ class QuotationService:
         if line_items:
             if isinstance(line_items, str):
                 import json
+
                 try:
                     line_items = json.loads(line_items)
                 except Exception:
@@ -793,6 +747,7 @@ class QuotationService:
             for item in line_items:
                 if isinstance(item, str):
                     import json
+
                     try:
                         item = json.loads(item)
                     except Exception:
@@ -839,14 +794,20 @@ class QuotationService:
             notes=f"Total: ${total}",
         )
 
-        logger.info("Quotation created: %s for lead %s (total: %s)", quotation.quotation_number, lead.id, total)
+        logger.info(
+            "Quotation created: %s for lead %s (total: %s)",
+            quotation.quotation_number,
+            lead.id,
+            total,
+        )
 
         if assigned_user and assigned_user != user:
             trigger_notification_event(
                 event_type=NotificationEventType.QUOTATION_CREATED,
                 recipient=assigned_user,
                 context={
-                    "user_name": assigned_user.get_full_name() or assigned_user.username,
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
                     "employee_name": user.get_full_name() or user.username,
                     "quotation_number": quotation.quotation_number,
                     "total_amount": str(total),
@@ -868,7 +829,9 @@ class QuotationService:
     ):
         version = quotation.current_version
         if not version or version.status != QuotationStatus.DRAFT:
-            raise ValidationError("Only draft quotations can be edited directly. Create a revision for sent/approved quotations.")
+            raise ValidationError(
+                "Only draft quotations can be edited directly. Create a revision for sent/approved quotations."
+            )
 
         if terms is not None:
             version.terms = terms
@@ -878,6 +841,7 @@ class QuotationService:
         if line_items is not None:
             if isinstance(line_items, str):
                 import json
+
                 try:
                     line_items = json.loads(line_items)
                 except Exception:
@@ -887,6 +851,7 @@ class QuotationService:
             for item in line_items:
                 if isinstance(item, str):
                     import json
+
                     try:
                         item = json.loads(item)
                     except Exception:
@@ -922,7 +887,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_UPDATED,
             outcome=f"Updated draft Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
         )
@@ -933,7 +898,8 @@ class QuotationService:
                 event_type=NotificationEventType.QUOTATION_UPDATED,
                 recipient=assigned_user,
                 context={
-                    "user_name": assigned_user.get_full_name() or assigned_user.username,
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
                     "employee_name": user.get_full_name() or user.username,
                     "quotation_number": quotation.quotation_number,
                     "version": version.version_number,
@@ -954,7 +920,9 @@ class QuotationService:
             raise ValidationError("Quotation has no active version.")
 
         if version.status not in [QuotationStatus.DRAFT, QuotationStatus.REVISED]:
-            raise ValidationError(f"Quotation in status '{version.status}' cannot be submitted for approval.")
+            raise ValidationError(
+                f"Quotation in status '{version.status}' cannot be submitted for approval."
+            )
 
         if version.approval_required:
             version.status = QuotationStatus.PENDING_APPROVAL
@@ -984,7 +952,7 @@ class QuotationService:
                 user=user,
                 activity_type=Activity.ActivityType.QUOTATION_SUBMITTED,
                 outcome=f"Submitted Quotation {quotation.quotation_number} (v{version.version_number}) for approval",
-                lead=quotation.lead,
+                lead=quotation.lead if not quotation.customer else None,
                 customer=quotation.customer,
                 quotation=quotation,
             )
@@ -1023,7 +991,7 @@ class QuotationService:
                 user=user,
                 activity_type=Activity.ActivityType.QUOTATION_APPROVED,
                 outcome=f"Auto-approved Quotation {quotation.quotation_number} (v{version.version_number}) (no manager approval required)",
-                lead=quotation.lead,
+                lead=quotation.lead if not quotation.customer else None,
                 customer=quotation.customer,
                 quotation=quotation,
             )
@@ -1034,7 +1002,8 @@ class QuotationService:
                     event_type=NotificationEventType.QUOTATION_APPROVED,
                     recipient=auto_assignee,
                     context={
-                        "user_name": auto_assignee.get_full_name() or auto_assignee.username,
+                        "user_name": auto_assignee.get_full_name()
+                        or auto_assignee.username,
                         "employee_name": user.get_full_name() or user.username,
                         "quotation_number": quotation.quotation_number,
                     },
@@ -1054,13 +1023,18 @@ class QuotationService:
         if not version or version.status != QuotationStatus.PENDING_APPROVAL:
             raise ValidationError("Only quotations pending approval can be approved.")
 
-        approval = QuotationApproval.objects.filter(
-            version=version,
-            decision=QuotationApproval.Decision.PENDING
-        ).order_by("-submitted_at").first()
+        approval = (
+            QuotationApproval.objects.filter(
+                version=version, decision=QuotationApproval.Decision.PENDING
+            )
+            .order_by("-submitted_at")
+            .first()
+        )
 
         if not approval:
-            raise ValidationError("No pending approval request found for this quotation version.")
+            raise ValidationError(
+                "No pending approval request found for this quotation version."
+            )
 
         is_self_approval = (
             approval.submitted_by_id == reviewer_user.pk
@@ -1071,10 +1045,14 @@ class QuotationService:
         if is_self_approval and not reviewer_user.is_superuser:
             has_own_perm = (
                 reviewer_user.role
-                and reviewer_user.role.permissions.filter(codename="approve_own_quotation").exists()
+                and reviewer_user.role.permissions.filter(
+                    codename="approve_own_quotation"
+                ).exists()
             )
             if not has_own_perm:
-                raise PermissionDenied("The submitting agent cannot approve their own quotation without the 'approve_own_quotation' permission.")
+                raise PermissionDenied(
+                    "The submitting agent cannot approve their own quotation without the 'approve_own_quotation' permission."
+                )
 
         approval.reviewed_by = reviewer_user
         approval.decision = QuotationApproval.Decision.APPROVED
@@ -1103,7 +1081,7 @@ class QuotationService:
             user=reviewer_user,
             activity_type=Activity.ActivityType.QUOTATION_APPROVED,
             outcome=f"Approved Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
         )
@@ -1115,7 +1093,8 @@ class QuotationService:
                 recipient=recipient,
                 context={
                     "user_name": recipient.get_full_name() or recipient.username,
-                    "manager_name": reviewer_user.get_full_name() or reviewer_user.username,
+                    "manager_name": reviewer_user.get_full_name()
+                    or reviewer_user.username,
                     "quotation_number": quotation.quotation_number,
                 },
             )
@@ -1133,15 +1112,22 @@ class QuotationService:
         quotation = Quotation.objects.select_for_update().get(pk=quotation.pk)
         version = quotation.current_version
         if not version or version.status != QuotationStatus.PENDING_APPROVAL:
-            raise ValidationError("Only quotations pending approval can have approval rejected.")
+            raise ValidationError(
+                "Only quotations pending approval can have approval rejected."
+            )
 
-        approval = QuotationApproval.objects.filter(
-            version=version,
-            decision=QuotationApproval.Decision.PENDING
-        ).order_by("-submitted_at").first()
+        approval = (
+            QuotationApproval.objects.filter(
+                version=version, decision=QuotationApproval.Decision.PENDING
+            )
+            .order_by("-submitted_at")
+            .first()
+        )
 
         if not approval:
-            raise ValidationError("No pending approval request found for this quotation version.")
+            raise ValidationError(
+                "No pending approval request found for this quotation version."
+            )
 
         if approval:
             approval.reviewed_by = reviewer_user
@@ -1172,7 +1158,7 @@ class QuotationService:
             user=reviewer_user,
             activity_type=Activity.ActivityType.QUOTATION_APPROVAL_REJECTED,
             outcome=f"Rejected approval for Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
             notes=reason,
@@ -1185,7 +1171,8 @@ class QuotationService:
                 recipient=recipient,
                 context={
                     "user_name": recipient.get_full_name() or recipient.username,
-                    "manager_name": reviewer_user.get_full_name() or reviewer_user.username,
+                    "manager_name": reviewer_user.get_full_name()
+                    or reviewer_user.username,
                     "quotation_number": quotation.quotation_number,
                     "reason": reason or "",
                 },
@@ -1208,8 +1195,14 @@ class QuotationService:
         if version.status not in [QuotationStatus.APPROVED, QuotationStatus.SENT]:
             raise ValidationError("Only approved quotations can be sent.")
 
-        if version.status in [QuotationStatus.SENT, QuotationStatus.ACCEPTED, QuotationStatus.REJECTED]:
-            raise ValidationError(f"Cannot send a quotation that has already been {version.status.lower()}. Create a revision first.")
+        if version.status in [
+            QuotationStatus.SENT,
+            QuotationStatus.ACCEPTED,
+            QuotationStatus.REJECTED,
+        ]:
+            raise ValidationError(
+                f"Cannot send a quotation that has already been {version.status.lower()}. Create a revision first."
+            )
 
         version.status = QuotationStatus.SENT
         version.sent_at = timezone.now()
@@ -1233,7 +1226,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_SENT,
             outcome=f"Sent Quotation {quotation.quotation_number} (v{version.version_number}) to client",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
             follow_up_required=True,
@@ -1272,7 +1265,8 @@ class QuotationService:
                 event_type=NotificationEventType.QUOTATION_SENT,
                 recipient=assigned_user,
                 context={
-                    "user_name": assigned_user.get_full_name() or assigned_user.username,
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
                     "employee_name": user.get_full_name() or user.username,
                     "quotation_number": quotation.quotation_number,
                     "version": version.version_number,
@@ -1296,15 +1290,25 @@ class QuotationService:
         if not current_version:
             raise ValidationError("Quotation has no version to revise.")
 
-        if current_version.status not in [QuotationStatus.SENT, QuotationStatus.REVISED, QuotationStatus.DRAFT, QuotationStatus.APPROVED]:
-            raise ValidationError(f"Cannot create revision for quotation in status '{current_version.status}'.")
+        if current_version.status not in [
+            QuotationStatus.SENT,
+            QuotationStatus.REVISED,
+            QuotationStatus.DRAFT,
+            QuotationStatus.APPROVED,
+        ]:
+            raise ValidationError(
+                f"Cannot create revision for quotation in status '{current_version.status}'."
+            )
 
         if current_version.status in [QuotationStatus.SENT, QuotationStatus.APPROVED]:
             current_version.status = QuotationStatus.REVISED
             current_version.save(update_fields=["status", "updated_at"])
 
         new_version_num = current_version.version_number + 1
-        approval_required = bool(quotation.lead.current_stage and quotation.lead.current_stage.quotation_approval_required)
+        approval_required = bool(
+            quotation.lead.current_stage
+            and quotation.lead.current_stage.quotation_approval_required
+        )
 
         new_version = QuotationVersion.objects.create(
             quotation=quotation,
@@ -1325,6 +1329,7 @@ class QuotationService:
         if line_items is not None:
             if isinstance(line_items, str):
                 import json
+
                 try:
                     line_items = json.loads(line_items)
                 except Exception:
@@ -1332,6 +1337,7 @@ class QuotationService:
             for item in line_items:
                 if isinstance(item, str):
                     import json
+
                     try:
                         item = json.loads(item)
                     except Exception:
@@ -1380,7 +1386,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_VERSION_CREATED,
             outcome=f"Created Quotation revision {quotation.quotation_number} (v{new_version_num})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
         )
@@ -1391,7 +1397,8 @@ class QuotationService:
                 event_type=NotificationEventType.QUOTATION_REVISION_CREATED,
                 recipient=assigned_user,
                 context={
-                    "user_name": assigned_user.get_full_name() or assigned_user.username,
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
                     "employee_name": user.get_full_name() or user.username,
                     "quotation_number": quotation.quotation_number,
                     "version": new_version_num,
@@ -1439,7 +1446,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_ACCEPTED,
             outcome=f"Client accepted Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
         )
@@ -1450,7 +1457,8 @@ class QuotationService:
                 event_type=NotificationEventType.QUOTATION_ACCEPTED,
                 recipient=assigned_user,
                 context={
-                    "user_name": assigned_user.get_full_name() or assigned_user.username,
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
                     "employee_name": user.get_full_name() or user.username,
                     "quotation_number": quotation.quotation_number,
                     "version": version.version_number,
@@ -1459,7 +1467,10 @@ class QuotationService:
 
         customer = None
         if quotation.lead and quotation.lead.status == Lead.Status.ACTIVE:
-            email = quotation.lead.email or f"{quotation.lead.name.lower().replace(' ', '')}@example.com"
+            email = (
+                quotation.lead.email
+                or f"{quotation.lead.name.lower().replace(' ', '')}@example.com"
+            )
             phone = quotation.lead.phone or "0000000000"
             customer = CRMService.convert_lead(
                 user=user,
@@ -1496,7 +1507,9 @@ class QuotationService:
         version.status = QuotationStatus.REJECTED
         version.rejected_at = timezone.now()
         version.rejection_reason = rejection_reason
-        version.save(update_fields=["status", "rejected_at", "rejection_reason", "updated_at"])
+        version.save(
+            update_fields=["status", "rejected_at", "rejection_reason", "updated_at"]
+        )
 
         quotation.status = QuotationStatus.REJECTED
         quotation.save(update_fields=["status", "updated_at"])
@@ -1516,7 +1529,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_REJECTED,
             outcome=f"Client rejected Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
             notes=rejection_reason,
@@ -1528,7 +1541,8 @@ class QuotationService:
                 event_type=NotificationEventType.QUOTATION_CLIENT_REJECTED,
                 recipient=assigned_user,
                 context={
-                    "user_name": assigned_user.get_full_name() or assigned_user.username,
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
                     "employee_name": user.get_full_name() or user.username,
                     "quotation_number": quotation.quotation_number,
                     "version": version.version_number,
@@ -1546,7 +1560,6 @@ class QuotationService:
         return quotation
 
     @staticmethod
-    @transaction.atomic
     def send_quotation_email(
         *,
         user,
@@ -1561,42 +1574,53 @@ class QuotationService:
         from smtplib import SMTPException
         from .pdf_utils import generate_quotation_pdf
 
-        quotation = Quotation.objects.select_for_update().get(pk=quotation.pk)
+        with transaction.atomic():
+            quotation = Quotation.objects.select_for_update().get(pk=quotation.pk)
 
-        if version_number is not None:
-            version = quotation.versions.filter(version_number=version_number).first()
+            if version_number is not None:
+                version = quotation.versions.filter(
+                    version_number=version_number
+                ).first()
+                if not version:
+                    raise ValidationError(
+                        f"Quotation version {version_number} does not exist."
+                    )
+            else:
+                version = quotation.current_version
+
             if not version:
-                raise ValidationError(f"Quotation version {version_number} does not exist.")
-        else:
-            version = quotation.current_version
+                raise ValidationError("Quotation has no active version.")
 
-        if not version:
-            raise ValidationError("Quotation has no active version.")
+            if version.status in [
+                QuotationStatus.DRAFT,
+                QuotationStatus.PENDING_APPROVAL,
+            ]:
+                raise ValidationError(
+                    f"Quotation PDF delivery is blocked for version in state '{version.status}'. Approved or sent version required."
+                )
 
-        if version.status in [QuotationStatus.DRAFT, QuotationStatus.PENDING_APPROVAL]:
-            raise ValidationError(
-                f"Quotation PDF delivery is blocked for version in state '{version.status}'. Approved or sent version required."
-            )
+            to_email = recipient_email
+            if not to_email:
+                if quotation.customer and quotation.customer.email:
+                    to_email = quotation.customer.email
+                elif quotation.lead and quotation.lead.email:
+                    to_email = quotation.lead.email
 
-        to_email = recipient_email
-        if not to_email:
-            if quotation.customer and quotation.customer.email:
-                to_email = quotation.customer.email
-            elif quotation.lead and quotation.lead.email:
-                to_email = quotation.lead.email
+            if not to_email:
+                raise ValidationError("Recipient email is required to send quotation.")
 
-        if not to_email:
-            raise ValidationError("Recipient email is required to send quotation.")
-
-        if version.status == QuotationStatus.APPROVED:
-            QuotationService.send_quotation(user=user, quotation=quotation)
-            version.refresh_from_db()
-            quotation.refresh_from_db()
+            if version.status == QuotationStatus.APPROVED:
+                QuotationService.send_quotation(user=user, quotation=quotation)
+                version.refresh_from_db()
+                quotation.refresh_from_db()
 
         pdf_bytes = generate_quotation_pdf(version)
 
         filename = f"{quotation.quotation_number}_v{version.version_number}.pdf"
-        email_subject = subject or f"Quotation {quotation.quotation_number} (v{version.version_number})"
+        email_subject = (
+            subject
+            or f"Quotation {quotation.quotation_number} (v{version.version_number})"
+        )
         email_body = body or (
             f"Dear Customer,\n\n"
             f"Please find attached Quotation {quotation.quotation_number} (v{version.version_number}).\n\n"
@@ -1614,7 +1638,11 @@ class QuotationService:
         try:
             email.send(fail_silently=False)
         except (SMTPException, Exception) as exc:
-            logger.error("Failed to send quotation email for %s: %s", quotation.quotation_number, str(exc))
+            logger.error(
+                "Failed to send quotation email for %s: %s",
+                quotation.quotation_number,
+                str(exc),
+            )
             CRMService.create_audit_log(
                 user=user,
                 entity_type="Quotation",
@@ -1642,28 +1670,21 @@ class QuotationService:
             },
         )
 
+        if quotation.customer:
+            activity_customer = quotation.customer
+            activity_lead = None
+        else:
+            activity_customer = None
+            activity_lead = quotation.lead
+
         CRMService.create_activity(
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_EMAIL_SENT,
             outcome=f"Emailed Quotation {quotation.quotation_number} (v{version.version_number}) to {to_email}",
-            lead=quotation.lead,
-            customer=quotation.customer,
+            lead=activity_lead,
+            customer=activity_customer,
             quotation=quotation,
             notes=f"Subject: {email_subject}",
         )
-
-        assigned_user = version.assigned_to
-        if assigned_user and assigned_user != user:
-            trigger_notification_event(
-                event_type=NotificationEventType.QUOTATION_EMAIL_SENT,
-                recipient=assigned_user,
-                context={
-                    "user_name": assigned_user.get_full_name() or assigned_user.username,
-                    "employee_name": user.get_full_name() or user.username,
-                    "quotation_number": quotation.quotation_number,
-                    "version": version.version_number,
-                    "sent_to": to_email,
-                },
-            )
 
         return quotation, version

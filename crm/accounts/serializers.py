@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from accounts.models import CustomUser, Role
-from django.contrib.auth.models import Permission 
+from django.contrib.auth.models import Permission
 from django.contrib.auth.password_validation import validate_password
 
 
@@ -20,7 +20,7 @@ class RegisterSerializer(serializers.ModelSerializer):
             email=validated_data["email"],
             phone_number=validated_data["phone_number"],
             password=validated_data["password"],
-            role=employee_role
+            role=employee_role,
         )
 
         return user
@@ -46,26 +46,35 @@ class RefreshTokenSerializer(serializers.Serializer):
 
 class ChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(write_only=True)
-    new_password = serializers.CharField(write_only=True, validators=[validate_password])
+    new_password = serializers.CharField(
+        write_only=True, validators=[validate_password]
+    )
 
 
 class ProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        fields = ["user_id", "username", "email", "phone_number", "role", "created_at", "updated_at"]
+        fields = [
+            "user_id",
+            "username",
+            "email",
+            "phone_number",
+            "role",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class RoleSerializer(serializers.ModelSerializer):
-      
     permissions = serializers.PrimaryKeyRelatedField(
-        queryset=Permission.objects.all(),
-        many=True,
-        required=False
+        queryset=Permission.objects.all(), many=True, required=False
     )
+
     class Meta:
         model = Role
         fields = "__all__"
         read_only_fields = ["role_id", "created_at", "updated_at"]
+
 
 class RoleListSerializer(serializers.ModelSerializer):
     class Meta:

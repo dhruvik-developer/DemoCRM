@@ -6,155 +6,266 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('Task', '0003_reminder_is_sent'),
-        ('customer_management', '0002_alter_lead_options_alter_leadsource_options_and_more'),
+        ("Task", "0003_reminder_is_sent"),
+        (
+            "customer_management",
+            "0002_alter_lead_options_alter_leadsource_options_and_more",
+        ),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='MeetingStatuses',
+            name="MeetingStatuses",
             fields=[
-                ('meeting_status_id', models.AutoField(primary_key=True, serialize=False)),
-                ('status_name', models.CharField(max_length=100)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "meeting_status_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("status_name", models.CharField(max_length=100)),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='MeetingTypes',
+            name="MeetingTypes",
             fields=[
-                ('meeting_type_id', models.AutoField(primary_key=True, serialize=False)),
-                ('type_name', models.CharField(max_length=100)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "meeting_type_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("type_name", models.CharField(max_length=100)),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='ReminderStatuses',
+            name="ReminderStatuses",
             fields=[
-                ('reminder_status_id', models.AutoField(primary_key=True, serialize=False)),
-                ('status_name', models.CharField(max_length=100)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "reminder_status_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("status_name", models.CharField(max_length=100)),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='ReminderTypes',
+            name="ReminderTypes",
             fields=[
-                ('reminder_type_id', models.AutoField(primary_key=True, serialize=False)),
-                ('type_name', models.CharField(max_length=100)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "reminder_type_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("type_name", models.CharField(max_length=100)),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.RemoveField(
-            model_name='meeting',
-            name='created_by',
+            model_name="meeting",
+            name="created_by",
         ),
         migrations.RemoveField(
-            model_name='meeting',
-            name='meeting_status_id',
+            model_name="meeting",
+            name="meeting_status_id",
         ),
         migrations.RemoveField(
-            model_name='meeting',
-            name='meeting_type_id',
+            model_name="meeting",
+            name="meeting_type_id",
         ),
         migrations.RemoveField(
-            model_name='meeting',
-            name='task_id',
+            model_name="meeting",
+            name="task_id",
         ),
         migrations.RemoveField(
-            model_name='meetingparticipant',
-            name='meeting_id',
+            model_name="meetingparticipant",
+            name="meeting_id",
         ),
         migrations.RemoveField(
-            model_name='reminder',
-            name='meeting_id',
+            model_name="reminder",
+            name="meeting_id",
         ),
         migrations.RemoveField(
-            model_name='meetingparticipant',
-            name='user_id',
+            model_name="meetingparticipant",
+            name="user_id",
         ),
         migrations.RemoveField(
-            model_name='reminder',
-            name='created_by',
+            model_name="reminder",
+            name="created_by",
         ),
         migrations.RemoveField(
-            model_name='reminder',
-            name='reminder_status_id',
+            model_name="reminder",
+            name="reminder_status_id",
         ),
         migrations.RemoveField(
-            model_name='reminder',
-            name='reminder_type_id',
+            model_name="reminder",
+            name="reminder_type_id",
         ),
         migrations.RemoveField(
-            model_name='reminder',
-            name='task_id',
+            model_name="reminder",
+            name="task_id",
         ),
         migrations.CreateModel(
-            name='Meetingg',
+            name="Meetingg",
             fields=[
-                ('meeting_id', models.AutoField(primary_key=True, serialize=False)),
-                ('meeting_title', models.CharField(max_length=100)),
-                ('meeting_date', models.DateField()),
-                ('start_time', models.TimeField()),
-                ('end_time', models.TimeField()),
-                ('location', models.CharField(blank=True, max_length=100, null=True)),
-                ('description', models.TextField(blank=True, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='created_meetings', to=settings.AUTH_USER_MODEL)),
-                ('lead', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='meetings', to='customer_management.lead')),
-                ('task_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='meetings', to='Task.task')),
-                ('meeting_status_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='meetings', to='Task.meetingstatuses')),
-                ('meeting_type_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='meetings', to='Task.meetingtypes')),
+                ("meeting_id", models.AutoField(primary_key=True, serialize=False)),
+                ("meeting_title", models.CharField(max_length=100)),
+                ("meeting_date", models.DateField()),
+                ("start_time", models.TimeField()),
+                ("end_time", models.TimeField()),
+                ("location", models.CharField(blank=True, max_length=100, null=True)),
+                ("description", models.TextField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="created_meetings",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "lead",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.SET_NULL,
+                        related_name="meetings",
+                        to="customer_management.lead",
+                    ),
+                ),
+                (
+                    "task_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="meetings",
+                        to="Task.task",
+                    ),
+                ),
+                (
+                    "meeting_status_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="meetings",
+                        to="Task.meetingstatuses",
+                    ),
+                ),
+                (
+                    "meeting_type_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="meetings",
+                        to="Task.meetingtypes",
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='MeetingParticipants',
+            name="MeetingParticipants",
             fields=[
-                ('participant_id', models.AutoField(primary_key=True, serialize=False)),
-                ('participant_role', models.CharField(max_length=100)),
-                ('is_required', models.BooleanField(default=True)),
-                ('meeting_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='participants', to='Task.meetingg')),
-                ('user_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='meeting_participations', to=settings.AUTH_USER_MODEL)),
+                ("participant_id", models.AutoField(primary_key=True, serialize=False)),
+                ("participant_role", models.CharField(max_length=100)),
+                ("is_required", models.BooleanField(default=True)),
+                (
+                    "meeting_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="participants",
+                        to="Task.meetingg",
+                    ),
+                ),
+                (
+                    "user_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="meeting_participations",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='Reminderr',
+            name="Reminderr",
             fields=[
-                ('reminder_id', models.AutoField(primary_key=True, serialize=False)),
-                ('reminder_datetime', models.DateTimeField()),
-                ('message', models.TextField()),
-                ('is_sent', models.BooleanField(default=False)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='created_reminders', to=settings.AUTH_USER_MODEL)),
-                ('meeting_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='reminders', to='Task.meetingg')),
-                ('reminder_for', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='reminders', to=settings.AUTH_USER_MODEL)),
-                ('task_id', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='reminders', to='Task.task')),
-                ('reminder_status_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='reminders', to='Task.reminderstatuses')),
-                ('reminder_type_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='reminders', to='Task.remindertypes')),
+                ("reminder_id", models.AutoField(primary_key=True, serialize=False)),
+                ("reminder_datetime", models.DateTimeField()),
+                ("message", models.TextField()),
+                ("is_sent", models.BooleanField(default=False)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="created_reminders",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "meeting_id",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="reminders",
+                        to="Task.meetingg",
+                    ),
+                ),
+                (
+                    "reminder_for",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="reminders",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "task_id",
+                    models.ForeignKey(
+                        blank=True,
+                        null=True,
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="reminders",
+                        to="Task.task",
+                    ),
+                ),
+                (
+                    "reminder_status_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="reminders",
+                        to="Task.reminderstatuses",
+                    ),
+                ),
+                (
+                    "reminder_type_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="reminders",
+                        to="Task.remindertypes",
+                    ),
+                ),
             ],
         ),
         migrations.DeleteModel(
-            name='MeetingStatus',
+            name="MeetingStatus",
         ),
         migrations.DeleteModel(
-            name='MeetingType',
+            name="MeetingType",
         ),
         migrations.DeleteModel(
-            name='Meeting',
+            name="Meeting",
         ),
         migrations.DeleteModel(
-            name='MeetingParticipant',
+            name="MeetingParticipant",
         ),
         migrations.DeleteModel(
-            name='ReminderStatus',
+            name="ReminderStatus",
         ),
         migrations.DeleteModel(
-            name='ReminderType',
+            name="ReminderType",
         ),
         migrations.DeleteModel(
-            name='Reminder',
+            name="Reminder",
         ),
     ]

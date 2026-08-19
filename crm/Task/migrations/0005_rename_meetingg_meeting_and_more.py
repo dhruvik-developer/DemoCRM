@@ -5,80 +5,82 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('Task', '0004_meetingstatuses_meetingtypes_reminderstatuses_and_more'),
-        ('customer_management', '0002_alter_lead_options_alter_leadsource_options_and_more'),
+        ("Task", "0004_meetingstatuses_meetingtypes_reminderstatuses_and_more"),
+        (
+            "customer_management",
+            "0002_alter_lead_options_alter_leadsource_options_and_more",
+        ),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.RenameModel(
-            old_name='Meetingg',
-            new_name='Meeting',
+            old_name="Meetingg",
+            new_name="Meeting",
         ),
         migrations.RenameModel(
-            old_name='MeetingParticipants',
-            new_name='MeetingParticipant',
+            old_name="MeetingParticipants",
+            new_name="MeetingParticipant",
         ),
         migrations.RenameModel(
-            old_name='MeetingTypes',
-            new_name='MeetingStatus',
+            old_name="MeetingTypes",
+            new_name="MeetingStatus",
         ),
         migrations.RenameModel(
-            old_name='ReminderStatuses',
-            new_name='MeetingType',
+            old_name="ReminderStatuses",
+            new_name="MeetingType",
         ),
         migrations.RenameModel(
-            old_name='Reminderr',
-            new_name='Reminder',
+            old_name="Reminderr",
+            new_name="Reminder",
         ),
         migrations.RenameModel(
-            old_name='ReminderTypes',
-            new_name='ReminderStatus',
+            old_name="ReminderTypes",
+            new_name="ReminderStatus",
         ),
         migrations.RenameModel(
-            old_name='MeetingStatuses',
-            new_name='ReminderType',
+            old_name="MeetingStatuses",
+            new_name="ReminderType",
         ),
         migrations.RenameField(
-            model_name='meetingstatus',
-            old_name='meeting_type_id',
-            new_name='meeting_status_id',
+            model_name="meetingstatus",
+            old_name="meeting_type_id",
+            new_name="meeting_status_id",
         ),
         migrations.RenameField(
-            model_name='meetingstatus',
-            old_name='type_name',
-            new_name='status_name',
+            model_name="meetingstatus",
+            old_name="type_name",
+            new_name="status_name",
         ),
         migrations.RenameField(
-            model_name='meetingtype',
-            old_name='reminder_status_id',
-            new_name='meeting_type_id',
+            model_name="meetingtype",
+            old_name="reminder_status_id",
+            new_name="meeting_type_id",
         ),
         migrations.RenameField(
-            model_name='meetingtype',
-            old_name='status_name',
-            new_name='type_name',
+            model_name="meetingtype",
+            old_name="status_name",
+            new_name="type_name",
         ),
         migrations.RenameField(
-            model_name='reminderstatus',
-            old_name='reminder_type_id',
-            new_name='reminder_status_id',
+            model_name="reminderstatus",
+            old_name="reminder_type_id",
+            new_name="reminder_status_id",
         ),
         migrations.RenameField(
-            model_name='reminderstatus',
-            old_name='type_name',
-            new_name='status_name',
+            model_name="reminderstatus",
+            old_name="type_name",
+            new_name="status_name",
         ),
         migrations.RenameField(
-            model_name='remindertype',
-            old_name='meeting_status_id',
-            new_name='reminder_type_id',
+            model_name="remindertype",
+            old_name="meeting_status_id",
+            new_name="reminder_type_id",
         ),
         migrations.RenameField(
-            model_name='remindertype',
-            old_name='status_name',
-            new_name='type_name',
+            model_name="remindertype",
+            old_name="status_name",
+            new_name="type_name",
         ),
     ]

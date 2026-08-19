@@ -1,10 +1,23 @@
 from rest_framework import serializers
 from django.utils import timezone
-from .models import TaskPriority, TaskCategory, TaskStatus, Task, MeetingParticipant, MeetingStatus, Meeting, MeetingType, ReminderType, ReminderStatus, Reminder
+from .models import (
+    TaskPriority,
+    TaskCategory,
+    TaskStatus,
+    Task,
+    MeetingParticipant,
+    MeetingStatus,
+    Meeting,
+    MeetingType,
+    ReminderType,
+    ReminderStatus,
+    Reminder,
+)
 
 # ============================================================
 # TASK
 # ============================================================
+
 
 class TaskStatusSerializer(serializers.ModelSerializer):
     class Meta:
@@ -15,9 +28,7 @@ class TaskStatusSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Status name cannot be empty."
-            )
+            raise serializers.ValidationError("Status name cannot be empty.")
 
         if len(value) < 2:
             raise serializers.ValidationError(
@@ -36,9 +47,7 @@ class TaskPrioritySerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Priority name cannot be empty."
-            )
+            raise serializers.ValidationError("Priority name cannot be empty.")
 
         return value
 
@@ -52,15 +61,12 @@ class TaskCategorySerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Category name cannot be empty."
-            )
+            raise serializers.ValidationError("Category name cannot be empty.")
 
         return value
 
 
 class TaskSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Task
         fields = "__all__"
@@ -76,9 +82,7 @@ class TaskSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Task title is required."
-            )
+            raise serializers.ValidationError("Task title is required.")
 
         if len(value) < 3:
             raise serializers.ValidationError(
@@ -103,30 +107,27 @@ class TaskSerializer(serializers.ModelSerializer):
             if self.instance and self.instance.due_date == value:
                 return value
             if value < timezone.now():
-                raise serializers.ValidationError(
-                    "Due date cannot be in the past."
-                )
+                raise serializers.ValidationError("Due date cannot be in the past.")
 
         return value
 
     def validate(self, attrs):
-        lead = attrs.get(
-            "lead",
-            getattr(self.instance, "lead", None)
-        )
+        lead = attrs.get("lead", getattr(self.instance, "lead", None))
 
         if not lead:
-            raise serializers.ValidationError({
-                "lead": "Lead is required to create a task."
-            })
+            raise serializers.ValidationError(
+                {"lead": "Lead is required to create a task."}
+            )
 
         return attrs
+
+
 # ============================================================
 # MEETING
 # ============================================================
 
-class MeetingStatusSerializer(serializers.ModelSerializer):
 
+class MeetingStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = MeetingStatus
         fields = "__all__"
@@ -135,15 +136,12 @@ class MeetingStatusSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Meeting status cannot be empty."
-            )
+            raise serializers.ValidationError("Meeting status cannot be empty.")
 
         return value
 
 
 class MeetingTypeSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = MeetingType
         fields = "__all__"
@@ -152,15 +150,12 @@ class MeetingTypeSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Meeting type cannot be empty."
-            )
+            raise serializers.ValidationError("Meeting type cannot be empty.")
 
         return value
 
 
 class MeetingSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Meeting
         fields = "__all__"
@@ -175,9 +170,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Meeting title is required."
-            )
+            raise serializers.ValidationError("Meeting title is required.")
 
         if len(value) < 3:
             raise serializers.ValidationError(
@@ -198,29 +191,24 @@ class MeetingSerializer(serializers.ModelSerializer):
 
         if start_time and end_time:
             if end_time <= start_time:
-                raise serializers.ValidationError({
-                    "end_time": "End time must be after start time."
-                })
+                raise serializers.ValidationError(
+                    {"end_time": "End time must be after start time."}
+                )
 
         return attrs
 
 
 class MeetingParticipantSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = MeetingParticipant
         fields = "__all__"
-        read_only_fields = (
-            "participant_id",
-        )
+        read_only_fields = ("participant_id",)
 
     def validate_participant_role(self, value):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Participant role is required."
-            )
+            raise serializers.ValidationError("Participant role is required.")
 
         return value
 
@@ -229,8 +217,8 @@ class MeetingParticipantSerializer(serializers.ModelSerializer):
 # REMINDER
 # ============================================================
 
-class ReminderTypeSerializer(serializers.ModelSerializer):
 
+class ReminderTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ReminderType
         fields = "__all__"
@@ -239,15 +227,12 @@ class ReminderTypeSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Reminder type cannot be empty."
-            )
+            raise serializers.ValidationError("Reminder type cannot be empty.")
 
         return value
 
 
 class ReminderStatusSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = ReminderStatus
         fields = "__all__"
@@ -256,15 +241,12 @@ class ReminderStatusSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Reminder status cannot be empty."
-            )
+            raise serializers.ValidationError("Reminder status cannot be empty.")
 
         return value
 
 
 class ReminderSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Reminder
         fields = "__all__"
@@ -279,9 +261,7 @@ class ReminderSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Reminder message is required."
-            )
+            raise serializers.ValidationError("Reminder message is required.")
 
         return value
 
