@@ -42,6 +42,7 @@ class FollowupSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "followup_id",
+            "created_by",
             "created_at",
             "updated_at",
         )
@@ -71,6 +72,8 @@ class FollowUpNoteSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "note_id",
+            "followup_id",
+            "created_by",
             "created_at",
         )
 
@@ -216,13 +219,9 @@ class NotificationSerializer(serializers.ModelSerializer):
         is_read = attrs.get("is_read", getattr(self.instance, "is_read", False))
         read_at = attrs.get("read_at", getattr(self.instance, "read_at", None))
 
-        if not is_read and read_at is not None:
-            raise serializers.ValidationError({
-                "read_at": "read_at must be empty when notification is unread."
-            })
-
         if is_read and read_at is None:
-            raise serializers.ValidationError({
-                "read_at": "read_at is required when notification is read."
-            })
+            attrs["read_at"] = timezone.now()
+        elif not is_read:
+            attrs["read_at"] = None
+
         return attrs
