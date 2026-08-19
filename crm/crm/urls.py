@@ -26,10 +26,11 @@ from drf_spectacular.views import (
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("accounts.urls")),  # Include the accounts app URLs
-    path("api/tasks/",include("Task.urls")),
+    path("api/tasks/", include("Task.urls")),
     path("api/followups/", include("FollowUp.urls")),
-    path("api/crm/", include("customer_management.urls")), #Include the customer management urls 
-
+    path(
+        "api/crm/", include("customer_management.urls")
+    ),  # Include the customer management urls
     # OpenAPI / Swagger documentation
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),

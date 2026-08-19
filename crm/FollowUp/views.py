@@ -8,7 +8,6 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import (
     Followup,
-    FollowUpNote,
     Notification,
 )
 from .serializers import (
@@ -19,7 +18,8 @@ from .serializers import (
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse, inline_serializer
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +33,7 @@ class FollowUpListCreateView(APIView):
     POST /api/followups/
         Create FollowUp
     """
+
     permission_classes = [CanCommunicateWithlead]
     permission_names = {
         "GET": "view_followup",
@@ -85,47 +86,45 @@ class FollowUpListCreateView(APIView):
                 required=False,
                 default="-created_at",
             ),
-            OpenApiParameter(name="page", type=int, description="Page number", required=False),
-            OpenApiParameter(name="page_size", type=int, description="Results per page", required=False),
+            OpenApiParameter(
+                name="page", type=int, description="Page number", required=False
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=int,
+                description="Results per page",
+                required=False,
+            ),
         ],
         responses={
             200: FollowupSerializer(many=True),
-            500: inline_serializer("FollowUpListServerErrorResponse", fields={"error": serializers.CharField()}),
+            500: inline_serializer(
+                "FollowUpListServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
         },
     )
     def get(self, request):
         try:
-            followups = (
-                Followup.objects
-                .select_related(
-                    "task_id",
-                    "followup_status",
-                    "followup_type",
-                    "created_by",
-                )
-                .order_by("-created_at")
-            )
+            followups = Followup.objects.select_related(
+                "task_id",
+                "followup_status",
+                "followup_type",
+                "created_by",
+            ).order_by("-created_at")
             # filter =========================================
             followup_status_id = request.query_params.get("followup_status")
             followup_type_id = request.query_params.get("followup_type")
             task_id = request.query_params.get("task_id")
             created_by_id = request.query_params.get("created_by")
             if followup_status_id:
-                followups = followups.filter(
-                    followup_status_id=followup_status_id
-                )
+                followups = followups.filter(followup_status_id=followup_status_id)
             if followup_type_id:
-                followups = followups.filter(
-                    followup_type_id=followup_type_id
-                )
+                followups = followups.filter(followup_type_id=followup_type_id)
             if task_id:
-                followups = followups.filter(
-                    task_id=task_id
-                )
+                followups = followups.filter(task_id=task_id)
             if created_by_id:
-                followups = followups.filter(
-                    created_by_id=created_by_id
-                )
+                followups = followups.filter(created_by_id=created_by_id)
             # search ==============================
             search = request.query_params.get("search")
             if search:
@@ -134,30 +133,24 @@ class FollowUpListCreateView(APIView):
                     | Q(task_id__task_title__icontains=search)
                 )
             # dynamic ordering =============================
-            ordering = request.query_params.get(
-                "ordering",
-                "-created_at"
-            )
-            allowed_ordering_fields = {
-                "created_at",
-                "updated_at"
-            }
+            ordering = request.query_params.get("ordering", "-created_at")
+            allowed_ordering_fields = {"created_at", "updated_at"}
             if ordering.lstrip("-") in allowed_ordering_fields:
                 followups = followups.order_by(ordering)
             else:
                 followups = followups.order_by("-created_at")
             # pagination =========================================
             paginator = CRMPageNumberPagination()
-            paginator_followups = paginator.paginate_queryset(followups, request, view=self)
+            paginator_followups = paginator.paginate_queryset(
+                followups, request, view=self
+            )
             serializer = FollowupSerializer(
-                paginator_followups,
-                many=True,
-                context={"request": request}
+                paginator_followups, many=True, context={"request": request}
             )
             logger.info(
                 "FollowUps fetched successfully: user_id=%s page=%s",
                 request.user.pk,
-                request.query_params.get("page", 1)
+                request.query_params.get("page", 1),
             )
             return paginator.get_paginated_response(serializer.data)
         except (Http404, APIException):
@@ -168,10 +161,8 @@ class FollowUpListCreateView(APIView):
                 request.user.pk,
             )
             return Response(
-                {
-                    "error": "Something went wrong while fetching FollowUps."
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Something went wrong while fetching FollowUps."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     # ------------------------------------------------------
@@ -186,42 +177,33 @@ class FollowUpListCreateView(APIView):
         responses={
             201: FollowupSerializer,
             400: FollowupSerializer,
-            500: inline_serializer("FollowUpCreateServerErrorResponse", fields={"error": serializers.CharField()}),
+            500: inline_serializer(
+                "FollowUpCreateServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
         },
     )
     def post(self, request):
-        
         try:
             serializer = FollowupSerializer(
-                data=request.data,
-                context={"request": request}
+                data=request.data, context={"request": request}
             )
             if not serializer.is_valid():
                 logger.warning(
-                    "FollowUp creation validation failed: "
-                    "user_id=%s errors=%s",
+                    "FollowUp creation validation failed: user_id=%s errors=%s",
                     request.user.pk,
                     serializer.errors,
                 )
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            followup = serializer.save(
-                created_by=request.user
-            )
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            followup = serializer.save(created_by=request.user)
             logger.info(
-                "FollowUp created successfully: "
-                "followup_id=%s user_id=%s",
+                "FollowUp created successfully: followup_id=%s user_id=%s",
                 followup.followup_id,
                 request.user.pk,
             )
             return Response(
-                FollowupSerializer(
-                    followup,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_201_CREATED
+                FollowupSerializer(followup, context={"request": request}).data,
+                status=status.HTTP_201_CREATED,
             )
         except (Http404, APIException):
             raise
@@ -231,10 +213,8 @@ class FollowUpListCreateView(APIView):
                 request.user.pk,
             )
             return Response(
-                {
-                    "error": "Something went wrong while creating the FollowUp."
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Something went wrong while creating the FollowUp."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
@@ -252,6 +232,7 @@ class FollowUpDetailView(APIView):
     DELETE /api/followups/<followup_id>/
         Delete FollowUp
     """
+
     permission_classes = [IsAuthenticated, CanCommunicateWithlead]
     permission_names = {
         "GET": "view_followup",
@@ -267,7 +248,7 @@ class FollowUpDetailView(APIView):
                 "followup_type",
                 "created_by",
             ),
-            followup_id=followup_id
+            followup_id=followup_id,
         )
 
     # ------------------------------------------------------
@@ -279,49 +260,48 @@ class FollowUpDetailView(APIView):
         description="GET: Retrieve follow-up detail by ID. Requires view_followup permission.",
         operation_id="followup_retrieve",
         parameters=[
-            OpenApiParameter(name="followup_id", type=int, description="Follow-up ID", required=True, location=OpenApiParameter.PATH),
+            OpenApiParameter(
+                name="followup_id",
+                type=int,
+                description="Follow-up ID",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
         ],
         responses={
             200: FollowupSerializer,
-            404: inline_serializer("FollowUpDetailNotFoundResponse", fields={"detail": serializers.CharField()}),
-            500: inline_serializer("FollowUpDetailServerErrorResponse", fields={"error": serializers.CharField()}),
+            404: inline_serializer(
+                "FollowUpDetailNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "FollowUpDetailServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
         },
     )
     def get(self, request, followup_id):
         try:
             followup = self.get_followup(followup_id)
-            self.check_object_permissions(
-                request,
-                followup
-            )
-            serializer = FollowupSerializer(
-                followup,
-                context={"request": request}
-            )
+            self.check_object_permissions(request, followup)
+            serializer = FollowupSerializer(followup, context={"request": request})
             logger.info(
-                "FollowUp fetched successfully: "
-                "followup_id=%s user_id=%s",
+                "FollowUp fetched successfully: followup_id=%s user_id=%s",
                 followup.followup_id,
                 request.user.pk,
             )
-            return Response(
-                serializer.data,
-                status=status.HTTP_200_OK
-            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
         except (Http404, APIException):
             raise
         except Exception:
             logger.exception(
-                "Error while fetching FollowUp: "
-                "followup_id=%s user_id=%s",
+                "Error while fetching FollowUp: followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
             return Response(
-                {
-                    "error": "Something went wrong while fetching the FollowUp."
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Something went wrong while fetching the FollowUp."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     # ------------------------------------------------------
@@ -333,28 +313,34 @@ class FollowUpDetailView(APIView):
         description="PATCH: Partially update a follow-up. Requires change_followup permission.",
         operation_id="followup_partial_update",
         parameters=[
-            OpenApiParameter(name="followup_id", type=int, description="Follow-up ID", required=True, location=OpenApiParameter.PATH),
+            OpenApiParameter(
+                name="followup_id",
+                type=int,
+                description="Follow-up ID",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
         ],
         request=FollowupSerializer,
         responses={
             200: FollowupSerializer,
             400: FollowupSerializer,
-            404: inline_serializer("FollowUpUpdateNotFoundResponse", fields={"detail": serializers.CharField()}),
-            500: inline_serializer("FollowUpUpdateServerErrorResponse", fields={"error": serializers.CharField()}),
+            404: inline_serializer(
+                "FollowUpUpdateNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "FollowUpUpdateServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
         },
     )
     def patch(self, request, followup_id):
         try:
             followup = self.get_followup(followup_id)
-            self.check_object_permissions(
-                request,
-                followup
-            )
+            self.check_object_permissions(request, followup)
             serializer = FollowupSerializer(
-                followup,
-                data=request.data,
-                partial=True,
-                context={"request": request}
+                followup, data=request.data, partial=True, context={"request": request}
             )
 
             if not serializer.is_valid():
@@ -365,41 +351,31 @@ class FollowUpDetailView(APIView):
                     request.user.pk,
                     serializer.errors,
                 )
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
             followup = serializer.save()
 
             logger.info(
-                "FollowUp updated successfully: "
-                "followup_id=%s user_id=%s",
+                "FollowUp updated successfully: followup_id=%s user_id=%s",
                 followup.followup_id,
                 request.user.pk,
             )
 
             return Response(
-                FollowupSerializer(
-                    followup,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_200_OK
+                FollowupSerializer(followup, context={"request": request}).data,
+                status=status.HTTP_200_OK,
             )
         except (Http404, APIException):
             raise
         except Exception:
             logger.exception(
-                "Error while updating FollowUp: "
-                "followup_id=%s user_id=%s",
+                "Error while updating FollowUp: followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
             return Response(
-                {
-                    "error": "Something went wrong while updating the FollowUp."
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Something went wrong while updating the FollowUp."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     # ------------------------------------------------------
@@ -411,26 +387,40 @@ class FollowUpDetailView(APIView):
         description="DELETE: Delete a follow-up. Requires delete_followup permission.",
         operation_id="followup_delete",
         parameters=[
-            OpenApiParameter(name="followup_id", type=int, description="Follow-up ID", required=True, location=OpenApiParameter.PATH),
+            OpenApiParameter(
+                name="followup_id",
+                type=int,
+                description="Follow-up ID",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
         ],
         responses={
-            200: inline_serializer("FollowUpDeleteSuccessResponse", fields={"message": serializers.CharField(), "followup_id": serializers.IntegerField()}),
-            404: inline_serializer("FollowUpDeleteNotFoundResponse", fields={"detail": serializers.CharField()}),
-            500: inline_serializer("FollowUpDeleteServerErrorResponse", fields={"error": serializers.CharField()}),
+            200: inline_serializer(
+                "FollowUpDeleteSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "followup_id": serializers.IntegerField(),
+                },
+            ),
+            404: inline_serializer(
+                "FollowUpDeleteNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "FollowUpDeleteServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
         },
     )
     def delete(self, request, followup_id):
         try:
             followup = self.get_followup(followup_id)
-            self.check_object_permissions(
-                request,
-                followup
-            )
+            self.check_object_permissions(request, followup)
             followup.delete()
 
             logger.info(
-                "FollowUp deleted successfully: "
-                "followup_id=%s user_id=%s",
+                "FollowUp deleted successfully: followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
@@ -438,24 +428,21 @@ class FollowUpDetailView(APIView):
             return Response(
                 {
                     "message": "FollowUp deleted successfully.",
-                    "followup_id": followup_id
+                    "followup_id": followup_id,
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
         except (Http404, APIException):
             raise
         except Exception:
             logger.exception(
-                "Error while deleting FollowUp: "
-                "followup_id=%s user_id=%s",
+                "Error while deleting FollowUp: followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
             return Response(
-                {
-                    "error": "Something went wrong while deleting the FollowUp."
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Something went wrong while deleting the FollowUp."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
@@ -468,6 +455,7 @@ class FollowUpNoteCreateView(APIView):
 
     Add a note to a FollowUp.
     """
+
     permission_classes = [IsAuthenticated, CanCommunicateWithlead]
     permission_names = {
         "POST": "add_followup_note",
@@ -495,23 +483,22 @@ class FollowUpNoteCreateView(APIView):
         responses={
             201: FollowUpNoteSerializer,
             400: FollowUpNoteSerializer,
-            404: inline_serializer("FollowUpNoteNotFoundResponse", fields={"detail": serializers.CharField()}),
-            500: inline_serializer("FollowUpNoteServerErrorResponse", fields={"error": serializers.CharField()}),
+            404: inline_serializer(
+                "FollowUpNoteNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "FollowUpNoteServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
         },
     )
     def post(self, request, followup_id):
         try:
-            followup = get_object_or_404(
-                Followup,
-                followup_id=followup_id
-            )
-            self.check_object_permissions(
-                request,
-                followup
-            )
+            followup = get_object_or_404(Followup, followup_id=followup_id)
+            self.check_object_permissions(request, followup)
             serializer = FollowUpNoteSerializer(
-                data=request.data,
-                context={"request": request}
+                data=request.data, context={"request": request}
             )
             if not serializer.is_valid():
                 logger.warning(
@@ -521,14 +508,8 @@ class FollowUpNoteCreateView(APIView):
                     request.user.pk,
                     serializer.errors,
                 )
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            note = serializer.save(
-                followup_id=followup,
-                created_by=request.user
-            )
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            note = serializer.save(followup_id=followup, created_by=request.user)
             logger.info(
                 "FollowUp note created successfully: "
                 "note_id=%s followup_id=%s user_id=%s",
@@ -537,26 +518,20 @@ class FollowUpNoteCreateView(APIView):
                 request.user.pk,
             )
             return Response(
-                FollowUpNoteSerializer(
-                    note,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_201_CREATED
+                FollowUpNoteSerializer(note, context={"request": request}).data,
+                status=status.HTTP_201_CREATED,
             )
         except (Http404, APIException):
             raise
         except Exception:
             logger.exception(
-                "Error while creating FollowUp note: "
-                "followup_id=%s user_id=%s",
+                "Error while creating FollowUp note: followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
             return Response(
-                {
-                    "error": "Something went wrong while creating the FollowUp note."
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": "Something went wrong while creating the FollowUp note."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
 
@@ -570,6 +545,7 @@ class UserNotificationListView(APIView):
     Return notifications belonging to the
     currently authenticated user.
     """
+
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -587,28 +563,20 @@ class UserNotificationListView(APIView):
     )
     def get(self, request):
         notifications = (
-            Notification.objects
-            .select_related(
+            Notification.objects.select_related(
                 "notification_type_id",
                 "template_id",
                 "user_id",
             )
-            .filter(
-                user_id=request.user
-            )
+            .filter(user_id=request.user)
             .order_by("-created_at")
         )
 
         serializer = NotificationSerializer(
-            notifications,
-            many=True,
-            context={"request": request}
+            notifications, many=True, context={"request": request}
         )
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
 
 class NotificationDetailView(APIView):
@@ -619,6 +587,7 @@ class NotificationDetailView(APIView):
     PATCH /api/notifications/<notification_id>/
         Update notification (e.g. mark as read/unread).
     """
+
     permission_classes = [IsAuthenticated]
 
     @extend_schema(
@@ -637,7 +606,10 @@ class NotificationDetailView(APIView):
         ],
         responses={
             200: NotificationSerializer,
-            404: inline_serializer("NotificationNotFoundResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer(
+                "NotificationNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def get(self, request, notification_id):
@@ -648,18 +620,12 @@ class NotificationDetailView(APIView):
                 "user_id",
             ),
             notification_id=notification_id,
-            user_id=request.user
+            user_id=request.user,
         )
 
-        serializer = NotificationSerializer(
-            notification,
-            context={"request": request}
-        )
+        serializer = NotificationSerializer(notification, context={"request": request})
 
-        return Response(
-            serializer.data,
-            status=status.HTTP_200_OK
-        )
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @extend_schema(
         tags=["Notifications"],
@@ -679,7 +645,10 @@ class NotificationDetailView(APIView):
         responses={
             200: NotificationSerializer,
             400: NotificationSerializer,
-            404: inline_serializer("NotificationUpdateNotFoundResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer(
+                "NotificationUpdateNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def patch(self, request, notification_id):
@@ -690,28 +659,19 @@ class NotificationDetailView(APIView):
                 "user_id",
             ),
             notification_id=notification_id,
-            user_id=request.user
+            user_id=request.user,
         )
 
         serializer = NotificationSerializer(
-            notification,
-            data=request.data,
-            partial=True,
-            context={"request": request}
+            notification, data=request.data, partial=True, context={"request": request}
         )
 
         if not serializer.is_valid():
-            return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         notification = serializer.save()
 
         return Response(
-            NotificationSerializer(
-                notification,
-                context={"request": request}
-            ).data,
-            status=status.HTTP_200_OK
+            NotificationSerializer(notification, context={"request": request}).data,
+            status=status.HTTP_200_OK,
         )

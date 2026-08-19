@@ -1,21 +1,31 @@
 import logging
 
-from django.shortcuts import render
 
-from .models import CustomUser, Role 
-from .serializers import PermissionSerializer, ProfileSerializer, RefreshTokenSerializer, RegisterSerializer, LoginSerializer, LogOutSerializer, ChangePasswordSerializer, RoleListSerializer, RoleSerializer
+from .models import CustomUser, Role
+from .serializers import (
+    PermissionSerializer,
+    ProfileSerializer,
+    RefreshTokenSerializer,
+    RegisterSerializer,
+    LoginSerializer,
+    LogOutSerializer,
+    ChangePasswordSerializer,
+    RoleListSerializer,
+    RoleSerializer,
+)
 from rest_framework import serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated
-from rest_framework_simplejwt.tokens import RefreshToken        #type: ignore
+from rest_framework_simplejwt.tokens import RefreshToken  # type: ignore
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import Permission
 from .permissions import HasDynamicPermission
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse, inline_serializer
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 
 logger = logging.getLogger(__name__)
+
 
 # Create your views here.
 class RegisterAPIView(APIView):
@@ -47,27 +57,29 @@ class RegisterAPIView(APIView):
         serializer = RegisterSerializer(data=request.data)
 
         if serializer.is_valid():
-
             try:
                 serializer.save()
-                logger.info("User registered successfully: %s (ID: %s)", serializer.data["email"], serializer.data["user_id"])
-                return Response(
-                    {"user_id": serializer.data["user_id"],
-                     "username": serializer.data["username"],
-                     "email": serializer.data["email"],
-                     "message": "User registered successfully"},
-                    status=status.HTTP_201_CREATED
+                logger.info(
+                    "User registered successfully: %s (ID: %s)",
+                    serializer.data["email"],
+                    serializer.data["user_id"],
                 )
-            
-            except Exception as e:
-                logger.exception("Failed user registration attempt")
                 return Response(
-                    {"error": str(e)},
-                    status=status.HTTP_400_BAD_REQUEST
+                    {
+                        "user_id": serializer.data["user_id"],
+                        "username": serializer.data["username"],
+                        "email": serializer.data["email"],
+                        "message": "User registered successfully",
+                    },
+                    status=status.HTTP_201_CREATED,
                 )
 
+            except Exception as e:
+                logger.exception("Failed user registration attempt")
+                return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-    
+
 
 class LoginAPIView(APIView):
     permission_classes = [AllowAny]
@@ -106,25 +118,30 @@ class LoginAPIView(APIView):
                 logger.warning("Failed login attempt for non-existent email: %s", email)
                 return Response(
                     {"error": "Invalid credentials"},
-                    status=status.HTTP_401_UNAUTHORIZED
+                    status=status.HTTP_401_UNAUTHORIZED,
                 )
 
             if not user.is_active or not user.check_password(password):
-                logger.warning("Failed login attempt for user: %s (inactive or wrong password)", email)
+                logger.warning(
+                    "Failed login attempt for user: %s (inactive or wrong password)",
+                    email,
+                )
                 return Response(
                     {"error": "Invalid credentials"},
-                    status=status.HTTP_401_UNAUTHORIZED
+                    status=status.HTTP_401_UNAUTHORIZED,
                 )
 
             refresh = RefreshToken.for_user(user)
 
             logger.info("User %s logged in successfully", user.user_id)
 
-            return Response({
-                "message": "Login successful",
-                "refresh_token": str(refresh),
-                "access_token": str(refresh.access_token),
-            })
+            return Response(
+                {
+                    "message": "Login successful",
+                    "refresh_token": str(refresh),
+                    "access_token": str(refresh.access_token),
+                }
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -154,10 +171,7 @@ class LogoutAPIView(APIView):
         serializer = LogOutSerializer(data=request.data)
 
         if not serializer.is_valid():
-            return Response(
-                serializer.errors,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         refresh_token = serializer.validated_data["refresh_token"]
 
@@ -166,19 +180,13 @@ class LogoutAPIView(APIView):
             token.blacklist()
 
             return Response(
-                {
-                    "message": f"Logout successful for "
-                               f"{request.user.username}"
-                },
-                status=status.HTTP_200_OK
+                {"message": f"Logout successful for {request.user.username}"},
+                status=status.HTTP_200_OK,
             )
 
         except Exception as e:
-            return Response(
-                {"error": str(e)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 class RefreshTokenAPIView(APIView):
     permission_classes = [AllowAny]
@@ -213,13 +221,19 @@ class RefreshTokenAPIView(APIView):
                 token = RefreshToken(refresh_token)
                 new_access_token = str(token.access_token)
 
-                return Response({
-                    "message": "Access token refreshed successfully",
-                    "access_token": new_access_token
-                }, status=status.HTTP_200_OK)
+                return Response(
+                    {
+                        "message": "Access token refreshed successfully",
+                        "access_token": new_access_token,
+                    },
+                    status=status.HTTP_200_OK,
+                )
 
             except Exception:
-                return Response({"error": "Invalid refresh token"}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": "Invalid refresh token"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -254,12 +268,17 @@ class ChangePasswordAPIView(APIView):
             user = request.user
 
             if not user.check_password(old_password):
-                return Response({"error": "Old password is incorrect."}, status=status.HTTP_400_BAD_REQUEST)
+                return Response(
+                    {"error": "Old password is incorrect."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             user.set_password(new_password)
             user.save()
 
-            return Response({"message": "Password changed successfully."}, status=status.HTTP_200_OK)
+            return Response(
+                {"message": "Password changed successfully."}, status=status.HTTP_200_OK
+            )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -273,7 +292,12 @@ class ProfileAPIView(APIView):
         tags=["Accounts"],
         operation_id="profile_retrieve",
         parameters=[
-            OpenApiParameter(name="user_id", type=str, location=OpenApiParameter.PATH, description="User UUID"),
+            OpenApiParameter(
+                name="user_id",
+                type=str,
+                location=OpenApiParameter.PATH,
+                description="User UUID",
+            ),
         ],
         responses={
             200: inline_serializer(
@@ -294,27 +318,26 @@ class ProfileAPIView(APIView):
         },
     )
     def get(self, request, user_id):
-
         if request.user.user_id != user_id:
-            if request.user.role is None or request.user.role.rolename not in ["Admin", "Manager"]:
+            if request.user.role is None or request.user.role.rolename not in [
+                "Admin",
+                "Manager",
+            ]:
                 return Response(
                     {"error": "Only Admin and Manager can view other profiles."},
-                    status=status.HTTP_403_FORBIDDEN
+                    status=status.HTTP_403_FORBIDDEN,
                 )
 
-        user = get_object_or_404(CustomUser, user_id=user_id)   
+        user = get_object_or_404(CustomUser, user_id=user_id)
 
         serializer = ProfileSerializer(user)
 
         return Response(
-            {
-                "message": "Profile retrieved successfully.",
-                "profile": serializer.data
-            },
-            status=status.HTTP_200_OK
+            {"message": "Profile retrieved successfully.", "profile": serializer.data},
+            status=status.HTTP_200_OK,
         )
 
- 
+
 class RoleListCreateAPIView(APIView):
     permission_classes = [HasDynamicPermission]
     permission_names = {
@@ -343,26 +366,22 @@ class RoleListCreateAPIView(APIView):
     )
     def get(self, request):
         if request.user.role is None:
-             return Response(
-            {"error": "Role is not assigned."},
-            status=status.HTTP_403_FORBIDDEN
-        )
+            return Response(
+                {"error": "Role is not assigned."}, status=status.HTTP_403_FORBIDDEN
+            )
 
         if request.user.role.rolename not in ["Admin", "Manager"]:
             return Response(
                 {"error": "Only Admin and Manager can view roles."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         roles = Role.objects.prefetch_related("permissions").order_by("role_id")
         serializer = RoleListSerializer(roles, many=True)
 
         return Response(
-            {
-                "message": "Roles retrieved successfully.",
-                "roles": serializer.data
-            },
-            status=status.HTTP_200_OK
+            {"message": "Roles retrieved successfully.", "roles": serializer.data},
+            status=status.HTTP_200_OK,
         )
 
     @extend_schema(
@@ -389,17 +408,11 @@ class RoleListCreateAPIView(APIView):
             serializer.save()
 
             return Response(
-                {
-                    "message": "Role created successfully.",
-                    "role": serializer.data
-                },
-                status=status.HTTP_201_CREATED
+                {"message": "Role created successfully.", "role": serializer.data},
+                status=status.HTTP_201_CREATED,
             )
 
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class RoleDetailAPIView(APIView):
@@ -415,7 +428,12 @@ class RoleDetailAPIView(APIView):
         tags=["Accounts"],
         operation_id="role_update",
         parameters=[
-            OpenApiParameter(name="role_id", type=int, location=OpenApiParameter.PATH, description="Role ID"),
+            OpenApiParameter(
+                name="role_id",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Role ID",
+            ),
         ],
         request=RoleSerializer,
         responses={
@@ -443,30 +461,20 @@ class RoleDetailAPIView(APIView):
         if role.rolename == "Admin":
             return Response(
                 {"error": "Admin role cannot be updated."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-        serializer = RoleSerializer(
-            role,
-            data=request.data,
-            partial=True
-        )
+        serializer = RoleSerializer(role, data=request.data, partial=True)
 
         if serializer.is_valid():
             serializer.save()
 
             return Response(
-                {
-                    "message": "Role updated successfully.",
-                    "role": serializer.data
-                },
-                status=status.HTTP_200_OK
+                {"message": "Role updated successfully.", "role": serializer.data},
+                status=status.HTTP_200_OK,
             )
 
-        return Response(
-            serializer.errors,
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
         summary="Delete a role",
@@ -474,7 +482,12 @@ class RoleDetailAPIView(APIView):
         tags=["Accounts"],
         operation_id="role_delete",
         parameters=[
-            OpenApiParameter(name="role_id", type=int, location=OpenApiParameter.PATH, description="Role ID"),
+            OpenApiParameter(
+                name="role_id",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Role ID",
+            ),
         ],
         responses={
             200: inline_serializer(
@@ -500,18 +513,15 @@ class RoleDetailAPIView(APIView):
         if role.rolename in ["Admin", "Manager", "Employee"]:
             return Response(
                 {"error": "Default roles cannot be deleted."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         role_name = role.rolename
         role.delete()
 
         return Response(
-            {
-                "message": "Role deleted successfully.",
-                "role": role_name
-            },
-            status=status.HTTP_200_OK
+            {"message": "Role deleted successfully.", "role": role_name},
+            status=status.HTTP_200_OK,
         )
 
 
@@ -521,7 +531,7 @@ RoleAPIView = RoleListCreateAPIView
 
 class AssignRoleAPIView(APIView):
     permission_classes = [HasDynamicPermission]
-    permission_name = "assign_role" 
+    permission_name = "assign_role"
 
     @extend_schema(
         summary="Assign a role to a user",
@@ -529,7 +539,12 @@ class AssignRoleAPIView(APIView):
         tags=["Accounts"],
         operation_id="assign_role_update",
         parameters=[
-            OpenApiParameter(name="user_id", type=str, location=OpenApiParameter.PATH, description="User UUID"),
+            OpenApiParameter(
+                name="user_id",
+                type=str,
+                location=OpenApiParameter.PATH,
+                description="User UUID",
+            ),
         ],
         request=inline_serializer(
             "AssignRoleRequest",
@@ -566,15 +581,14 @@ class AssignRoleAPIView(APIView):
         if user.role and user.role.rolename == "Admin":
             return Response(
                 {"error": "Admin role cannot be changed."},
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         role_id = request.data.get("role_id")
 
         if not role_id:
             return Response(
-                {"error": "role_id is required."},
-                status=status.HTTP_400_BAD_REQUEST
+                {"error": "role_id is required."}, status=status.HTTP_400_BAD_REQUEST
             )
 
         role = get_object_or_404(Role, role_id=role_id)
@@ -586,9 +600,9 @@ class AssignRoleAPIView(APIView):
             {
                 "message": "Role assigned successfully.",
                 "user": user.username,
-                "role": role.rolename
+                "role": role.rolename,
             },
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
 
@@ -621,9 +635,9 @@ class PermissionListCreateAPIView(APIView):
         return Response(
             {
                 "message": "Permissions retrieved successfully.",
-                "permissions": serializer.data
+                "permissions": serializer.data,
             },
-            status=status.HTTP_200_OK
+            status=status.HTTP_200_OK,
         )
 
     @extend_schema(
@@ -651,9 +665,9 @@ class PermissionListCreateAPIView(APIView):
             return Response(
                 {
                     "message": "Permission created successfully.",
-                    "permission": serializer.data
+                    "permission": serializer.data,
                 },
-                status=status.HTTP_201_CREATED
+                status=status.HTTP_201_CREATED,
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -673,7 +687,12 @@ class PermissionDetailAPIView(APIView):
         operation_id="permission_update",
         request=PermissionSerializer,
         parameters=[
-            OpenApiParameter(name="permission_id", type=int, location=OpenApiParameter.PATH, description="Permission ID"),
+            OpenApiParameter(
+                name="permission_id",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Permission ID",
+            ),
         ],
         responses={
             200: inline_serializer(
@@ -693,20 +712,16 @@ class PermissionDetailAPIView(APIView):
     def put(self, request, permission_id):
         permission = get_object_or_404(Permission, id=permission_id)
 
-        serializer = PermissionSerializer(
-            permission,
-            data=request.data,
-            partial=True
-        )
+        serializer = PermissionSerializer(permission, data=request.data, partial=True)
 
         if serializer.is_valid():
             serializer.save()
             return Response(
                 {
                     "message": "Permission updated successfully.",
-                    "permission": serializer.data
+                    "permission": serializer.data,
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -717,7 +732,12 @@ class PermissionDetailAPIView(APIView):
         tags=["Accounts"],
         operation_id="permission_delete",
         parameters=[
-            OpenApiParameter(name="permission_id", type=int, location=OpenApiParameter.PATH, description="Permission ID"),
+            OpenApiParameter(
+                name="permission_id",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Permission ID",
+            ),
         ],
         responses={
             200: inline_serializer(
@@ -735,8 +755,7 @@ class PermissionDetailAPIView(APIView):
         permission.delete()
 
         return Response(
-            {"message": "Permission deleted successfully."},
-            status=status.HTTP_200_OK
+            {"message": "Permission deleted successfully."}, status=status.HTTP_200_OK
         )
 
 

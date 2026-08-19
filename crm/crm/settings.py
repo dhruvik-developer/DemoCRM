@@ -16,7 +16,6 @@ import os
 from dotenv import load_dotenv
 
 
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -44,7 +43,9 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS").split(",") if os.getenv("ALLOWED_HOSTS") else []
+ALLOWED_HOSTS = (
+    os.getenv("ALLOWED_HOSTS").split(",") if os.getenv("ALLOWED_HOSTS") else []
+)
 
 
 # Application definition
@@ -135,12 +136,10 @@ STATIC_URL = "static/"
 # settings.py
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
-    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.AnonRateThrottle",
@@ -183,13 +182,22 @@ SPECTACULAR_SETTINGS = {
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
     "TAGS": [
-        {"name": "Accounts", "description": "Authentication, user profiles, roles, and permissions"},
+        {
+            "name": "Accounts",
+            "description": "Authentication, user profiles, roles, and permissions",
+        },
         {"name": "Leads", "description": "Lead management and workflow operations"},
         {"name": "Customers", "description": "Customer management"},
         {"name": "Pipelines", "description": "Pipeline and pipeline stage management"},
-        {"name": "Quotations", "description": "Quotation creation, workflow, approvals, and PDF generation"},
+        {
+            "name": "Quotations",
+            "description": "Quotation creation, workflow, approvals, and PDF generation",
+        },
         {"name": "Tasks", "description": "Task management"},
-        {"name": "Meetings", "description": "Meeting scheduling and participant management"},
+        {
+            "name": "Meetings",
+            "description": "Meeting scheduling and participant management",
+        },
         {"name": "Reminders", "description": "Reminder management"},
         {"name": "Follow Ups", "description": "Follow-up tracking and notes"},
         {"name": "Notifications", "description": "User notifications"},
@@ -201,12 +209,10 @@ SPECTACULAR_SETTINGS = {
 
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "USER_ID_FIELD": "user_id",
     "USER_ID_CLAIM": "user_id",
-
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": True,
 }
@@ -224,13 +230,10 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").strip("'\" ").lower() == "tru
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip("'\" ")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip("'\" ")
 
-DEFAULT_FROM_EMAIL = os.getenv(
-    "DEFAULT_FROM_EMAIL",
-    EMAIL_HOST_USER
-).strip("'\" ")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER).strip("'\" ")
 
 # ======================================================
-# LOGGER 
+# LOGGER
 # ======================================================
 
 LOGGING = {

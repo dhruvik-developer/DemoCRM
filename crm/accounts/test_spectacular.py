@@ -2,6 +2,7 @@
 Tests for drf-spectacular OpenAPI / Swagger documentation.
 Verifies schema generation, endpoint coverage, and tag consistency.
 """
+
 from django.test import TestCase
 from drf_spectacular.generators import SchemaGenerator
 
@@ -122,7 +123,9 @@ class EndpointCoverageTests(TestCase):
 
     def test_meeting_reschedule_endpoint(self):
         self.assertIn("/api/tasks/meetings/{meeting_id}/reschedule/", self.paths)
-        self.assertIn("patch", self.paths["/api/tasks/meetings/{meeting_id}/reschedule/"])
+        self.assertIn(
+            "patch", self.paths["/api/tasks/meetings/{meeting_id}/reschedule/"]
+        )
 
     def test_meeting_status_update_endpoint(self):
         self.assertIn("/api/tasks/meetings/{meeting_id}/status/", self.paths)
@@ -130,11 +133,18 @@ class EndpointCoverageTests(TestCase):
 
     def test_meeting_participant_add_endpoint(self):
         self.assertIn("/api/tasks/meetings/{meeting_id}/participants/", self.paths)
-        self.assertIn("post", self.paths["/api/tasks/meetings/{meeting_id}/participants/"])
+        self.assertIn(
+            "post", self.paths["/api/tasks/meetings/{meeting_id}/participants/"]
+        )
 
     def test_meeting_participant_remove_endpoint(self):
-        self.assertIn("/api/tasks/meetings/{meeting_id}/participants/{user_id}/", self.paths)
-        self.assertIn("delete", self.paths["/api/tasks/meetings/{meeting_id}/participants/{user_id}/"])
+        self.assertIn(
+            "/api/tasks/meetings/{meeting_id}/participants/{user_id}/", self.paths
+        )
+        self.assertIn(
+            "delete",
+            self.paths["/api/tasks/meetings/{meeting_id}/participants/{user_id}/"],
+        )
 
     # ---- Reminder endpoints ----
 

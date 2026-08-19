@@ -64,17 +64,29 @@ class AccountTestCase(APITestCase):
 
     def _create_admin_user(self):
         return self._create_user(
-            "admin", "admin@example.com", "9000000001", "AdminPass@123", role=self.admin_role
+            "admin",
+            "admin@example.com",
+            "9000000001",
+            "AdminPass@123",
+            role=self.admin_role,
         )
 
     def _create_manager_user(self):
         return self._create_user(
-            "manager", "manager@example.com", "9000000002", "ManagerPass@123", role=self.manager_role
+            "manager",
+            "manager@example.com",
+            "9000000002",
+            "ManagerPass@123",
+            role=self.manager_role,
         )
 
     def _create_employee_user(self):
         return self._create_user(
-            "employee", "employee@example.com", "9000000003", "EmployeePass@123", role=self.employee_role
+            "employee",
+            "employee@example.com",
+            "9000000003",
+            "EmployeePass@123",
+            role=self.employee_role,
         )
 
     def _create_plain_user(self, **kwargs):
@@ -87,7 +99,11 @@ class AccountTestCase(APITestCase):
 class CustomUserManagerTests(AccountTestCase):
     def test_create_user_success(self):
         user = self._create_user(
-            "alice", "alice@example.com", "9111111111", "TestPass@123", role=self.employee_role
+            "alice",
+            "alice@example.com",
+            "9111111111",
+            "TestPass@123",
+            role=self.employee_role,
         )
         self.assertIsInstance(user, CustomUser)
         self.assertEqual(user.email, "alice@example.com")
@@ -109,21 +125,27 @@ class CustomUserManagerTests(AccountTestCase):
             )
 
     def test_create_user_defaults(self):
-        user = self._create_user("carol", "carol@example.com", "9111111113", "TestPass@123")
+        user = self._create_user(
+            "carol", "carol@example.com", "9111111113", "TestPass@123"
+        )
         self.assertTrue(user.is_active)
         self.assertFalse(user.is_staff)
         self.assertFalse(user.is_superuser)
         self.assertIsNone(user.role)
 
     def test_create_superuser_flags_and_admin_role(self):
-        user = CustomUser.objects.create_superuser("root", "root@example.com", "RootPass@123")
+        user = CustomUser.objects.create_superuser(
+            "root", "root@example.com", "RootPass@123"
+        )
         self.assertTrue(user.is_superuser)
         self.assertTrue(user.is_staff)
         self.assertTrue(user.is_active)
         self.assertEqual(user.role.rolename, "Admin")
 
     def test_create_superuser_gets_all_permissions(self):
-        user = CustomUser.objects.create_superuser("root2", "root2@example.com", "RootPass@123")
+        user = CustomUser.objects.create_superuser(
+            "root2", "root2@example.com", "RootPass@123"
+        )
         self.assertEqual(user.role.permissions.count(), Permission.objects.count())
 
 
@@ -135,7 +157,9 @@ class RoleModelTests(AccountTestCase):
 
 class CustomUserModelTests(AccountTestCase):
     def test_user_str_returns_email(self):
-        user = self._create_user("dave", "dave@example.com", "9111111114", "TestPass@123")
+        user = self._create_user(
+            "dave", "dave@example.com", "9111111114", "TestPass@123"
+        )
         self.assertEqual(str(user), "dave@example.com")
 
 
@@ -246,7 +270,9 @@ class LoginAPITests(AccountTestCase):
         self.assertEqual(response.data["error"], "Invalid credentials")
 
     def test_login_inactive_user(self):
-        user = self._create_user("sleepy", "sleepy@example.com", "9111111121", "TestPass@123")
+        user = self._create_user(
+            "sleepy", "sleepy@example.com", "9111111121", "TestPass@123"
+        )
         user.is_active = False
         user.save()
         response = self._login("sleepy@example.com", "TestPass@123")
@@ -295,7 +321,9 @@ class LogoutAPITests(AccountTestCase):
         user = self._create_user("joe", "joe@example.com", "9111111120", "TestPass@123")
         access, refresh = self._token_pair(user)
         self.assertEqual(self._logout(access, refresh).status_code, status.HTTP_200_OK)
-        self.assertEqual(self._logout(access, refresh).status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            self._logout(access, refresh).status_code, status.HTTP_400_BAD_REQUEST
+        )
 
     def test_logout_missing_token(self):
         user = self._create_user("joe", "joe@example.com", "9111111120", "TestPass@123")
@@ -325,7 +353,9 @@ class RefreshTokenAPITests(AccountTestCase):
             reverse("token_refresh"), {"refresh_token": refresh}, format="json"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["message"], "Access token refreshed successfully")
+        self.assertEqual(
+            response.data["message"], "Access token refreshed successfully"
+        )
         self.assertIn("access_token", response.data)
 
     def test_refresh_returns_usable_access_token(self):
@@ -536,20 +566,22 @@ class RoleAPITests(AccountTestCase):
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
-        self.assertEqual(
-            Role.objects.get(rolename="Support").permissions.count(), 1
-        )
+        self.assertEqual(Role.objects.get(rolename="Support").permissions.count(), 1)
 
     def test_role_create_duplicate_name(self):
         admin = self._create_admin_user()
         self._auth(admin)
-        response = self.client.post(reverse("roles"), {"rolename": "Admin"}, format="json")
+        response = self.client.post(
+            reverse("roles"), {"rolename": "Admin"}, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_role_create_denied_without_permission(self):
         manager = self._create_manager_user()
         self._auth(manager)
-        response = self.client.post(reverse("roles"), {"rolename": "Support"}, format="json")
+        response = self.client.post(
+            reverse("roles"), {"rolename": "Support"}, format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_role_update_success(self):
@@ -620,9 +652,7 @@ class RoleAPITests(AccountTestCase):
     def test_role_delete_not_found(self):
         admin = self._create_admin_user()
         self._auth(admin)
-        response = self.client.delete(
-            reverse("role_detail", kwargs={"role_id": 99999})
-        )
+        response = self.client.delete(reverse("role_detail", kwargs={"role_id": 99999}))
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
 
@@ -711,7 +741,9 @@ class PermissionAPITests(AccountTestCase):
         self._auth(admin)
         response = self.client.get(reverse("permissions"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.data["message"], "Permissions retrieved successfully.")
+        self.assertEqual(
+            response.data["message"], "Permissions retrieved successfully."
+        )
 
     def test_permissions_list_denied(self):
         employee = self._create_employee_user()
@@ -726,7 +758,9 @@ class PermissionAPITests(AccountTestCase):
     def test_permission_create_success(self):
         admin = self._create_admin_user()
         self._auth(admin)
-        response = self.client.post(reverse("permissions"), self._payload(1), format="json")
+        response = self.client.post(
+            reverse("permissions"), self._payload(1), format="json"
+        )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertTrue(Permission.objects.filter(codename="custom_perm_1").exists())
 
@@ -865,5 +899,13 @@ class SerializerTests(AccountTestCase):
         data = ProfileSerializer(user).data
         self.assertEqual(
             set(data.keys()),
-            {"user_id", "username", "email", "phone_number", "role", "created_at", "updated_at"},
+            {
+                "user_id",
+                "username",
+                "email",
+                "phone_number",
+                "role",
+                "created_at",
+                "updated_at",
+            },
         )

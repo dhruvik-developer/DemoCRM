@@ -23,7 +23,6 @@ from .models import (
     PipelineStage,
     Quotation,
     QuotationIntegrationEvent,
-    QuotationVersion,
 )
 from .permissions import CRMHasPermission
 from .serializers import (
@@ -36,9 +35,13 @@ from .serializers import (
     PipelineStageSerializer,
     QuotationIntegrationEventSerializer,
     QuotationSerializer,
-    QuotationVersionSerializer,
 )
-from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse, inline_serializer
+from drf_spectacular.utils import (
+    extend_schema,
+    OpenApiParameter,
+    OpenApiResponse,
+    inline_serializer,
+)
 
 from .services import CRMService, QuotationService
 from .pdf_utils import generate_quotation_pdf
@@ -71,7 +74,9 @@ class LeadSourceListCreateView(APIView):
         request=LeadSourceSerializer,
         responses={
             201: LeadSourceSerializer,
-            400: inline_serializer("LeadSourceErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "LeadSourceErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request):
@@ -82,9 +87,7 @@ class LeadSourceListCreateView(APIView):
             source = CRMService.create_lead_source(
                 user=request.user,
                 name=serializer.validated_data["name"],
-                description=serializer.validated_data.get(
-                    "description"
-                ),
+                description=serializer.validated_data.get("description"),
             )
         except DjangoValidationError as exc:
             return Response(
@@ -125,7 +128,9 @@ class PipelineListCreateView(APIView):
         request=PipelineSerializer,
         responses={
             201: PipelineSerializer,
-            400: inline_serializer("PipelineErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "PipelineErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request):
@@ -136,9 +141,7 @@ class PipelineListCreateView(APIView):
             pipeline = CRMService.create_pipeline(
                 user=request.user,
                 name=serializer.validated_data["name"],
-                description=serializer.validated_data.get(
-                    "description"
-                ),
+                description=serializer.validated_data.get("description"),
             )
         except DjangoValidationError as exc:
             return Response(
@@ -179,7 +182,9 @@ class PipelineStageListCreateView(APIView):
         request=PipelineStageSerializer,
         responses={
             201: PipelineStageSerializer,
-            400: inline_serializer("PipelineStageErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "PipelineStageErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request):
@@ -191,12 +196,8 @@ class PipelineStageListCreateView(APIView):
                 user=request.user,
                 pipeline=serializer.validated_data["pipeline"],
                 name=serializer.validated_data["name"],
-                display_order=serializer.validated_data[
-                    "display_order"
-                ],
-                description=serializer.validated_data.get(
-                    "description"
-                ),
+                display_order=serializer.validated_data["display_order"],
+                description=serializer.validated_data.get("description"),
                 requires_quotation=serializer.validated_data.get(
                     "requires_quotation", False
                 ),
@@ -232,16 +233,12 @@ class LeadListCreateView(APIView):
         responses={200: LeadSerializer(many=True)},
     )
     def get(self, request):
-        leads = (
-            Lead.objects
-            .select_related(
-                "source",
-                "assigned_to",
-                "pipeline",
-                "current_stage",
-            )
-            .all()
-        )
+        leads = Lead.objects.select_related(
+            "source",
+            "assigned_to",
+            "pipeline",
+            "current_stage",
+        ).all()
 
         serializer = LeadSerializer(
             leads,
@@ -257,7 +254,9 @@ class LeadListCreateView(APIView):
         request=LeadSerializer,
         responses={
             201: LeadSerializer,
-            400: inline_serializer("LeadCreateErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "LeadCreateErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request):
@@ -270,17 +269,11 @@ class LeadListCreateView(APIView):
                 name=serializer.validated_data["name"],
                 email=serializer.validated_data.get("email"),
                 phone=serializer.validated_data.get("phone"),
-                company_name=serializer.validated_data.get(
-                    "company_name"
-                ),
+                company_name=serializer.validated_data.get("company_name"),
                 source=serializer.validated_data["source"],
-                assigned_to=serializer.validated_data[
-                    "assigned_to"
-                ],
+                assigned_to=serializer.validated_data["assigned_to"],
                 pipeline=serializer.validated_data["pipeline"],
-                current_stage=serializer.validated_data[
-                    "current_stage"
-                ],
+                current_stage=serializer.validated_data["current_stage"],
             )
         except DjangoValidationError as exc:
             return Response(
@@ -388,15 +381,22 @@ class LeadAssignView(APIView):
             "application/json": {
                 "type": "object",
                 "properties": {
-                    "assigned_to": {"type": "integer", "description": "User ID to assign the lead to"},
+                    "assigned_to": {
+                        "type": "integer",
+                        "description": "User ID to assign the lead to",
+                    },
                 },
                 "required": ["assigned_to"],
             }
         },
         responses={
             200: LeadSerializer,
-            400: inline_serializer("LeadAssignErrorResponse", fields={"detail": serializers.CharField()}),
-            404: inline_serializer("LeadAssignNotFoundResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "LeadAssignErrorResponse", fields={"detail": serializers.CharField()}
+            ),
+            404: inline_serializer(
+                "LeadAssignNotFoundResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request, pk):
@@ -452,14 +452,19 @@ class LeadProgressView(APIView):
             "application/json": {
                 "type": "object",
                 "properties": {
-                    "stage_id": {"type": "integer", "description": "Pipeline stage ID to progress to"},
+                    "stage_id": {
+                        "type": "integer",
+                        "description": "Pipeline stage ID to progress to",
+                    },
                 },
                 "required": ["stage_id"],
             }
         },
         responses={
             200: LeadSerializer,
-            400: inline_serializer("LeadProgressErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "LeadProgressErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request, pk):
@@ -504,14 +509,19 @@ class LeadLostView(APIView):
             "application/json": {
                 "type": "object",
                 "properties": {
-                    "lost_reason": {"type": "string", "description": "Reason for losing the lead"},
+                    "lost_reason": {
+                        "type": "string",
+                        "description": "Reason for losing the lead",
+                    },
                 },
                 "required": ["lost_reason"],
             }
         },
         responses={
             200: LeadSerializer,
-            400: inline_serializer("LeadLostErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "LeadLostErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request, pk):
@@ -561,7 +571,9 @@ class LeadReengageView(APIView):
         request=None,
         responses={
             200: LeadSerializer,
-            400: inline_serializer("LeadReengageErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "LeadReengageErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request, pk):
@@ -603,16 +615,30 @@ class LeadConvertView(APIView):
             "application/json": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string", "description": "Customer name (defaults to lead name)"},
-                    "email": {"type": "string", "description": "Customer email (defaults to lead email)"},
-                    "phone": {"type": "string", "description": "Customer phone (defaults to lead phone)"},
-                    "company_name": {"type": "string", "description": "Company name (defaults to lead company)"},
+                    "name": {
+                        "type": "string",
+                        "description": "Customer name (defaults to lead name)",
+                    },
+                    "email": {
+                        "type": "string",
+                        "description": "Customer email (defaults to lead email)",
+                    },
+                    "phone": {
+                        "type": "string",
+                        "description": "Customer phone (defaults to lead phone)",
+                    },
+                    "company_name": {
+                        "type": "string",
+                        "description": "Company name (defaults to lead company)",
+                    },
                 },
             }
         },
         responses={
             201: CustomerSerializer,
-            400: inline_serializer("LeadConvertErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "LeadConvertErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request, pk):
@@ -675,15 +701,11 @@ class ActivityListCreateView(APIView):
         responses={200: ActivitySerializer(many=True)},
     )
     def get(self, request):
-        activities = (
-            Activity.objects
-            .select_related(
-                "lead",
-                "customer",
-                "created_by",
-            )
-            .all()
-        )
+        activities = Activity.objects.select_related(
+            "lead",
+            "customer",
+            "created_by",
+        ).all()
 
         serializer = ActivitySerializer(
             activities,
@@ -699,7 +721,9 @@ class ActivityListCreateView(APIView):
         request=ActivitySerializer,
         responses={
             201: ActivitySerializer,
-            400: inline_serializer("ActivityErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "ActivityErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request):
@@ -709,9 +733,7 @@ class ActivityListCreateView(APIView):
         try:
             activity = CRMService.create_activity(
                 user=request.user,
-                activity_type=serializer.validated_data[
-                    "activity_type"
-                ],
+                activity_type=serializer.validated_data["activity_type"],
                 outcome=serializer.validated_data["outcome"],
                 lead=serializer.validated_data.get("lead"),
                 customer=serializer.validated_data.get("customer"),
@@ -720,9 +742,7 @@ class ActivityListCreateView(APIView):
                     "follow_up_required",
                     False,
                 ),
-                follow_up_date=serializer.validated_data.get(
-                    "follow_up_date"
-                ),
+                follow_up_date=serializer.validated_data.get("follow_up_date"),
             )
         except DjangoValidationError as exc:
             return Response(
@@ -751,11 +771,7 @@ class AuditLogListView(APIView):
         responses={200: AuditLogSerializer(many=True)},
     )
     def get(self, request):
-        logs = (
-            AuditLog.objects
-            .select_related("user")
-            .all()
-        )
+        logs = AuditLog.objects.select_related("user").all()
 
         serializer = AuditLogSerializer(
             logs,
@@ -855,8 +871,7 @@ class CustomerActivityListView(generics.ListAPIView):
         customer_id = self.kwargs["pk"]
 
         return (
-            Activity.objects
-            .filter(customer_id=customer_id)
+            Activity.objects.filter(customer_id=customer_id)
             .select_related("customer", "created_by")
             .order_by("-created_at")
         )
@@ -865,6 +880,7 @@ class CustomerActivityListView(generics.ListAPIView):
 # ==============================================================================
 # QUOTATION WORKFLOW VIEWS (MEMBER 2)
 # ==============================================================================
+
 
 @extend_schema(tags=["Quotations"])
 class QuotationListCreateView(APIView):
@@ -879,19 +895,32 @@ class QuotationListCreateView(APIView):
         description="Retrieve a list of all quotations. Requires view_quotation permission.",
         operation_id="quotation_list",
         parameters=[
-            OpenApiParameter(name="lead", type=str, description="Filter quotations by lead UUID", required=False),
+            OpenApiParameter(
+                name="lead",
+                type=str,
+                description="Filter quotations by lead UUID",
+                required=False,
+            ),
         ],
         responses={200: QuotationSerializer(many=True)},
     )
     def get(self, request):
         lead_id = request.query_params.get("lead")
         queryset = Quotation.objects.select_related(
-            "lead", "customer", "created_by", "current_version",
-            "current_version__created_by", "current_version__assigned_to",
-            "current_version__pipeline", "current_version__current_stage"
+            "lead",
+            "customer",
+            "created_by",
+            "current_version",
+            "current_version__created_by",
+            "current_version__assigned_to",
+            "current_version__pipeline",
+            "current_version__current_stage",
         ).prefetch_related(
-            "current_version__line_items", "current_version__approvals",
-            "versions", "versions__line_items", "versions__approvals"
+            "current_version__line_items",
+            "current_version__approvals",
+            "versions",
+            "versions__line_items",
+            "versions__approvals",
         )
 
         if lead_id:
@@ -908,7 +937,11 @@ class QuotationListCreateView(APIView):
             "application/json": {
                 "type": "object",
                 "properties": {
-                    "lead_id": {"type": "string", "format": "uuid", "description": "Lead UUID (required)"},
+                    "lead_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Lead UUID (required)",
+                    },
                     "terms": {"type": "string", "description": "Quotation terms"},
                     "notes": {"type": "string", "description": "Quotation notes"},
                     "line_items": {
@@ -929,7 +962,10 @@ class QuotationListCreateView(APIView):
         },
         responses={
             201: QuotationSerializer,
-            400: inline_serializer("QuotationCreateErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationCreateErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def post(self, request):
@@ -983,14 +1019,19 @@ class QuotationDetailView(APIView):
         ],
         responses={
             200: QuotationSerializer,
-            404: inline_serializer("QuotationDetailNotFoundResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer(
+                "QuotationDetailNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def get(self, request, pk):
         quotation = get_object_or_404(
             Quotation.objects.select_related(
                 "lead", "customer", "created_by", "current_version"
-            ).prefetch_related("versions", "versions__line_items", "versions__approvals"),
+            ).prefetch_related(
+                "versions", "versions__line_items", "versions__approvals"
+            ),
             pk=pk,
         )
         serializer = QuotationSerializer(quotation)
@@ -1035,7 +1076,10 @@ class QuotationUpdateDraftView(APIView):
         },
         responses={
             200: QuotationSerializer,
-            400: inline_serializer("QuotationUpdateDraftErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationUpdateDraftErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def patch(self, request, pk):
@@ -1081,7 +1125,10 @@ class QuotationSubmitView(APIView):
         request=None,
         responses={
             200: QuotationSerializer,
-            400: inline_serializer("QuotationSubmitErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationSubmitErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def post(self, request, pk):
@@ -1121,8 +1168,14 @@ class QuotationApproveView(APIView):
         request=None,
         responses={
             200: QuotationSerializer,
-            400: inline_serializer("QuotationApproveErrorResponse", fields={"detail": serializers.CharField()}),
-            403: inline_serializer("QuotationApproveForbiddenResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationApproveErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            403: inline_serializer(
+                "QuotationApproveForbiddenResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def post(self, request, pk):
@@ -1168,13 +1221,19 @@ class QuotationRejectApprovalView(APIView):
             "application/json": {
                 "type": "object",
                 "properties": {
-                    "reason": {"type": "string", "description": "Reason for rejecting approval"},
+                    "reason": {
+                        "type": "string",
+                        "description": "Reason for rejecting approval",
+                    },
                 },
             }
         },
         responses={
             200: QuotationSerializer,
-            400: inline_serializer("QuotationRejectApprovalErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationRejectApprovalErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def post(self, request, pk):
@@ -1216,7 +1275,9 @@ class QuotationSendView(APIView):
         request=None,
         responses={
             200: QuotationSerializer,
-            400: inline_serializer("QuotationSendErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationSendErrorResponse", fields={"detail": serializers.CharField()}
+            ),
         },
     )
     def post(self, request, pk):
@@ -1271,13 +1332,19 @@ class QuotationRevisionView(APIView):
                         },
                         "description": "Updated line items",
                     },
-                    "revision_reason": {"type": "string", "description": "Reason for the revision"},
+                    "revision_reason": {
+                        "type": "string",
+                        "description": "Reason for the revision",
+                    },
                 },
             }
         },
         responses={
             201: QuotationSerializer,
-            400: inline_serializer("QuotationRevisionErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationRevisionErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def post(self, request, pk):
@@ -1285,7 +1352,9 @@ class QuotationRevisionView(APIView):
         terms = request.data.get("terms")
         notes = request.data.get("notes")
         line_items = request.data.get("line_items")
-        revision_reason = request.data.get("revision_reason") or request.data.get("reason")
+        revision_reason = request.data.get("revision_reason") or request.data.get(
+            "reason"
+        )
 
         try:
             quotation = QuotationService.create_revision(
@@ -1331,7 +1400,10 @@ class QuotationAcceptView(APIView):
                     "customer": CustomerSerializer(allow_null=True),
                 },
             ),
-            400: inline_serializer("QuotationAcceptErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationAcceptErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def post(self, request, pk):
@@ -1375,19 +1447,27 @@ class QuotationRejectView(APIView):
             "application/json": {
                 "type": "object",
                 "properties": {
-                    "rejection_reason": {"type": "string", "description": "Reason for rejecting the quotation"},
+                    "rejection_reason": {
+                        "type": "string",
+                        "description": "Reason for rejecting the quotation",
+                    },
                 },
                 "required": ["rejection_reason"],
             }
         },
         responses={
             200: QuotationSerializer,
-            400: inline_serializer("QuotationRejectErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationRejectErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def post(self, request, pk):
         quotation = get_object_or_404(Quotation, pk=pk)
-        rejection_reason = request.data.get("rejection_reason") or request.data.get("reason")
+        rejection_reason = request.data.get("rejection_reason") or request.data.get(
+            "reason"
+        )
 
         if not rejection_reason:
             return Response(
@@ -1444,13 +1524,28 @@ class QuotationPDFView(APIView):
         operation_id="quotation_pdf_download",
         parameters=[
             OpenApiParameter(name="pk", type=str, description="Quotation UUID"),
-            OpenApiParameter(name="version", type=int, description="Quotation version number (optional)", required=False),
+            OpenApiParameter(
+                name="version",
+                type=int,
+                description="Quotation version number (optional)",
+                required=False,
+            ),
         ],
         responses={
-            (200, "application/pdf"): OpenApiResponse(response=bytes, description="Quotation PDF file"),
-            400: inline_serializer("QuotationPdfErrorResponse", fields={"detail": serializers.CharField()}),
-            404: inline_serializer("QuotationPdfNotFoundResponse", fields={"detail": serializers.CharField()}),
-            500: inline_serializer("QuotationPdfServerErrorResponse", fields={"detail": serializers.CharField()}),
+            (200, "application/pdf"): OpenApiResponse(
+                response=bytes, description="Quotation PDF file"
+            ),
+            400: inline_serializer(
+                "QuotationPdfErrorResponse", fields={"detail": serializers.CharField()}
+            ),
+            404: inline_serializer(
+                "QuotationPdfNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "QuotationPdfServerErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def get(self, request, pk):
@@ -1482,7 +1577,9 @@ class QuotationPDFView(APIView):
 
         if version.status in ["DRAFT", "PENDING_APPROVAL"]:
             return Response(
-                {"detail": f"PDF download is not allowed for quotations in state '{version.status}'."},
+                {
+                    "detail": f"PDF download is not allowed for quotations in state '{version.status}'."
+                },
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -1530,10 +1627,16 @@ class QuotationSendEmailView(APIView):
             "application/json": {
                 "type": "object",
                 "properties": {
-                    "recipient_email": {"type": "string", "description": "Recipient email address"},
+                    "recipient_email": {
+                        "type": "string",
+                        "description": "Recipient email address",
+                    },
                     "subject": {"type": "string", "description": "Email subject"},
                     "body": {"type": "string", "description": "Email body"},
-                    "version": {"type": "integer", "description": "Quotation version number (optional)"},
+                    "version": {
+                        "type": "integer",
+                        "description": "Quotation version number (optional)",
+                    },
                 },
             }
         },
@@ -1545,7 +1648,10 @@ class QuotationSendEmailView(APIView):
                     "quotation": QuotationSerializer(),
                 },
             ),
-            400: inline_serializer("QuotationSendEmailErrorResponse", fields={"detail": serializers.CharField()}),
+            400: inline_serializer(
+                "QuotationSendEmailErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
         },
     )
     def post(self, request, pk):

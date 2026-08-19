@@ -18,9 +18,7 @@ def create_notification(user, title, message, type_name="System"):
     if user is None:
         return None
 
-    notification_type, _ = NotificationType.objects.get_or_create(
-        type_name=type_name
-    )
+    notification_type, _ = NotificationType.objects.get_or_create(type_name=type_name)
 
     template, _ = NotificationTemplate.objects.get_or_create(
         subject=title,

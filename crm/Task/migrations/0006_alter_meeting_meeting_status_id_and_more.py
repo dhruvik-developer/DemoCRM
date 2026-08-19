@@ -5,30 +5,45 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('Task', '0005_rename_meetingg_meeting_and_more'),
+        ("Task", "0005_rename_meetingg_meeting_and_more"),
     ]
 
     operations = [
         migrations.AlterField(
-            model_name='meeting',
-            name='meeting_status_id',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='meetings', to='Task.meetingstatus'),
+            model_name="meeting",
+            name="meeting_status_id",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="meetings",
+                to="Task.meetingstatus",
+            ),
         ),
         migrations.AlterField(
-            model_name='meeting',
-            name='meeting_type_id',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='meetings', to='Task.meetingtype'),
+            model_name="meeting",
+            name="meeting_type_id",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="meetings",
+                to="Task.meetingtype",
+            ),
         ),
         migrations.AlterField(
-            model_name='reminder',
-            name='reminder_status_id',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='reminders', to='Task.reminderstatus'),
+            model_name="reminder",
+            name="reminder_status_id",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="reminders",
+                to="Task.reminderstatus",
+            ),
         ),
         migrations.AlterField(
-            model_name='reminder',
-            name='reminder_type_id',
-            field=models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='reminders', to='Task.remindertype'),
+            model_name="reminder",
+            name="reminder_type_id",
+            field=models.ForeignKey(
+                on_delete=django.db.models.deletion.PROTECT,
+                related_name="reminders",
+                to="Task.remindertype",
+            ),
         ),
     ]

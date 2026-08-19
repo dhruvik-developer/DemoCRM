@@ -5,7 +5,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("Task", "0007_alter_reminder_reminder_for"),
         ("customer_management", "0006_alter_quotation_options"),

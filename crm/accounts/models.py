@@ -2,10 +2,11 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from .managers import CustomUserManager
 from uuid import uuid4
-from django.contrib.auth.models import Permission 
+from django.contrib.auth.models import Permission
 
 
 # Create your models here.
+
 
 class Role(models.Model):
     role_id = models.AutoField(primary_key=True, editable=False)
@@ -17,6 +18,7 @@ class Role(models.Model):
 
     def __str__(self):
         return self.rolename
+
 
 class CustomUser(AbstractUser):
     user_id = models.UUIDField(default=uuid4, primary_key=True, editable=False)
@@ -33,4 +35,4 @@ class CustomUser(AbstractUser):
     REQUIRED_FIELDS = ["username"]
 
     def __str__(self):
-        return self.email 
+        return self.email

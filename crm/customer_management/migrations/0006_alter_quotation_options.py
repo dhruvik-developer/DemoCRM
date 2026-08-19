@@ -4,14 +4,28 @@ from django.db import migrations
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('customer_management', '0005_alter_quotation_options_quotation_accepted_version_and_more'),
+        (
+            "customer_management",
+            "0005_alter_quotation_options_quotation_accepted_version_and_more",
+        ),
     ]
 
     operations = [
         migrations.AlterModelOptions(
-            name='quotation',
-            options={'ordering': ['-created_at'], 'permissions': [('submit_quotation', 'Can submit quotation for approval'), ('approve_quotation', 'Can approve quotation'), ('approve_own_quotation', 'Can approve own quotation'), ('send_quotation', 'Can send quotation'), ('accept_quotation', 'Can accept quotation'), ('reject_quotation', 'Can reject quotation'), ('request_quotation_revision', 'Can request quotation revision'), ('generate_quotation_pdf', 'Can generate quotation PDF')]},
+            name="quotation",
+            options={
+                "ordering": ["-created_at"],
+                "permissions": [
+                    ("submit_quotation", "Can submit quotation for approval"),
+                    ("approve_quotation", "Can approve quotation"),
+                    ("approve_own_quotation", "Can approve own quotation"),
+                    ("send_quotation", "Can send quotation"),
+                    ("accept_quotation", "Can accept quotation"),
+                    ("reject_quotation", "Can reject quotation"),
+                    ("request_quotation_revision", "Can request quotation revision"),
+                    ("generate_quotation_pdf", "Can generate quotation PDF"),
+                ],
+            },
         ),
     ]
