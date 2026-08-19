@@ -3,7 +3,7 @@ from django.shortcuts import get_object_or_404
 from django.http import Http404
 import logging
 
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -32,6 +32,7 @@ from .serializers import (
 
 from .pagination import CRMPageNumberPagination
 from .services import send_meeting_creation_emails
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse, inline_serializer
 
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,30 @@ class TaskListCreateView(APIView):
         "POST": "add_task",
     }
 
+    @extend_schema(
+        tags=["Tasks"],
+        summary="List tasks",
+        description="GET: List tasks. Admin/Manager see all tasks, Employee sees only assigned tasks. Auth: IsAuthenticated.",
+        operation_id="task_list",
+        parameters=[
+            OpenApiParameter(name="status", type=int, description="Filter by task status ID", required=False),
+            OpenApiParameter(name="priority", type=int, description="Filter by priority ID", required=False),
+            OpenApiParameter(name="category", type=int, description="Filter by category ID", required=False),
+            OpenApiParameter(name="assigned_to", type=int, description="Filter by assigned user ID (Admin/Manager only)", required=False),
+            OpenApiParameter(name="lead", type=int, description="Filter by lead ID", required=False),
+            OpenApiParameter(name="customer", type=int, description="Filter by customer ID", required=False),
+            OpenApiParameter(name="search", type=str, description="Search in task title and description", required=False),
+            OpenApiParameter(name="ordering", type=str, description="Order by field (due_date, created_at, updated_at, status, priority, task_title). Prefix with - for descending.", required=False),
+            OpenApiParameter(name="page", type=int, description="Page number for pagination", required=False),
+            OpenApiParameter(name="page_size", type=int, description="Number of results per page", required=False),
+        ],
+        responses={
+            200: TaskSerializer(many=True),
+            400: inline_serializer("TaskListErrorResponse", fields={"error": serializers.CharField()}),
+            403: inline_serializer("TaskListForbiddenResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("TaskListServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def get(self, request):
         try:
             tasks = (
@@ -261,6 +286,19 @@ class TaskListCreateView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Create a task",
+        description="POST: Create a new task. Permission: add_task.",
+        operation_id="task_create",
+        request=TaskSerializer,
+        responses={
+            201: TaskSerializer,
+            400: TaskSerializer,
+            403: inline_serializer("TaskCreateForbiddenResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("TaskCreateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def post(self, request):
         try:
 
@@ -383,6 +421,21 @@ class TaskDetailView(APIView):
     # GET TASK DETAIL
     # ======================================================
 
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Retrieve task detail",
+        description="Retrieve details of a task by ID. Auth: IsAuthenticated.",
+        operation_id="task_retrieve",
+        parameters=[
+            OpenApiParameter(name="task_id", type=int, description="Task ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        responses={
+            200: TaskSerializer,
+            403: inline_serializer("TaskDetailForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("TaskDetailNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("TaskDetailServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def get(self, request, task_id):
 
         try:
@@ -482,6 +535,23 @@ class TaskDetailView(APIView):
     # UPDATE TASK
     # ======================================================
 
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Partially update a task",
+        description="Partially update a task. Auth: IsAuthenticated.",
+        operation_id="task_partial_update",
+        parameters=[
+            OpenApiParameter(name="task_id", type=int, description="Task ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        request=TaskSerializer,
+        responses={
+            200: TaskSerializer,
+            400: TaskSerializer,
+            403: inline_serializer("TaskUpdateForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("TaskUpdateNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("TaskUpdateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def patch(self, request, task_id):
 
         try:
@@ -610,6 +680,21 @@ class TaskDetailView(APIView):
 # DELETE TASK
 # ======================================================
 
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Delete a task",
+        description="Soft-delete a task (sets is_active=False). Auth: IsAuthenticated.",
+        operation_id="task_delete",
+        parameters=[
+            OpenApiParameter(name="task_id", type=int, description="Task ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        responses={
+            200: inline_serializer("TaskDeleteSuccessResponse", fields={"message": serializers.CharField(), "task_id": serializers.IntegerField()}),
+            403: inline_serializer("TaskDeleteForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("TaskDeleteNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("TaskDeleteServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def delete(self, request, task_id):
 
         try:
@@ -732,6 +817,30 @@ class TaskAssignView(APIView):
         "POST": "task_assign",
     }
 
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Assign or reassign a task",
+        description="Assign or reassign a task to a user. Only users with task_assign permission (Admin/Manager) can perform this action.",
+        operation_id="task_assign",
+        parameters=[
+            OpenApiParameter(name="task_id", type=int, description="Task ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "assigned_to": {"type": "integer", "description": "User ID to assign the task to"},
+                },
+                "required": ["assigned_to"],
+            }
+        },
+        responses={
+            200: inline_serializer("TaskAssignSuccessResponse", fields={"message": serializers.CharField(), "task": TaskSerializer()}),
+            400: inline_serializer("TaskAssignErrorResponse", fields={"assigned_to": serializers.CharField()}),
+            404: inline_serializer("TaskAssignNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("TaskAssignServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def post(self, request, task_id):
 
         try:
@@ -850,6 +959,30 @@ class TaskStatusUpdateView(APIView):
         "PATCH": "task_update",
     }
 
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Update task status",
+        description="Update the status of a task. Only users with task_update permission can perform this action.",
+        operation_id="task_status_update",
+        parameters=[
+            OpenApiParameter(name="task_id", type=int, description="Task ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "status_id": {"type": "integer", "description": "New task status ID"},
+                },
+                "required": ["status_id"],
+            }
+        },
+        responses={
+            200: inline_serializer("TaskStatusUpdateSuccessResponse", fields={"message": serializers.CharField(), "task_id": serializers.IntegerField(), "previous_status": serializers.CharField(), "new_status": serializers.CharField()}),
+            400: inline_serializer("TaskStatusUpdateErrorResponse", fields={"status_id": serializers.CharField()}),
+            404: inline_serializer("TaskStatusUpdateNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("TaskStatusUpdateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def patch(self, request, task_id):
 
         try:
@@ -949,6 +1082,18 @@ class MeetingCreateView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Create a meeting",
+        description="Create a new meeting. Auth: IsAuthenticated. Sends meeting creation emails to participants.",
+        operation_id="meeting_create",
+        request=MeetingSerializer,
+        responses={
+            201: MeetingSerializer,
+            400: MeetingSerializer,
+            500: inline_serializer("MeetingCreateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def post(self, request):
         try:
             serializer = MeetingSerializer(
@@ -1009,6 +1154,21 @@ class MeetingDetailView(APIView):
         "GET": "view_meeting",
     }
 
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Retrieve meeting details",
+        description="Retrieve details of a specific meeting. Permission: view_meeting.",
+        operation_id="meeting_retrieve",
+        parameters=[
+            OpenApiParameter(name="meeting_id", type=int, description="Meeting ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        responses={
+            200: MeetingSerializer,
+            403: inline_serializer("MeetingDetailForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("MeetingDetailNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("MeetingDetailServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def get(self, request, meeting_id):
         try:
             meeting = get_object_or_404(
@@ -1068,6 +1228,32 @@ class MeetingRescheduleView(APIView):
         "PATCH": "change_meeting",
     }
 
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Reschedule a meeting",
+        description="Reschedule a meeting by changing its date and/or time. At least one of meeting_date, start_time, or end_time must be provided. Permission: change_meeting.",
+        operation_id="meeting_reschedule",
+        parameters=[
+            OpenApiParameter(name="meeting_id", type=int, description="Meeting ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "meeting_date": {"type": "string", "format": "date", "description": "New meeting date (YYYY-MM-DD)"},
+                    "start_time": {"type": "string", "format": "time", "description": "New start time (HH:MM:SS)"},
+                    "end_time": {"type": "string", "format": "time", "description": "New end time (HH:MM:SS)"},
+                },
+            }
+        },
+        responses={
+            200: inline_serializer("MeetingRescheduleSuccessResponse", fields={"message": serializers.CharField(), "meeting": MeetingSerializer()}),
+            400: inline_serializer("MeetingRescheduleErrorResponse", fields={"error": serializers.CharField()}),
+            403: inline_serializer("MeetingRescheduleForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("MeetingRescheduleNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("MeetingRescheduleServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def patch(self, request, meeting_id):
         try:
             meeting = get_object_or_404(
@@ -1157,6 +1343,31 @@ class MeetingStatusUpdateView(APIView):
         "PATCH": "change_meeting",
     }
 
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Update meeting status",
+        description="Update the status of a meeting. Permission: change_meeting.",
+        operation_id="meeting_status_update",
+        parameters=[
+            OpenApiParameter(name="meeting_id", type=int, description="Meeting ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "meeting_status_id": {"type": "integer", "description": "New meeting status ID"},
+                },
+                "required": ["meeting_status_id"],
+            }
+        },
+        responses={
+            200: inline_serializer("MeetingStatusUpdateSuccessResponse", fields={"message": serializers.CharField(), "meeting_id": serializers.IntegerField(), "previous_status": serializers.CharField(), "new_status": serializers.CharField()}),
+            400: inline_serializer("MeetingStatusUpdateErrorResponse", fields={"meeting_status_id": serializers.CharField()}),
+            403: inline_serializer("MeetingStatusUpdateForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("MeetingStatusUpdateNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("MeetingStatusUpdateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def patch(self, request, meeting_id):
         try:
             meeting = get_object_or_404(
@@ -1248,6 +1459,33 @@ class MeetingParticipantAddView(APIView):
         "POST": "add_meeting_participant",
     }
 
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Add a participant to a meeting",
+        description="Add a participant to a meeting. Permission: add_meeting_participant.",
+        operation_id="meeting_participant_add",
+        parameters=[
+            OpenApiParameter(name="meeting_id", type=int, description="Meeting ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "user_id": {"type": "integer", "description": "User ID of the participant to add"},
+                    "participant_role": {"type": "string", "description": "Role of the participant in the meeting"},
+                    "is_required": {"type": "boolean", "description": "Whether the participant is required (default: true)"},
+                },
+                "required": ["user_id", "participant_role"],
+            }
+        },
+        responses={
+            201: MeetingParticipantSerializer,
+            400: inline_serializer("MeetingParticipantAddErrorResponse", fields={"user_id": serializers.CharField()}),
+            403: inline_serializer("MeetingParticipantAddForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("MeetingParticipantAddNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("MeetingParticipantAddServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def post(self, request, meeting_id):
         try:
             meeting = get_object_or_404(
@@ -1404,6 +1642,22 @@ class MeetingParticipantRemoveView(APIView):
         "DELETE": "delete_meeting_participant",
     }
 
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Remove a participant from a meeting",
+        description="Remove a participant from a meeting. Permission: delete_meeting_participant.",
+        operation_id="meeting_participant_remove",
+        parameters=[
+            OpenApiParameter(name="meeting_id", type=int, description="Meeting ID", required=True, location=OpenApiParameter.PATH),
+            OpenApiParameter(name="user_id", type=str, description="User ID of the participant to remove", required=True, location=OpenApiParameter.PATH),
+        ],
+        responses={
+            200: inline_serializer("MeetingParticipantRemoveSuccessResponse", fields={"message": serializers.CharField(), "meeting_id": serializers.IntegerField(), "user_id": serializers.CharField()}),
+            403: inline_serializer("MeetingParticipantRemoveForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("MeetingParticipantRemoveNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("MeetingParticipantRemoveServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def delete(self, request, meeting_id, user_id):
         try:
             meeting = get_object_or_404(
@@ -1471,6 +1725,18 @@ class ReminderCreateView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["Reminders"],
+        summary="Create a reminder",
+        description="Create a new reminder. Auth: IsAuthenticated.",
+        operation_id="reminder_create",
+        request=ReminderSerializer,
+        responses={
+            201: ReminderSerializer,
+            400: ReminderSerializer,
+            500: inline_serializer("ReminderCreateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def post(self, request):
         try:
             serializer = ReminderSerializer(
@@ -1556,6 +1822,21 @@ class ReminderDetailView(APIView):
     # ------------------------------------------------------
     # REMINDER DETAIL
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Reminders"],
+        summary="Retrieve reminder detail",
+        description="Retrieve reminder detail. Permission: view_reminder.",
+        operation_id="reminder_retrieve",
+        parameters=[
+            OpenApiParameter(name="reminder_id", type=int, description="Reminder ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        responses={
+            200: ReminderSerializer,
+            403: inline_serializer("ReminderDetailForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("ReminderDetailNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("ReminderDetailServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def get(self, request, reminder_id):
         try:
             reminder = self.get_reminder(reminder_id)
@@ -1602,6 +1883,23 @@ class ReminderDetailView(APIView):
     # ------------------------------------------------------
     # UPDATE REMINDER
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Reminders"],
+        summary="Partially update a reminder",
+        description="Update a reminder. Permission: change_reminder.",
+        operation_id="reminder_partial_update",
+        parameters=[
+            OpenApiParameter(name="reminder_id", type=int, description="Reminder ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        request=ReminderSerializer,
+        responses={
+            200: ReminderSerializer,
+            400: ReminderSerializer,
+            403: inline_serializer("ReminderUpdateForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("ReminderUpdateNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("ReminderUpdateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def patch(self, request, reminder_id):
         try:
             reminder = self.get_reminder(reminder_id)
@@ -1668,6 +1966,21 @@ class ReminderDetailView(APIView):
     # ------------------------------------------------------
     # DELETE REMINDER
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Reminders"],
+        summary="Delete a reminder",
+        description="Delete a reminder. Permission: delete_reminder.",
+        operation_id="reminder_delete",
+        parameters=[
+            OpenApiParameter(name="reminder_id", type=int, description="Reminder ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        responses={
+            200: inline_serializer("ReminderDeleteSuccessResponse", fields={"message": serializers.CharField(), "reminder_id": serializers.IntegerField()}),
+            403: inline_serializer("ReminderDeleteForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("ReminderDeleteNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("ReminderDeleteServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def delete(self, request, reminder_id):
         try:
             reminder = self.get_reminder(reminder_id)
@@ -1727,6 +2040,31 @@ class ReminderStatusUpdateView(APIView):
         "PATCH": "change_reminder",
     }
 
+    @extend_schema(
+        tags=["Reminders"],
+        summary="Update reminder status",
+        description="Update the status of a reminder. Permission: change_reminder.",
+        operation_id="reminder_status_update",
+        parameters=[
+            OpenApiParameter(name="reminder_id", type=int, description="Reminder ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "reminder_status_id": {"type": "integer", "description": "New reminder status ID"},
+                },
+                "required": ["reminder_status_id"],
+            }
+        },
+        responses={
+            200: inline_serializer("ReminderStatusUpdateSuccessResponse", fields={"message": serializers.CharField(), "reminder_id": serializers.IntegerField(), "previous_status": serializers.CharField(), "new_status": serializers.CharField()}),
+            400: inline_serializer("ReminderStatusUpdateErrorResponse", fields={"reminder_status_id": serializers.CharField()}),
+            403: inline_serializer("ReminderStatusUpdateForbiddenResponse", fields={"detail": serializers.CharField()}),
+            404: inline_serializer("ReminderStatusUpdateNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("ReminderStatusUpdateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def patch(self, request, reminder_id):
         try:
             reminder = get_object_or_404(

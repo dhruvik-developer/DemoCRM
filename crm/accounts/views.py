@@ -4,6 +4,7 @@ from django.shortcuts import render
 
 from .models import CustomUser, Role 
 from .serializers import PermissionSerializer, ProfileSerializer, RefreshTokenSerializer, RegisterSerializer, LoginSerializer, LogOutSerializer, ChangePasswordSerializer, RoleListSerializer, RoleSerializer
+from rest_framework import serializers
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -12,6 +13,7 @@ from rest_framework_simplejwt.tokens import RefreshToken        #type: ignore
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import Permission
 from .permissions import HasDynamicPermission
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse, inline_serializer
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,28 @@ logger = logging.getLogger(__name__)
 class RegisterAPIView(APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Register a new user",
+        description="Create a new user account. The user is automatically assigned the Employee role. No authentication required.",
+        tags=["Accounts"],
+        operation_id="register_create",
+        request=RegisterSerializer,
+        responses={
+            201: inline_serializer(
+                "RegisterSuccessResponse",
+                fields={
+                    "user_id": serializers.UUIDField(),
+                    "username": serializers.CharField(),
+                    "email": serializers.EmailField(),
+                    "message": serializers.CharField(),
+                },
+            ),
+            400: inline_serializer(
+                "RegisterErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
 
@@ -48,6 +72,27 @@ class RegisterAPIView(APIView):
 class LoginAPIView(APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Log in and obtain JWT tokens",
+        description="Authenticate with email and password. Returns access and refresh tokens.",
+        tags=["Accounts"],
+        operation_id="login_create",
+        request=LoginSerializer,
+        responses={
+            200: inline_serializer(
+                "LoginSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "refresh_token": serializers.CharField(),
+                    "access_token": serializers.CharField(),
+                },
+            ),
+            401: inline_serializer(
+                "LoginUnauthorizedResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
 
@@ -88,6 +133,23 @@ class LogoutAPIView(APIView):
     permission_classes = [IsAuthenticated]
     permission_name = "logout"
 
+    @extend_schema(
+        summary="Log out and blacklist refresh token",
+        description="Blacklist the given refresh token. Requires authentication.",
+        tags=["Accounts"],
+        operation_id="logout_create",
+        request=LogOutSerializer,
+        responses={
+            200: inline_serializer(
+                "LogoutSuccessResponse",
+                fields={"message": serializers.CharField()},
+            ),
+            400: inline_serializer(
+                "LogoutErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def post(self, request):
         serializer = LogOutSerializer(data=request.data)
 
@@ -121,6 +183,26 @@ class LogoutAPIView(APIView):
 class RefreshTokenAPIView(APIView):
     permission_classes = [AllowAny]
 
+    @extend_schema(
+        summary="Refresh access token",
+        description="Exchange a valid refresh token for a new access token.",
+        tags=["Accounts"],
+        operation_id="token_refresh_create",
+        request=RefreshTokenSerializer,
+        responses={
+            200: inline_serializer(
+                "RefreshTokenSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "access_token": serializers.CharField(),
+                },
+            ),
+            400: inline_serializer(
+                "RefreshTokenErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def post(self, request):
         serializer = RefreshTokenSerializer(data=request.data)
 
@@ -142,10 +224,26 @@ class RefreshTokenAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-
 class ChangePasswordAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="Change password",
+        description="Change the authenticated user's password. Requires old_password and new_password.",
+        tags=["Accounts"],
+        operation_id="change_password_create",
+        request=ChangePasswordSerializer,
+        responses={
+            200: inline_serializer(
+                "ChangePasswordSuccessResponse",
+                fields={"message": serializers.CharField()},
+            ),
+            400: inline_serializer(
+                "ChangePasswordErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def post(self, request):
         serializer = ChangePasswordSerializer(data=request.data)
 
@@ -169,6 +267,32 @@ class ChangePasswordAPIView(APIView):
 class ProfileAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        summary="View user profile",
+        description="Retrieve profile details of a user by UUID. Requires Admin/Manager role to view other users' profiles.",
+        tags=["Accounts"],
+        operation_id="profile_retrieve",
+        parameters=[
+            OpenApiParameter(name="user_id", type=str, location=OpenApiParameter.PATH, description="User UUID"),
+        ],
+        responses={
+            200: inline_serializer(
+                "ProfileSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "profile": ProfileSerializer(),
+                },
+            ),
+            403: inline_serializer(
+                "ProfileForbiddenResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            404: inline_serializer(
+                "ProfileNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
     def get(self, request, user_id):
 
         if request.user.user_id != user_id:
@@ -191,15 +315,32 @@ class ProfileAPIView(APIView):
         )
 
  
-class RoleAPIView(APIView):
+class RoleListCreateAPIView(APIView):
     permission_classes = [HasDynamicPermission]
     permission_names = {
         "GET": "view_role",
         "POST": "add_role",
-        "PUT": "change_role",
-        "DELETE": "delete_role",
     }
 
+    @extend_schema(
+        summary="List all roles",
+        description="Retrieve a list of all roles.",
+        tags=["Accounts"],
+        operation_id="role_list",
+        responses={
+            200: inline_serializer(
+                "RoleListSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "roles": RoleListSerializer(many=True),
+                },
+            ),
+            403: inline_serializer(
+                "RoleListForbiddenResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def get(self, request):
         if request.user.role is None:
              return Response(
@@ -224,6 +365,23 @@ class RoleAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+    @extend_schema(
+        summary="Create a role",
+        description="Create a new role.",
+        tags=["Accounts"],
+        operation_id="role_create",
+        request=RoleSerializer,
+        responses={
+            201: inline_serializer(
+                "RoleCreateSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "role": RoleSerializer(),
+                },
+            ),
+            400: RoleSerializer,
+        },
+    )
     def post(self, request):
         serializer = RoleSerializer(data=request.data)
 
@@ -243,6 +401,42 @@ class RoleAPIView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+
+class RoleDetailAPIView(APIView):
+    permission_classes = [HasDynamicPermission]
+    permission_names = {
+        "PUT": "change_role",
+        "DELETE": "delete_role",
+    }
+
+    @extend_schema(
+        summary="Update a role",
+        description="Update an existing role.",
+        tags=["Accounts"],
+        operation_id="role_update",
+        parameters=[
+            OpenApiParameter(name="role_id", type=int, location=OpenApiParameter.PATH, description="Role ID"),
+        ],
+        request=RoleSerializer,
+        responses={
+            200: inline_serializer(
+                "RoleUpdateSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "role": RoleSerializer(),
+                },
+            ),
+            400: RoleSerializer,
+            403: inline_serializer(
+                "RoleUpdateForbiddenResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            404: inline_serializer(
+                "RoleUpdateNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
     def put(self, request, role_id):
         role = get_object_or_404(Role, role_id=role_id)
 
@@ -274,6 +468,32 @@ class RoleAPIView(APIView):
             status=status.HTTP_400_BAD_REQUEST
         )
 
+    @extend_schema(
+        summary="Delete a role",
+        description="Delete a role.",
+        tags=["Accounts"],
+        operation_id="role_delete",
+        parameters=[
+            OpenApiParameter(name="role_id", type=int, location=OpenApiParameter.PATH, description="Role ID"),
+        ],
+        responses={
+            200: inline_serializer(
+                "RoleDeleteSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "role": serializers.CharField(),
+                },
+            ),
+            403: inline_serializer(
+                "RoleDeleteForbiddenResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            404: inline_serializer(
+                "RoleDeleteNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
     def delete(self, request, role_id):
         role = get_object_or_404(Role, role_id=role_id)
 
@@ -294,10 +514,52 @@ class RoleAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+
+# Backward compatibility alias
+RoleAPIView = RoleListCreateAPIView
+
+
 class AssignRoleAPIView(APIView):
     permission_classes = [HasDynamicPermission]
     permission_name = "assign_role" 
 
+    @extend_schema(
+        summary="Assign a role to a user",
+        description="Assign a role to a user by their UUID. Requires assign_role permission.",
+        tags=["Accounts"],
+        operation_id="assign_role_update",
+        parameters=[
+            OpenApiParameter(name="user_id", type=str, location=OpenApiParameter.PATH, description="User UUID"),
+        ],
+        request=inline_serializer(
+            "AssignRoleRequest",
+            fields={
+                "role_id": serializers.IntegerField(help_text="Role ID to assign"),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                "AssignRoleSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "user": serializers.CharField(),
+                    "role": serializers.CharField(),
+                },
+            ),
+            400: inline_serializer(
+                "AssignRoleErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            403: inline_serializer(
+                "AssignRoleForbiddenResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            404: inline_serializer(
+                "AssignRoleNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
     def put(self, request, user_id):
         user = get_object_or_404(CustomUser, user_id=user_id)
 
@@ -330,16 +592,28 @@ class AssignRoleAPIView(APIView):
         )
 
 
-
-class PermissionAPIView(APIView):
+class PermissionListCreateAPIView(APIView):
     permission_classes = [HasDynamicPermission]
     permission_names = {
         "GET": "view_permission",
         "POST": "add_permission",
-        "PUT": "change_permission",
-        "DELETE": "delete_permission",
     }
 
+    @extend_schema(
+        summary="List all permissions",
+        description="Retrieve a list of all Django permissions.",
+        tags=["Accounts"],
+        operation_id="permission_list",
+        responses={
+            200: inline_serializer(
+                "PermissionListSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "permissions": PermissionSerializer(many=True),
+                },
+            )
+        },
+    )
     def get(self, request):
         permissions = Permission.objects.all().order_by("id")
         serializer = PermissionSerializer(permissions, many=True)
@@ -352,6 +626,23 @@ class PermissionAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
+    @extend_schema(
+        summary="Create a permission",
+        description="Create a new permission. Requires add_permission permission.",
+        tags=["Accounts"],
+        operation_id="permission_create",
+        request=PermissionSerializer,
+        responses={
+            201: inline_serializer(
+                "PermissionCreateSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "permission": PermissionSerializer(),
+                },
+            ),
+            400: PermissionSerializer,
+        },
+    )
     def post(self, request):
         serializer = PermissionSerializer(data=request.data)
 
@@ -367,6 +658,38 @@ class PermissionAPIView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
+class PermissionDetailAPIView(APIView):
+    permission_classes = [HasDynamicPermission]
+    permission_names = {
+        "PUT": "change_permission",
+        "DELETE": "delete_permission",
+    }
+
+    @extend_schema(
+        summary="Update a permission",
+        description="Update an existing permission. Requires change_permission permission.",
+        tags=["Accounts"],
+        operation_id="permission_update",
+        request=PermissionSerializer,
+        parameters=[
+            OpenApiParameter(name="permission_id", type=int, location=OpenApiParameter.PATH, description="Permission ID"),
+        ],
+        responses={
+            200: inline_serializer(
+                "PermissionUpdateSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "permission": PermissionSerializer(),
+                },
+            ),
+            400: PermissionSerializer,
+            404: inline_serializer(
+                "PermissionNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
     def put(self, request, permission_id):
         permission = get_object_or_404(Permission, id=permission_id)
 
@@ -388,6 +711,25 @@ class PermissionAPIView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        summary="Delete a permission",
+        description="Delete a permission. Requires delete_permission permission.",
+        tags=["Accounts"],
+        operation_id="permission_delete",
+        parameters=[
+            OpenApiParameter(name="permission_id", type=int, location=OpenApiParameter.PATH, description="Permission ID"),
+        ],
+        responses={
+            200: inline_serializer(
+                "PermissionDeleteSuccessResponse",
+                fields={"message": serializers.CharField()},
+            ),
+            404: inline_serializer(
+                "PermissionDeleteNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
     def delete(self, request, permission_id):
         permission = get_object_or_404(Permission, id=permission_id)
         permission.delete()
@@ -396,3 +738,7 @@ class PermissionAPIView(APIView):
             {"message": "Permission deleted successfully."},
             status=status.HTTP_200_OK
         )
+
+
+# Backward compatibility alias
+PermissionAPIView = PermissionListCreateAPIView

@@ -1,7 +1,7 @@
 import logging
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -19,6 +19,7 @@ from .serializers import (
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
+from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiExample, OpenApiResponse, inline_serializer
 logger = logging.getLogger(__name__)
 
 
@@ -37,9 +38,61 @@ class FollowUpListCreateView(APIView):
         "GET": "view_followup",
         "POST": "add_followup",
     }
+
     # ------------------------------------------------------
     # LIST FOLLOWUPS
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Follow Ups"],
+        summary="List follow-ups",
+        description="GET: List all follow-ups with optional filtering, search, and pagination. Requires view_followup permission.",
+        operation_id="followup_list",
+        parameters=[
+            OpenApiParameter(
+                name="followup_status",
+                type=int,
+                description="Filter by follow-up status ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="followup_type",
+                type=int,
+                description="Filter by follow-up type ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="task_id",
+                type=int,
+                description="Filter by task ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="created_by",
+                type=int,
+                description="Filter by creator user ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="search",
+                type=str,
+                description="Search by description or task title",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=str,
+                description="Order results. Allowed fields: created_at, -created_at, updated_at, -updated_at",
+                required=False,
+                default="-created_at",
+            ),
+            OpenApiParameter(name="page", type=int, description="Page number", required=False),
+            OpenApiParameter(name="page_size", type=int, description="Results per page", required=False),
+        ],
+        responses={
+            200: FollowupSerializer(many=True),
+            500: inline_serializer("FollowUpListServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def get(self, request):
         try:
             followups = (
@@ -124,6 +177,18 @@ class FollowUpListCreateView(APIView):
     # ------------------------------------------------------
     # CREATE FOLLOWUP
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Follow Ups"],
+        summary="Create a follow-up",
+        description="POST: Create a new follow-up. Requires add_followup permission.",
+        operation_id="followup_create",
+        request=FollowupSerializer,
+        responses={
+            201: FollowupSerializer,
+            400: FollowupSerializer,
+            500: inline_serializer("FollowUpCreateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def post(self, request):
         
         try:
@@ -208,6 +273,20 @@ class FollowUpDetailView(APIView):
     # ------------------------------------------------------
     # DETAIL
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Follow Ups"],
+        summary="Retrieve follow-up detail",
+        description="GET: Retrieve follow-up detail by ID. Requires view_followup permission.",
+        operation_id="followup_retrieve",
+        parameters=[
+            OpenApiParameter(name="followup_id", type=int, description="Follow-up ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        responses={
+            200: FollowupSerializer,
+            404: inline_serializer("FollowUpDetailNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("FollowUpDetailServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def get(self, request, followup_id):
         try:
             followup = self.get_followup(followup_id)
@@ -248,6 +327,22 @@ class FollowUpDetailView(APIView):
     # ------------------------------------------------------
     # UPDATE
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Follow Ups"],
+        summary="Partially update a follow-up",
+        description="PATCH: Partially update a follow-up. Requires change_followup permission.",
+        operation_id="followup_partial_update",
+        parameters=[
+            OpenApiParameter(name="followup_id", type=int, description="Follow-up ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        request=FollowupSerializer,
+        responses={
+            200: FollowupSerializer,
+            400: FollowupSerializer,
+            404: inline_serializer("FollowUpUpdateNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("FollowUpUpdateServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def patch(self, request, followup_id):
         try:
             followup = self.get_followup(followup_id)
@@ -310,6 +405,20 @@ class FollowUpDetailView(APIView):
     # ------------------------------------------------------
     # DELETE
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Follow Ups"],
+        summary="Delete a follow-up",
+        description="DELETE: Delete a follow-up. Requires delete_followup permission.",
+        operation_id="followup_delete",
+        parameters=[
+            OpenApiParameter(name="followup_id", type=int, description="Follow-up ID", required=True, location=OpenApiParameter.PATH),
+        ],
+        responses={
+            200: inline_serializer("FollowUpDeleteSuccessResponse", fields={"message": serializers.CharField(), "followup_id": serializers.IntegerField()}),
+            404: inline_serializer("FollowUpDeleteNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("FollowUpDeleteServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def delete(self, request, followup_id):
         try:
             followup = self.get_followup(followup_id)
@@ -364,6 +473,32 @@ class FollowUpNoteCreateView(APIView):
         "POST": "add_followup_note",
     }
 
+    @extend_schema(
+        tags=["Follow Ups"],
+        summary="Add a note to a follow-up",
+        description=(
+            "Create a new note associated with a specific follow-up. "
+            "The `created_by` field is automatically set to the authenticated user. "
+            "Requires the `add_followup_note` permission."
+        ),
+        operation_id="followup_add_note",
+        parameters=[
+            OpenApiParameter(
+                name="followup_id",
+                type=int,
+                description="Unique identifier of the parent follow-up",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        request=FollowUpNoteSerializer,
+        responses={
+            201: FollowUpNoteSerializer,
+            400: FollowUpNoteSerializer,
+            404: inline_serializer("FollowUpNoteNotFoundResponse", fields={"detail": serializers.CharField()}),
+            500: inline_serializer("FollowUpNoteServerErrorResponse", fields={"error": serializers.CharField()}),
+        },
+    )
     def post(self, request, followup_id):
         try:
             followup = get_object_or_404(
@@ -437,6 +572,19 @@ class UserNotificationListView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["Notifications"],
+        summary="List notifications for the authenticated user",
+        description=(
+            "Return all notifications belonging to the currently authenticated user, "
+            "ordered by creation date (newest first). "
+            "Requires authentication (IsAuthenticated)."
+        ),
+        operation_id="notification_list",
+        responses={
+            200: NotificationSerializer(many=True),
+        },
+    )
     def get(self, request):
         notifications = (
             Notification.objects
@@ -473,6 +621,25 @@ class NotificationDetailView(APIView):
     """
     permission_classes = [IsAuthenticated]
 
+    @extend_schema(
+        tags=["Notifications"],
+        summary="Retrieve a notification",
+        description="GET: Retrieve notification detail. Requires IsAuthenticated.",
+        operation_id="notification_retrieve",
+        parameters=[
+            OpenApiParameter(
+                name="notification_id",
+                type=int,
+                description="Unique identifier of the notification",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        responses={
+            200: NotificationSerializer,
+            404: inline_serializer("NotificationNotFoundResponse", fields={"detail": serializers.CharField()}),
+        },
+    )
     def get(self, request, notification_id):
         notification = get_object_or_404(
             Notification.objects.select_related(
@@ -494,6 +661,27 @@ class NotificationDetailView(APIView):
             status=status.HTTP_200_OK
         )
 
+    @extend_schema(
+        tags=["Notifications"],
+        summary="Update a notification",
+        description="PATCH: Update notification (e.g. mark as read/unread). Requires IsAuthenticated.",
+        operation_id="notification_partial_update",
+        parameters=[
+            OpenApiParameter(
+                name="notification_id",
+                type=int,
+                description="Unique identifier of the notification",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        request=NotificationSerializer,
+        responses={
+            200: NotificationSerializer,
+            400: NotificationSerializer,
+            404: inline_serializer("NotificationUpdateNotFoundResponse", fields={"detail": serializers.CharField()}),
+        },
+    )
     def patch(self, request, notification_id):
         notification = get_object_or_404(
             Notification.objects.select_related(
