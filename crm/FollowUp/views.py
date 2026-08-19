@@ -32,8 +32,10 @@ class FollowUpListCreateView(APIView):
     POST /api/followups/
         Create FollowUp
     """
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = [CanCommunicateWithlead]
+    permission_names = {
+                    "POST": "add_followup",
+    }
     # ------------------------------------------------------
     # LIST FOLLOWUPS
     # ------------------------------------------------------
@@ -122,6 +124,7 @@ class FollowUpListCreateView(APIView):
     # CREATE FOLLOWUP
     # ------------------------------------------------------
     def post(self, request):
+        
         try:
             serializer = FollowupSerializer(
                 data=request.data,
@@ -514,4 +517,4 @@ class NotificationDetailView(APIView):
                 context={"request": request}
             ).data,
             status=status.HTTP_200_OK
-        )
+        )
