@@ -44,9 +44,7 @@ class Task(models.Model):
     #Developer 2 - Lead
     lead = models.ForeignKey(
         "customer_management.Lead",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        on_delete=models.PROTECT,
         related_name="tasks"
     )
     # Developer 2 - Customer
@@ -227,6 +225,13 @@ class Reminder(models.Model):
         blank=True,
         related_name="reminders"
     )
+    reminder_for = models.ForeignKey(
+        "accounts.CustomUser",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="user_reminders"
+    )
     # Reminder Type
     reminder_type_id = models.ForeignKey(
         ReminderType,
@@ -243,6 +248,7 @@ class Reminder(models.Model):
 
     reminder_datetime = models.DateTimeField()
     message = models.TextField()
+    is_sent = models.BooleanField(default=False)
     # Developer 1 - User
     created_by = models.ForeignKey(
         "accounts.CustomUser",
@@ -251,3 +257,6 @@ class Reminder(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Reminder {self.reminder_id}: {self.message[:30]}"
