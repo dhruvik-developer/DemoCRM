@@ -66,6 +66,7 @@ class TaskSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "task_id",
+            "created_by",
             "created_at",
             "updated_at",
             "created_by",
@@ -109,17 +110,17 @@ class TaskSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        assigned_to = attrs.get("assigned_to")
-        created_by = attrs.get("created_by")
+        lead = attrs.get(
+            "lead",
+            getattr(self.instance, "lead", None)
+        )
 
-        if assigned_to and created_by and assigned_to == created_by:
-            # This is NOT necessarily an error in a CRM.
-            # So we allow it.
-            pass
+        if not lead:
+            raise serializers.ValidationError({
+                "lead": "Lead is required to create a task."
+            })
 
         return attrs
-
-
 # ============================================================
 # MEETING
 # ============================================================
@@ -165,6 +166,7 @@ class MeetingSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "meeting_id",
+            "created_by",
             "created_at",
             "updated_at",
         )
@@ -268,6 +270,7 @@ class ReminderSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "reminder_id",
+            "created_by",
             "created_at",
             "updated_at",
         )
@@ -283,6 +286,8 @@ class ReminderSerializer(serializers.ModelSerializer):
         return value
 
     def validate_reminder_datetime(self, value):
+        if self.instance and self.instance.reminder_datetime == value:
+            return value
         if value < timezone.now():
             raise serializers.ValidationError(
                 "Reminder date and time cannot be in the past."

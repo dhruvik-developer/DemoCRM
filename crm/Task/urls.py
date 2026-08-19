@@ -84,7 +84,7 @@ urlpatterns = [
     ),
 
     path(
-        "meetings/<int:meeting_id>/participants/<int:user_id>/",
+        "meetings/<int:meeting_id>/participants/<str:user_id>/",
         MeetingParticipantRemoveView.as_view(),
         name="meeting-participant-remove"
     ),

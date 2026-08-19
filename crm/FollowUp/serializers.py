@@ -1,14 +1,6 @@
-from django.contrib.auth import get_user_model
-
 from rest_framework import serializers
-
-from Task.models import Task
-from .models import Followup, FollowUpNote, FollowUpStatus, FollowUpTypes, ActivityAction, ActivityLog, ActivityType
-
-
+from .models import Followup, FollowUpNote, FollowUpStatus, FollowUpTypes, ActivityAction, ActivityLog, ActivityType, Notification, NotificationTemplate, NotificationType
 from django.utils import timezone
-
-User = get_user_model()
 class FollowUpStatusSerializer(serializers.ModelSerializer):
 
     class Meta:
@@ -50,9 +42,9 @@ class FollowupSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "followup_id",
+            "created_by",
             "created_at",
             "updated_at",
-            "created_by",
         )
 
     def validate_followup_date(self, value):
@@ -80,6 +72,8 @@ class FollowUpNoteSerializer(serializers.ModelSerializer):
         fields = "__all__"
         read_only_fields = (
             "note_id",
+            "followup_id",
+            "created_by",
             "created_at",
         )
 
@@ -139,4 +133,95 @@ class ActivityLogSerializer(serializers.ModelSerializer):
             )
 
         return value
-
+
+# ============================================================
+# NOTIFICATION
+# ============================================================
+
+class NotificationTypeSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = NotificationType
+        fields = "__all__"
+
+    def validate_type_name(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Notification type cannot be empty."
+            )
+
+        return value
+
+
+class NotificationTemplateSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = NotificationTemplate
+        fields = "__all__"
+        read_only_fields = (
+            "template_id",
+        )
+
+    def validate_subject(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Subject is required."
+            )
+
+        return value
+
+    def validate_body(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Template body is required."
+            )
+
+        return value
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Notification
+        fields = "__all__"
+        read_only_fields = (
+            "notification_id",
+            "created_at",
+        )
+
+    def validate_title(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Notification title is required."
+            )
+
+        return value
+
+    def validate_message(self, value):
+        value = value.strip()
+
+        if not value:
+            raise serializers.ValidationError(
+                "Notification message is required."
+            )
+
+        return value
+
+    def validate(self, attrs):
+        is_read = attrs.get("is_read", getattr(self.instance, "is_read", False))
+        read_at = attrs.get("read_at", getattr(self.instance, "read_at", None))
+
+        if is_read and read_at is None:
+            attrs["read_at"] = timezone.now()
+        elif not is_read:
+            attrs["read_at"] = None
+
+        return attrs
