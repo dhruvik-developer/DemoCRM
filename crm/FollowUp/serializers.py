@@ -1,8 +1,20 @@
 from rest_framework import serializers
-from .models import Followup, FollowUpNote, FollowUpStatus, FollowUpTypes, ActivityAction, ActivityLog, ActivityType, Notification, NotificationTemplate, NotificationType
+from .models import (
+    Followup,
+    FollowUpNote,
+    FollowUpStatus,
+    FollowUpTypes,
+    ActivityAction,
+    ActivityLog,
+    ActivityType,
+    Notification,
+    NotificationTemplate,
+    NotificationType,
+)
 from django.utils import timezone
-class FollowUpStatusSerializer(serializers.ModelSerializer):
 
+
+class FollowUpStatusSerializer(serializers.ModelSerializer):
     class Meta:
         model = FollowUpStatus
         fields = "__all__"
@@ -11,15 +23,12 @@ class FollowUpStatusSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Follow-up status cannot be empty."
-            )
+            raise serializers.ValidationError("Follow-up status cannot be empty.")
 
         return value
 
 
 class FollowUpTypesSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = FollowUpTypes
         fields = "__all__"
@@ -28,15 +37,12 @@ class FollowUpTypesSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Follow-up type cannot be empty."
-            )
+            raise serializers.ValidationError("Follow-up type cannot be empty.")
 
         return value
 
 
 class FollowupSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Followup
         fields = "__all__"
@@ -66,7 +72,6 @@ class FollowupSerializer(serializers.ModelSerializer):
 
 
 class FollowUpNoteSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = FollowUpNote
         fields = "__all__"
@@ -81,9 +86,7 @@ class FollowUpNoteSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Note cannot be empty."
-            )
+            raise serializers.ValidationError("Note cannot be empty.")
 
         if len(value) < 2:
             raise serializers.ValidationError(
@@ -92,26 +95,25 @@ class FollowUpNoteSerializer(serializers.ModelSerializer):
 
         return value
 
+
 # ============================================================
 # ACTIVITY LOG
 # ============================================================
 
-class ActivityTypeSerializer(serializers.ModelSerializer):
 
+class ActivityTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ActivityType
         fields = "__all__"
 
 
 class ActivityActionSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = ActivityAction
         fields = "__all__"
 
 
 class ActivityLogSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = ActivityLog
         fields = "__all__"
@@ -128,18 +130,17 @@ class ActivityLogSerializer(serializers.ModelSerializer):
 
     def validate_reference_id(self, value):
         if value is not None and value <= 0:
-            raise serializers.ValidationError(
-                "Reference ID must be greater than 0."
-            )
+            raise serializers.ValidationError("Reference ID must be greater than 0.")
 
         return value
+
 
 # ============================================================
 # NOTIFICATION
 # ============================================================
 
-class NotificationTypeSerializer(serializers.ModelSerializer):
 
+class NotificationTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = NotificationType
         fields = "__all__"
@@ -148,29 +149,22 @@ class NotificationTypeSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Notification type cannot be empty."
-            )
+            raise serializers.ValidationError("Notification type cannot be empty.")
 
         return value
 
 
 class NotificationTemplateSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = NotificationTemplate
         fields = "__all__"
-        read_only_fields = (
-            "template_id",
-        )
+        read_only_fields = ("template_id",)
 
     def validate_subject(self, value):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Subject is required."
-            )
+            raise serializers.ValidationError("Subject is required.")
 
         return value
 
@@ -178,15 +172,12 @@ class NotificationTemplateSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Template body is required."
-            )
+            raise serializers.ValidationError("Template body is required.")
 
         return value
 
 
 class NotificationSerializer(serializers.ModelSerializer):
-
     class Meta:
         model = Notification
         fields = "__all__"
@@ -199,9 +190,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Notification title is required."
-            )
+            raise serializers.ValidationError("Notification title is required.")
 
         return value
 
@@ -209,9 +198,7 @@ class NotificationSerializer(serializers.ModelSerializer):
         value = value.strip()
 
         if not value:
-            raise serializers.ValidationError(
-                "Notification message is required."
-            )
+            raise serializers.ValidationError("Notification message is required.")
 
         return value
 

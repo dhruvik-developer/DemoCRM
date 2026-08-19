@@ -2,6 +2,7 @@ from django.contrib.auth.models import BaseUserManager
 from django.apps import apps
 from django.contrib.auth.models import Permission
 
+
 class CustomUserManager(BaseUserManager):
     def create_user(self, email, username, password=None, **extra_fields):
         if not email:
@@ -13,14 +14,15 @@ class CustomUserManager(BaseUserManager):
         return user
 
     def create_superuser(self, email, username, password=None, **extra_fields):
-
         Role = apps.get_model("accounts", "Role")
 
         extra_fields.setdefault("is_staff", True)
         extra_fields.setdefault("is_superuser", True)
         extra_fields.setdefault("is_active", True)
 
-        user = self.create_user(email=email, username=username, password=password, **extra_fields)
+        user = self.create_user(
+            email=email, username=username, password=password, **extra_fields
+        )
 
         # Assign Admin role automatically, creating if it doesn't exist
         admin_role, _ = Role.objects.get_or_create(rolename="Admin")
@@ -29,5 +31,5 @@ class CustomUserManager(BaseUserManager):
         user.save(using=self._db)
 
         admin_role.permissions.set(Permission.objects.all())
-        
+
         return user

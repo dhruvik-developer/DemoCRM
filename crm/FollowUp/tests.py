@@ -1,10 +1,19 @@
 from datetime import timedelta
 
+from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import CustomUser, Role
+
+from customer_management.models import (
+    LeadSource,
+    Pipeline,
+    PipelineStage,
+    Lead,
+)
 
 from Task.models import (
     Task,
@@ -27,7 +36,6 @@ class FollowUpAPITestCase(APITestCase):
     """
 
     def setUp(self):
-
         # ==================================================
         # USER / ROLE
         # ==================================================
@@ -36,6 +44,21 @@ class FollowUpAPITestCase(APITestCase):
             rolename="Employee",
             description="Employee role",
         )
+
+        ct = ContentType.objects.get_for_model(Task)
+        for codename in (
+            "view_followup",
+            "add_followup",
+            "change_followup",
+            "delete_followup",
+            "add_followup_note",
+        ):
+            perm, _ = Permission.objects.get_or_create(
+                codename=codename,
+                content_type=ct,
+                defaults={"name": f"Can {codename}"},
+            )
+            self.role.permissions.add(perm)
 
         self.user = CustomUser.objects.create_user(
             email="followupuser@example.com",
@@ -66,17 +89,51 @@ class FollowUpAPITestCase(APITestCase):
         )
 
         # ==================================================
+        # LEAD
+        # ==================================================
+
+        self.lead_source = LeadSource.objects.create(
+            name="Website",
+            description="Website lead source",
+            created_by=self.user,
+        )
+
+        self.pipeline = Pipeline.objects.create(
+            name="Sales Pipeline",
+            description="Test pipeline",
+            created_by=self.user,
+        )
+
+        self.pipeline_stage = PipelineStage.objects.create(
+            pipeline=self.pipeline,
+            name="New",
+            description="New lead",
+            display_order=1,
+        )
+
+        self.lead = Lead.objects.create(
+            name="Rahul",
+            email="rahul@example.com",
+            phone="9999999999",
+            company_name="Rahul Company",
+            source=self.lead_source,
+            assigned_to=self.user,
+            pipeline=self.pipeline,
+            current_stage=self.pipeline_stage,
+            status=Lead.Status.ACTIVE,
+        )
+
+        # ==================================================
         # TASK
         # ==================================================
 
         self.task = Task.objects.create(
             assigned_to=self.user,
             created_by=self.user,
+            lead=self.lead,
             task_title="Customer FollowUp Task",
             description="Task for customer followup",
-            due_date=(
-                timezone.now() + timedelta(days=1)
-            ),
+            due_date=(timezone.now() + timedelta(days=1)),
             status=self.task_status,
             priority=self.task_priority,
             category=self.task_category,
@@ -101,9 +158,7 @@ class FollowUpAPITestCase(APITestCase):
         # AUTHENTICATE
         # ==================================================
 
-        self.client.force_authenticate(
-            user=self.user
-        )
+        self.client.force_authenticate(user=self.user)
 
         # ==================================================
         # FOLLOWUP
@@ -113,9 +168,7 @@ class FollowUpAPITestCase(APITestCase):
             task_id=self.task,
             followup_status=self.followup_status,
             followup_type=self.followup_type,
-            followup_date=(
-                timezone.now() + timedelta(days=1)
-            ),
+            followup_date=(timezone.now() + timedelta(days=1)),
             decription="Call customer tomorrow",
             created_by=self.user,
         )
@@ -125,40 +178,24 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_followup_list_requires_authentication(self):
+        self.client.force_authenticate(user=None)
 
-        self.client.force_authenticate(
-            user=None
-        )
+        response = self.client.get("/api/followups/")
 
-        response = self.client.get(
-            "/api/followups/"
-        )
-
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_401_UNAUTHORIZED
-        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # ======================================================
     # CREATE FOLLOWUP
     # ======================================================
 
     def test_create_followup(self):
-
         response = self.client.post(
             "/api/followups/",
             {
                 "task_id": self.task.task_id,
-                "followup_status": (
-                    self.followup_status.followup_status_id
-                ),
-                "followup_type": (
-                    self.followup_type.followup_type_id
-                ),
-                "followup_date": (
-                    timezone.now()
-                    + timedelta(days=2)
-                ).isoformat(),
+                "followup_status": (self.followup_status.followup_status_id),
+                "followup_type": (self.followup_type.followup_type_id),
+                "followup_date": (timezone.now() + timedelta(days=2)).isoformat(),
                 "decription": "Call customer again",
             },
             format="json",
@@ -170,9 +207,7 @@ class FollowUpAPITestCase(APITestCase):
         )
 
         self.assertTrue(
-            Followup.objects.filter(
-                decription="Call customer again"
-            ).exists()
+            Followup.objects.filter(decription="Call customer again").exists()
         )
 
     # ======================================================
@@ -180,7 +215,6 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_create_followup_without_required_data(self):
-
         response = self.client.post(
             "/api/followups/",
             {},
@@ -197,10 +231,7 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_followup_list(self):
-
-        response = self.client.get(
-            "/api/followups/"
-        )
+        response = self.client.get("/api/followups/")
 
         self.assertEqual(
             response.status_code,
@@ -217,24 +248,17 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_followup_pagination(self):
-
         for number in range(15):
-
             Followup.objects.create(
                 task_id=self.task,
                 followup_status=self.followup_status,
                 followup_type=self.followup_type,
-                followup_date=(
-                    timezone.now()
-                    + timedelta(days=1)
-                ),
+                followup_date=(timezone.now() + timedelta(days=1)),
                 decription=f"FollowUp {number}",
                 created_by=self.user,
             )
 
-        response = self.client.get(
-            "/api/followups/?page=1&page_size=10"
-        )
+        response = self.client.get("/api/followups/?page=1&page_size=10")
 
         self.assertEqual(
             response.status_code,
@@ -256,11 +280,8 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_followup_filter_by_status(self):
-
         response = self.client.get(
-            "/api/followups/"
-            f"?followup_status="
-            f"{self.followup_status.followup_status_id}"
+            f"/api/followups/?followup_status={self.followup_status.followup_status_id}"
         )
 
         self.assertEqual(
@@ -278,11 +299,8 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_followup_filter_by_type(self):
-
         response = self.client.get(
-            "/api/followups/"
-            f"?followup_type="
-            f"{self.followup_type.followup_type_id}"
+            f"/api/followups/?followup_type={self.followup_type.followup_type_id}"
         )
 
         self.assertEqual(
@@ -300,11 +318,7 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_followup_filter_by_task(self):
-
-        response = self.client.get(
-            "/api/followups/"
-            f"?task_id={self.task.task_id}"
-        )
+        response = self.client.get(f"/api/followups/?task_id={self.task.task_id}")
 
         self.assertEqual(
             response.status_code,
@@ -321,10 +335,7 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_followup_search(self):
-
-        response = self.client.get(
-            "/api/followups/?search=customer"
-        )
+        response = self.client.get("/api/followups/?search=customer")
 
         self.assertEqual(
             response.status_code,
@@ -341,10 +352,7 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_followup_ordering(self):
-
-        response = self.client.get(
-            "/api/followups/?ordering=-created_at"
-        )
+        response = self.client.get("/api/followups/?ordering=-created_at")
 
         self.assertEqual(
             response.status_code,
@@ -361,11 +369,7 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_followup_detail(self):
-
-        response = self.client.get(
-            f"/api/followups/"
-            f"{self.followup.followup_id}/"
-        )
+        response = self.client.get(f"/api/followups/{self.followup.followup_id}/")
 
         self.assertEqual(
             response.status_code,
@@ -382,10 +386,8 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_update_followup(self):
-
         response = self.client.patch(
-            f"/api/followups/"
-            f"{self.followup.followup_id}/",
+            f"/api/followups/{self.followup.followup_id}/",
             {
                 "decription": "Updated followup description",
             },
@@ -409,11 +411,7 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_delete_followup(self):
-
-        response = self.client.delete(
-            f"/api/followups/"
-            f"{self.followup.followup_id}/"
-        )
+        response = self.client.delete(f"/api/followups/{self.followup.followup_id}/")
 
         self.assertEqual(
             response.status_code,
@@ -421,9 +419,7 @@ class FollowUpAPITestCase(APITestCase):
         )
 
         self.assertFalse(
-            Followup.objects.filter(
-                followup_id=self.followup.followup_id
-            ).exists()
+            Followup.objects.filter(followup_id=self.followup.followup_id).exists()
         )
 
     # ======================================================
@@ -431,10 +427,8 @@ class FollowUpAPITestCase(APITestCase):
     # ======================================================
 
     def test_create_followup_note(self):
-
         response = self.client.post(
-            f"/api/followups/"
-            f"{self.followup.followup_id}/notes/",
+            f"/api/followups/{self.followup.followup_id}/notes/",
             {
                 "note": "Customer requested callback.",
             },
@@ -446,22 +440,14 @@ class FollowUpAPITestCase(APITestCase):
             status.HTTP_201_CREATED,
         )
 
-        self.assertTrue(
-            FollowUpNote.objects.filter(
-                followup_id=self.followup
-            ).exists()
-        )
+        self.assertTrue(FollowUpNote.objects.filter(followup_id=self.followup).exists())
 
     # ======================================================
     # OBJECT PERMISSION - OWNER
     # ======================================================
 
     def test_followup_owner_can_access(self):
-
-        response = self.client.get(
-            f"/api/followups/"
-            f"{self.followup.followup_id}/"
-        )
+        response = self.client.get(f"/api/followups/{self.followup.followup_id}/")
 
         self.assertEqual(
             response.status_code,
@@ -477,12 +463,16 @@ class FollowUpAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_followup_forbidden_for_other_user(self):
+        basic_role = Role.objects.create(
+            rolename="Basic",
+            description="No followup permissions",
+        )
         other_user = CustomUser.objects.create_user(
             email="followupother@example.com",
             username="followupother",
             password="Test@123",
             phone_number="9999999991",
-            role=self.role,
+            role=basic_role,
         )
         self.client.force_authenticate(user=other_user)
         response = self.client.get(f"/api/followups/{self.followup.followup_id}/")
@@ -490,8 +480,11 @@ class FollowUpAPITestCase(APITestCase):
 
     def test_notification_list_and_patch(self):
         from FollowUp.models import Notification, NotificationType, NotificationTemplate
+
         ntype = NotificationType.objects.create(type_name="Alert")
-        ntemplate = NotificationTemplate.objects.create(subject="Test Notification", body="Test message")
+        ntemplate = NotificationTemplate.objects.create(
+            subject="Test Notification", body="Test message"
+        )
         notification = Notification.objects.create(
             user_id=self.user,
             notification_type_id=ntype,
@@ -507,7 +500,9 @@ class FollowUpAPITestCase(APITestCase):
         self.assertGreaterEqual(len(response.data), 1)
 
         # Detail
-        response = self.client.get(f"/api/followups/notifications/{notification.notification_id}/")
+        response = self.client.get(
+            f"/api/followups/notifications/{notification.notification_id}/"
+        )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["notification_id"], notification.notification_id)
 
@@ -520,4 +515,4 @@ class FollowUpAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         notification.refresh_from_db()
         self.assertTrue(notification.is_read)
-        self.assertIsNotNone(notification.read_at)
+        self.assertIsNotNone(notification.read_at)

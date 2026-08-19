@@ -4,6 +4,8 @@ import logging
 
 from django.template.loader import render_to_string
 
+from xhtml2pdf import pisa
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,13 +49,12 @@ def generate_quotation_pdf(quotation_version) -> bytes:
 
     try:
         import weasyprint
+
         return weasyprint.HTML(string=html_content).write_pdf()
     except Exception:
-        from xhtml2pdf import pisa
         result_buffer = io.BytesIO()
         pisa_status = pisa.CreatePDF(
-            io.BytesIO(html_content.encode("utf-8")),
-            dest=result_buffer
+            io.BytesIO(html_content.encode("utf-8")), dest=result_buffer
         )
         if pisa_status.err:
             raise RuntimeError("Failed to render PDF using xhtml2pdf.")

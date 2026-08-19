@@ -6,9 +6,8 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('Task', '0006_alter_meeting_meeting_status_id_and_more'),
+        ("Task", "0006_alter_meeting_meeting_status_id_and_more"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
@@ -18,8 +17,14 @@ class Migration(migrations.Migration):
             reverse_sql='ALTER TABLE "Task_reminder" DROP COLUMN IF EXISTS "reminder_for_id";',
         ),
         migrations.AlterField(
-            model_name='reminder',
-            name='reminder_for',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='user_reminders', to=settings.AUTH_USER_MODEL),
+            model_name="reminder",
+            name="reminder_for",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.CASCADE,
+                related_name="user_reminders",
+                to=settings.AUTH_USER_MODEL,
+            ),
         ),
     ]

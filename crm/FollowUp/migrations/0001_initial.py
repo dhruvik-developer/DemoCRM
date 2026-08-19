@@ -6,113 +6,214 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     initial = True
 
     dependencies = [
-        ('Task', '0001_initial'),
+        ("Task", "0001_initial"),
         migrations.swappable_dependency(settings.AUTH_USER_MODEL),
     ]
 
     operations = [
         migrations.CreateModel(
-            name='ActivityAction',
+            name="ActivityAction",
             fields=[
-                ('activity_action_id', models.AutoField(primary_key=True, serialize=False)),
-                ('action_name', models.CharField(max_length=100)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "activity_action_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("action_name", models.CharField(max_length=100)),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='ActivityType',
+            name="ActivityType",
             fields=[
-                ('activity_type_id', models.AutoField(primary_key=True, serialize=False)),
-                ('type_name', models.CharField(max_length=100)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "activity_type_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("type_name", models.CharField(max_length=100)),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='FollowUpStatus',
+            name="FollowUpStatus",
             fields=[
-                ('followup_status_id', models.AutoField(primary_key=True, serialize=False)),
-                ('status_name', models.CharField(max_length=100)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "followup_status_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("status_name", models.CharField(max_length=100)),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='FollowUpTypes',
+            name="FollowUpTypes",
             fields=[
-                ('followup_type_id', models.AutoField(primary_key=True, serialize=False)),
-                ('type_name', models.CharField(max_length=100)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "followup_type_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("type_name", models.CharField(max_length=100)),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='NotificationTemplate',
+            name="NotificationTemplate",
             fields=[
-                ('template_id', models.AutoField(primary_key=True, serialize=False)),
-                ('subject', models.CharField(max_length=255)),
-                ('body', models.TextField()),
-                ('is_active', models.BooleanField(default=True)),
+                ("template_id", models.AutoField(primary_key=True, serialize=False)),
+                ("subject", models.CharField(max_length=255)),
+                ("body", models.TextField()),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='NotificationType',
+            name="NotificationType",
             fields=[
-                ('notification_type_id', models.AutoField(primary_key=True, serialize=False)),
-                ('type_name', models.CharField(max_length=100)),
-                ('is_active', models.BooleanField(default=True)),
+                (
+                    "notification_type_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("type_name", models.CharField(max_length=100)),
+                ("is_active", models.BooleanField(default=True)),
             ],
         ),
         migrations.CreateModel(
-            name='ActivityLog',
+            name="ActivityLog",
             fields=[
-                ('activity_id', models.AutoField(primary_key=True, serialize=False)),
-                ('description', models.TextField(blank=True, null=True)),
-                ('reference_id', models.PositiveIntegerField(blank=True, null=True)),
-                ('ip_address', models.GenericIPAddressField(blank=True, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('activity_action_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='activity_logs', to='FollowUp.activityaction')),
-                ('user_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='activity_logs', to=settings.AUTH_USER_MODEL)),
-                ('activity_type_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='activity_logs', to='FollowUp.activitytype')),
+                ("activity_id", models.AutoField(primary_key=True, serialize=False)),
+                ("description", models.TextField(blank=True, null=True)),
+                ("reference_id", models.PositiveIntegerField(blank=True, null=True)),
+                ("ip_address", models.GenericIPAddressField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "activity_action_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="activity_logs",
+                        to="FollowUp.activityaction",
+                    ),
+                ),
+                (
+                    "user_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="activity_logs",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "activity_type_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="activity_logs",
+                        to="FollowUp.activitytype",
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='Followup',
+            name="Followup",
             fields=[
-                ('followup_id', models.AutoField(primary_key=True, serialize=False)),
-                ('followup_date', models.DateTimeField()),
-                ('decription', models.TextField(blank=True, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('updated_at', models.DateTimeField(auto_now=True)),
-                ('created_by', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='created_followups', to=settings.AUTH_USER_MODEL)),
-                ('task_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='followups', to='Task.task')),
-                ('followup_status', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='followups', to='FollowUp.followupstatus')),
-                ('followup_type', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='followups', to='FollowUp.followuptypes')),
+                ("followup_id", models.AutoField(primary_key=True, serialize=False)),
+                ("followup_date", models.DateTimeField()),
+                ("decription", models.TextField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                ("updated_at", models.DateTimeField(auto_now=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="created_followups",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "task_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="followups",
+                        to="Task.task",
+                    ),
+                ),
+                (
+                    "followup_status",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="followups",
+                        to="FollowUp.followupstatus",
+                    ),
+                ),
+                (
+                    "followup_type",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="followups",
+                        to="FollowUp.followuptypes",
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='FollowUpNote',
+            name="FollowUpNote",
             fields=[
-                ('note_id', models.AutoField(primary_key=True, serialize=False)),
-                ('note', models.TextField()),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('created_by', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='created_followup_notes', to=settings.AUTH_USER_MODEL)),
-                ('followup_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='notes', to='FollowUp.followup')),
+                ("note_id", models.AutoField(primary_key=True, serialize=False)),
+                ("note", models.TextField()),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "created_by",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="created_followup_notes",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "followup_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="notes",
+                        to="FollowUp.followup",
+                    ),
+                ),
             ],
         ),
         migrations.CreateModel(
-            name='Notification',
+            name="Notification",
             fields=[
-                ('notification_id', models.AutoField(primary_key=True, serialize=False)),
-                ('title', models.CharField(max_length=255)),
-                ('message', models.TextField()),
-                ('is_read', models.BooleanField(default=False)),
-                ('read_at', models.DateTimeField(blank=True, null=True)),
-                ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('user_id', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='notifications', to=settings.AUTH_USER_MODEL)),
-                ('template_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='notifications', to='FollowUp.notificationtemplate')),
-                ('notification_type_id', models.ForeignKey(on_delete=django.db.models.deletion.PROTECT, related_name='notifications', to='FollowUp.notificationtype')),
+                (
+                    "notification_id",
+                    models.AutoField(primary_key=True, serialize=False),
+                ),
+                ("title", models.CharField(max_length=255)),
+                ("message", models.TextField()),
+                ("is_read", models.BooleanField(default=False)),
+                ("read_at", models.DateTimeField(blank=True, null=True)),
+                ("created_at", models.DateTimeField(auto_now_add=True)),
+                (
+                    "user_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.CASCADE,
+                        related_name="notifications",
+                        to=settings.AUTH_USER_MODEL,
+                    ),
+                ),
+                (
+                    "template_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="notifications",
+                        to="FollowUp.notificationtemplate",
+                    ),
+                ),
+                (
+                    "notification_type_id",
+                    models.ForeignKey(
+                        on_delete=django.db.models.deletion.PROTECT,
+                        related_name="notifications",
+                        to="FollowUp.notificationtype",
+                    ),
+                ),
             ],
         ),
     ]

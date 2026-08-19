@@ -192,12 +192,26 @@ class QuotationVersionAdmin(admin.ModelAdmin):
 
 @admin.register(QuotationLineItem)
 class QuotationLineItemAdmin(admin.ModelAdmin):
-    list_display = ("version", "description", "quantity", "unit_price", "amount", "created_at")
+    list_display = (
+        "version",
+        "description",
+        "quantity",
+        "unit_price",
+        "amount",
+        "created_at",
+    )
     readonly_fields = ("id", "created_at")
 
 
 @admin.register(QuotationApproval)
 class QuotationApprovalAdmin(admin.ModelAdmin):
-    list_display = ("version", "submitted_by", "reviewed_by", "decision", "submitted_at", "reviewed_at")
+    list_display = (
+        "version",
+        "submitted_by",
+        "reviewed_by",
+        "decision",
+        "submitted_at",
+        "reviewed_at",
+    )
     list_filter = ("decision",)
     readonly_fields = ("id", "submitted_at")

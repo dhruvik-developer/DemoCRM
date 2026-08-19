@@ -5,21 +5,35 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('Task', '0001_initial'),
-        ('customer_management', '0002_alter_lead_options_alter_leadsource_options_and_more'),
+        ("Task", "0001_initial"),
+        (
+            "customer_management",
+            "0002_alter_lead_options_alter_leadsource_options_and_more",
+        ),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='task',
-            name='customer',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='tasks', to='customer_management.customer'),
+            model_name="task",
+            name="customer",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="tasks",
+                to="customer_management.customer",
+            ),
         ),
         migrations.AddField(
-            model_name='task',
-            name='lead',
-            field=models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='tasks', to='customer_management.lead'),
+            model_name="task",
+            name="lead",
+            field=models.ForeignKey(
+                blank=True,
+                null=True,
+                on_delete=django.db.models.deletion.SET_NULL,
+                related_name="tasks",
+                to="customer_management.lead",
+            ),
         ),
     ]
