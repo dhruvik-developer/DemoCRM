@@ -1,4 +1,5 @@
 from decimal import Decimal
+from unittest import mock
 from uuid import uuid4
 
 from django.contrib.auth import get_user_model
@@ -22,6 +23,7 @@ from customer_management.models import (
     QuotationApproval,
     QuotationIntegrationEvent,
     QuotationLineItem,
+    QuotationStatus,
     QuotationVersion,
 )
 from customer_management.services import CRMService, QuotationService
@@ -4185,3 +4187,1073 @@ class SerializerValidationTests(CRMBaseTestCase):
         ).first()
         serializer = QuotationApprovalSerializer(approval)
         self.assertEqual(serializer.data["decision"], "PENDING")
+
+
+# ==============================================================================
+# SECTION 18: SERVICE-LEVEL VALIDATION BRANCH TESTS
+# Target uncovered lines in services.py for create_pipeline_stage / create_lead
+# ==============================================================================
+
+
+class ServiceValidationBranchTests(CRMBaseTestCase):
+    """Direct CRMService calls to hit uncovered validation branches."""
+
+    def test_create_pipeline_stage_inactive_pipeline(self):
+        """services.py:133 — inactive pipeline raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            CRMService.create_pipeline_stage(
+                user=self.user,
+                pipeline=self.inactive_pipeline,
+                name="Bad Stage",
+                display_order=1,
+            )
+        self.assertIn("inactive", str(ctx.exception).lower())
+
+    def test_create_pipeline_stage_display_order_zero(self):
+        """services.py:138 — display_order < 1 raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            CRMService.create_pipeline_stage(
+                user=self.user,
+                pipeline=self.pipeline,
+                name="Zero Stage",
+                display_order=0,
+            )
+        self.assertIn("at least 1", str(ctx.exception).lower())
+
+    def test_create_pipeline_stage_display_order_negative(self):
+        """services.py:138 — negative display_order raises ValidationError."""
+        with self.assertRaises(ValidationError):
+            CRMService.create_pipeline_stage(
+                user=self.user,
+                pipeline=self.pipeline,
+                name="Neg Stage",
+                display_order=-5,
+            )
+
+    def test_create_lead_inactive_source(self):
+        """services.py:185 — inactive lead source raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            CRMService.create_lead(
+                user=self.user,
+                name="Bad Lead",
+                source=self.inactive_source,
+                assigned_to=self.user,
+                pipeline=self.pipeline,
+                current_stage=self.stage1,
+            )
+        self.assertIn("inactive", str(ctx.exception).lower())
+
+    def test_create_lead_inactive_pipeline(self):
+        """services.py:190 — inactive pipeline raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            CRMService.create_lead(
+                user=self.user,
+                name="Bad Lead",
+                source=self.source,
+                assigned_to=self.user,
+                pipeline=self.inactive_pipeline,
+                current_stage=self.stage1,
+            )
+        self.assertIn("inactive", str(ctx.exception).lower())
+
+    def test_create_lead_inactive_stage(self):
+        """services.py:195 — inactive stage raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            CRMService.create_lead(
+                user=self.user,
+                name="Bad Lead",
+                source=self.source,
+                assigned_to=self.user,
+                pipeline=self.pipeline,
+                current_stage=self.inactive_stage,
+            )
+        self.assertIn("inactive", str(ctx.exception).lower())
+
+    def test_create_lead_stage_wrong_pipeline(self):
+        """services.py:200 — stage from different pipeline raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            CRMService.create_lead(
+                user=self.user,
+                name="Bad Lead",
+                source=self.source,
+                assigned_to=self.user,
+                pipeline=self.pipeline,
+                current_stage=self.stage2_p2,
+            )
+        self.assertIn("does not belong", str(ctx.exception).lower())
+
+    def test_create_lead_inactive_assigned_to(self):
+        """services.py:205 — inactive assigned_to raises ValidationError."""
+        with self.assertRaises(ValidationError) as ctx:
+            CRMService.create_lead(
+                user=self.user,
+                name="Bad Lead",
+                source=self.source,
+                assigned_to=self.inactive_user,
+                pipeline=self.pipeline,
+                current_stage=self.stage1,
+            )
+        self.assertIn("inactive", str(ctx.exception).lower())
+
+    def test_create_lead_no_active_stages(self):
+        """services.py:220 — pipeline with no active stages raises ValidationError."""
+        pl = CRMService.create_pipeline(user=self.user, name="Empty PL")
+        stage_only = CRMService.create_pipeline_stage(
+            user=self.user, pipeline=pl, name="Only",
+            display_order=1, requires_quotation=False,
+        )
+        # Reload the stage from DB so it has is_active=True in ORM cache
+        stage_only.refresh_from_db()
+        # Now deactivate all stages in DB behind the ORM's back
+        PipelineStage.objects.filter(pipeline=pl).update(is_active=False)
+        # stage_only ORM object still has is_active=True from cache,
+        # so the line-194 check passes, but the line-209 query finds none
+        with self.assertRaises(ValidationError) as ctx:
+            CRMService.create_lead(
+                user=self.user,
+                name="Bad Lead",
+                source=self.source,
+                assigned_to=self.user,
+                pipeline=pl,
+                current_stage=stage_only,
+            )
+        self.assertIn("no active stages", str(ctx.exception).lower())
+
+
+# ==============================================================================
+# SECTION 19: QUOTATION NUMBER COLLISION TEST
+# ==============================================================================
+
+
+class QuotationNumberCollisionTest(CRMBaseTestCase):
+    """Test the while-loop in generate_quotation_number when a collision occurs."""
+
+    def test_generate_quotation_number_retries_on_collision(self):
+        """services.py:645-646 — collision loop regenerates number."""
+        original_exists = Quotation.objects.filter().exists
+
+        call_count = [0]
+
+        def fake_exists(self_or_filter, **kwargs):
+            call_count[0] += 1
+            if call_count[0] <= 1:
+                return True  # first call collides
+            return False
+
+        with mock.patch.object(
+            Quotation.objects, "filter", wraps=Quotation.objects.filter
+        ):
+            # We mock uuid4 to control the suffix
+            suffixes = ["AAAAAA", "BBBBBB"]
+            uuid_idx = [0]
+            original_uuid4 = uuid4
+
+            def controlled_uuid4():
+                val = original_uuid4()
+                # Just let it generate normally, we test the retry by
+                # patching the Quotation filter
+                return val
+
+            # Better approach: mock filter().exists() to return True once
+            with mock.patch(
+                "customer_management.services.Quotation.objects"
+            ) as mock_qs:
+                # The generate method does: Quotation.objects.filter(quotation_number=number).exists()
+                mock_filter = mock_qs.filter.return_value
+                mock_filter.exists.side_effect = [True, False]
+                result = QuotationService.generate_quotation_number()
+                self.assertTrue(result.startswith("Q-"))
+                self.assertEqual(mock_filter.exists.call_count, 2)
+
+
+# ==============================================================================
+# SECTION 20: APPROVE / REJECT QUOTATION EDGE CASES
+# ==============================================================================
+
+
+class QuotationApprovalEdgeCaseTests(CRMBaseTestCase):
+    """Edge cases in approve_quotation and reject_quotation_approval."""
+
+    def _make_sent_quotation(self, approval_required=False):
+        """Helper: create a quotation that has been submitted (pending)."""
+        if approval_required:
+            pl, st = self._create_approval_pipeline("Edge Appr PL")
+            lead = CRMService.create_lead(
+                user=self.user, name="Edge Lead", source=self.source,
+                assigned_to=self.user, pipeline=pl, current_stage=st,
+            )
+        else:
+            lead = CRMService.create_lead(
+                user=self.user, name="Edge Lead", source=self.source,
+                assigned_to=self.user, pipeline=self.pipeline,
+                current_stage=self.stage1,
+            )
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "Item", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        return q
+
+    def test_approve_no_pending_approval_record(self):
+        """services.py:917 — approve when no pending approval record exists."""
+        q = self._make_sent_quotation(approval_required=True)
+        # Manually delete the pending approval record
+        QuotationApproval.objects.filter(
+            version=q.current_version,
+            decision=QuotationApproval.Decision.PENDING,
+        ).delete()
+        with self.assertRaises(ValidationError) as ctx:
+            QuotationService.approve_quotation(
+                reviewer_user=self.user, quotation=q,
+            )
+        self.assertIn("No pending approval", str(ctx.exception))
+
+    def test_reject_approval_no_pending_record(self):
+        """services.py:986 — reject approval when no pending approval exists."""
+        q = self._make_sent_quotation(approval_required=True)
+        QuotationApproval.objects.filter(
+            version=q.current_version,
+            decision=QuotationApproval.Decision.PENDING,
+        ).delete()
+        with self.assertRaises(ValidationError) as ctx:
+            QuotationService.reject_quotation_approval(
+                reviewer_user=self.user, quotation=q,
+            )
+        self.assertIn("No pending approval", str(ctx.exception))
+
+    def test_approve_already_approved(self):
+        """services.py:908-909 — approving an already-approved quotation."""
+        q = self._make_sent_quotation(approval_required=True)
+        # Use a different reviewer to avoid self-approval check
+        reviewer_client, reviewer_user, _ = self._create_manager_client(
+            permissions=["approve_quotation", "view_quotation"],
+            username="approver2",
+        )
+        QuotationService.approve_quotation(reviewer_user=reviewer_user, quotation=q)
+        # Now try to approve again — version is no longer PENDING_APPROVAL
+        with self.assertRaises(ValidationError) as ctx:
+            QuotationService.approve_quotation(reviewer_user=reviewer_user, quotation=q)
+        self.assertIn("Only quotations pending approval", str(ctx.exception))
+
+
+# ==============================================================================
+# SECTION 21: SEND_QUOTATION_EMAIL EDGE CASES
+# ==============================================================================
+
+
+class SendQuotationEmailEdgeCaseTests(CRMBaseTestCase):
+    """Edge cases in QuotationService.send_quotation_email (services.py:1323+)."""
+
+    def test_send_email_no_version(self):
+        """services.py:1349 — quotation with no version raises ValidationError."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        # Delete all versions
+        q.versions.all().delete()
+        q.refresh_from_db()
+        with self.assertRaises(ValidationError) as ctx:
+            QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+                recipient_email="test@example.com",
+            )
+        self.assertIn("no active version", str(ctx.exception))
+
+    def test_send_email_draft_version(self):
+        """services.py:1351-1353 — DRAFT version blocked from email."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        with self.assertRaises(ValidationError) as ctx:
+            QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+                recipient_email="test@example.com",
+            )
+        self.assertIn("blocked", str(ctx.exception))
+
+    def test_send_email_pending_approval_version(self):
+        """services.py:1351-1353 — PENDING_APPROVAL version blocked from email."""
+        pl, st = self._create_approval_pipeline("Email Appr PL")
+        lead = CRMService.create_lead(
+            user=self.user, name="Email Lead", source=self.source,
+            assigned_to=self.user, pipeline=pl, current_stage=st,
+        )
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        with self.assertRaises(ValidationError) as ctx:
+            QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+                recipient_email="test@example.com",
+            )
+        self.assertIn("blocked", str(ctx.exception))
+
+    def test_send_email_invalid_version_number(self):
+        """services.py:1343-1344 — invalid version number raises ValidationError."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        # Submit/approve so we can email
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        q.refresh_from_db()
+        if q.current_version.approval_required:
+            QuotationService.approve_quotation(reviewer_user=self.user, quotation=q)
+        with self.assertRaises(ValidationError) as ctx:
+            QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+                version_number=999,
+                recipient_email="test@example.com",
+            )
+        self.assertIn("does not exist", str(ctx.exception))
+
+    def test_send_email_no_recipient(self):
+        """services.py:1363-1364 — no email on customer/lead raises ValidationError."""
+        lead = self._make_lead(email=None)
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        # Stage without approval so it auto-approves on submit
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        q.refresh_from_db()
+        with self.assertRaises(ValidationError) as ctx:
+            QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+            )
+        self.assertIn("email is required", str(ctx.exception).lower())
+
+    def test_send_email_customer_email_fallback(self):
+        """services.py:1358-1359 — uses customer email when no recipient specified."""
+        lead = self._make_lead(email=None)
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        # Manually set customer on the quotation
+        customer = CRMService.convert_lead(
+            user=self.user, lead=lead, name="Cust Fallback",
+            email="custfallback@example.com", phone="9999999999",
+        )
+        q.customer = customer
+        q.save(update_fields=["customer"])
+        q.refresh_from_db()
+        # Approve the quotation so we can email
+        q.current_version.status = QuotationStatus.APPROVED
+        q.current_version.save(update_fields=["status"])
+        q.status = QuotationStatus.APPROVED
+        q.save(update_fields=["status"])
+
+        with mock.patch("django.core.mail.EmailMessage") as MockEmail:
+            mock_instance = MockEmail.return_value
+            mock_instance.send.return_value = None
+            q, v = QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+            )
+            mock_instance.send.assert_called_once()
+            args, kwargs = MockEmail.call_args
+            self.assertEqual(kwargs["to"], ["custfallback@example.com"])
+
+    def test_send_email_lead_email_fallback(self):
+        """services.py:1360-1361 — uses lead email when no customer and no recipient."""
+        lead = self._make_lead(email="leadfallback@example.com")
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        # Ensure no customer
+        self.assertIsNone(q.customer)
+        # Approve
+        q.current_version.status = QuotationStatus.APPROVED
+        q.current_version.save(update_fields=["status"])
+        q.status = QuotationStatus.APPROVED
+        q.save(update_fields=["status"])
+
+        with mock.patch("django.core.mail.EmailMessage") as MockEmail:
+            mock_instance = MockEmail.return_value
+            mock_instance.send.return_value = None
+            q, v = QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+            )
+            args, kwargs = MockEmail.call_args
+            self.assertEqual(kwargs["to"], ["leadfallback@example.com"])
+
+    def test_send_email_smtp_exception(self):
+        """services.py:1391-1404 — SMTPException creates audit log and raises."""
+        lead = self._make_lead(email="smtp@example.com")
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        q.current_version.status = QuotationStatus.APPROVED
+        q.current_version.save(update_fields=["status"])
+        q.status = QuotationStatus.APPROVED
+        q.save(update_fields=["status"])
+
+        from smtplib import SMTPException
+        with mock.patch("django.core.mail.EmailMessage") as MockEmail:
+            mock_instance = MockEmail.return_value
+            mock_instance.send.side_effect = SMTPException("Connection refused")
+            with self.assertRaises(ValidationError) as ctx:
+                QuotationService.send_quotation_email(
+                    user=self.user, quotation=q,
+                )
+            self.assertIn("Email delivery failed", str(ctx.exception))
+            # Verify audit log was created
+            audit = AuditLog.objects.filter(
+                entity_type="Quotation",
+                action="QUOTATION_EMAIL_FAILED",
+            ).first()
+            self.assertIsNotNone(audit)
+
+    def test_send_email_customer_activity_branch(self):
+        """services.py:1420-1422 — activity logged with customer when quotation has customer."""
+        lead = self._make_lead(email="act@example.com")
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        # Convert lead so quotation gets a customer
+        customer = CRMService.convert_lead(
+            user=self.user, lead=lead, name="Act Customer",
+            email="act@example.com", phone="1111111111",
+        )
+        q.customer = customer
+        q.save(update_fields=["customer"])
+        q.refresh_from_db()
+        q.current_version.status = QuotationStatus.APPROVED
+        q.current_version.save(update_fields=["status"])
+        q.status = QuotationStatus.APPROVED
+        q.save(update_fields=["status"])
+
+        with mock.patch("django.core.mail.EmailMessage") as MockEmail:
+            mock_instance = MockEmail.return_value
+            mock_instance.send.return_value = None
+            q, v = QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+            )
+            # Activity should have customer set, not lead
+            activity = Activity.objects.filter(
+                activity_type=Activity.ActivityType.QUOTATION_EMAIL_SENT,
+                customer=customer,
+            ).first()
+            self.assertIsNotNone(activity)
+            self.assertIsNone(activity.lead)
+
+    def test_send_email_lead_activity_branch(self):
+        """services.py:1423-1425 — activity logged with lead when no customer."""
+        lead = self._make_lead(email="leadact@example.com")
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        q.current_version.status = QuotationStatus.APPROVED
+        q.current_version.save(update_fields=["status"])
+        q.status = QuotationStatus.APPROVED
+        q.save(update_fields=["status"])
+
+        with mock.patch("django.core.mail.EmailMessage") as MockEmail:
+            mock_instance = MockEmail.return_value
+            mock_instance.send.return_value = None
+            q, v = QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+            )
+            activity = Activity.objects.filter(
+                activity_type=Activity.ActivityType.QUOTATION_EMAIL_SENT,
+                lead=lead,
+            ).first()
+            self.assertIsNotNone(activity)
+            self.assertIsNone(activity.customer)
+
+    def _make_lead(self, email="test@example.com"):
+        """Helper: create an active lead on the default pipeline."""
+        return CRMService.create_lead(
+            user=self.user, name="Test Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email=email,
+        )
+
+
+# ==============================================================================
+# SECTION 22: VIEW-LEVEL DjangoValidationError HANDLER TESTS
+# ==============================================================================
+
+
+class ViewValidationErrorHandlerTests(CRMBaseTestCase):
+    """Tests that hit DjangoValidationError catch blocks in views.py."""
+
+    def test_lead_source_create_duplicate_name(self):
+        """views.py:69-70 — duplicate lead source name triggers 400."""
+        CRMService.create_lead_source(user=self.user, name="Dup Source")
+        response = self.client.post("/api/crm/lead-sources/", {
+            "name": "Dup Source",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_pipeline_create_duplicate_name(self):
+        """views.py:106-107 — duplicate pipeline name triggers 400."""
+        CRMService.create_pipeline(user=self.user, name="Dup Pipeline")
+        response = self.client.post("/api/crm/pipelines/", {
+            "name": "Dup Pipeline",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_pipeline_stage_create_inactive_pipeline(self):
+        """views.py:153-154 — creating stage on inactive pipeline triggers 400."""
+        response = self.client.post("/api/crm/pipeline-stages/", {
+            "pipeline": str(self.inactive_pipeline.id),
+            "name": "Bad Stage",
+            "display_order": 1,
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_lead_create_inactive_source(self):
+        """views.py:214-215 — creating lead with inactive source triggers 400."""
+        response = self.client.post("/api/crm/leads/", {
+            "name": "Bad Lead",
+            "source": str(self.inactive_source.id),
+            "assigned_to": str(self.user.user_id),
+            "pipeline": str(self.pipeline.id),
+            "current_stage": str(self.stage1.id),
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_activity_create_invalid_data(self):
+        """views.py:498-499 — creating activity with bad data triggers 400."""
+        response = self.client.post("/api/crm/activities/", {
+            "activity_type": "CALL",
+            "outcome": "Test",
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_quotation_create_non_active_lead(self):
+        """views.py:638-639 — creating quotation for non-active lead triggers 400."""
+        lead = CRMService.create_lead(
+            user=self.user, name="Lost Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1,
+        )
+        CRMService.mark_lead_lost(
+            user=self.user, lead=lead, lost_reason="Budget",
+        )
+        response = self.client.post("/api/crm/quotations/", {
+            "lead": str(lead.id),
+        }, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+# ==============================================================================
+# SECTION 23: PDF GENERATION FAILURE VIEW TEST
+# ==============================================================================
+
+
+class QuotationPDFFailureViewTest(CRMBaseTestCase):
+    """views.py:960-962 — PDF generation failure returns 500."""
+
+    def test_pdf_generation_failure_returns_500(self):
+        """When generate_quotation_pdf raises, view returns 500."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        # Approve so version status allows PDF
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        q.refresh_from_db()
+        q.current_version.refresh_from_db()
+        if q.current_version.status != QuotationStatus.APPROVED:
+            QuotationService.approve_quotation(reviewer_user=self.user, quotation=q)
+
+        with mock.patch(
+            "customer_management.views.generate_quotation_pdf",
+            side_effect=RuntimeError("PDF rendering crashed"),
+        ):
+            response = self.client.get(f"/api/crm/quotations/{q.id}/pdf/")
+            self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+            self.assertIn("Failed to generate PDF", response.data["detail"])
+
+    def test_pdf_invalid_version_param(self):
+        """views.py:938-941 — invalid version query param returns 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        response = self.client.get(
+            f"/api/crm/quotations/{q.id}/pdf/?version=abc"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_pdf_version_not_found(self):
+        """views.py:933-937 — non-existent version returns 404."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        response = self.client.get(
+            f"/api/crm/quotations/{q.id}/pdf/?version=99"
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def _make_lead(self, email="pdf@example.com"):
+        return CRMService.create_lead(
+            user=self.user, name="PDF Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email=email,
+        )
+
+
+# ==============================================================================
+# SECTION 24: SEND EMAIL VIEW EDGE CASES
+# ==============================================================================
+
+
+class SendEmailViewEdgeCaseTests(CRMBaseTestCase):
+    """View-level tests for QuotationSendEmailView."""
+
+    def test_send_email_invalid_version_param(self):
+        """views.py:1000-1005 — invalid version query param returns 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/send-email/",
+            {"version": "abc", "recipient_email": "test@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Invalid version", response.data["detail"])
+
+    def test_send_email_draft_version(self):
+        """views.py:1017-1021 — sending email on draft triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/send-email/",
+            {"recipient_email": "test@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def _make_lead(self, email="viewemail@example.com"):
+        return CRMService.create_lead(
+            user=self.user, name="EmailView Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email=email,
+        )
+
+
+# ==============================================================================
+# SECTION 25: XHTML2PDF FALLBACK TEST
+# ==============================================================================
+
+
+class PDFUtilsFallbackTest(CRMBaseTestCase):
+    """pdf_utils.py:51-60 — xhtml2pdf fallback when weasyprint fails."""
+
+    def test_xhtml2pdf_fallback(self):
+        """When weasyprint is not installed, falls back to xhtml2pdf."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "Widget", "quantity": 3, "unit_price": "25.00"}],
+        )
+        version = q.current_version
+
+        mock_weasyprint = mock.MagicMock()
+        mock_weasyprint.HTML.side_effect = Exception("No weasyprint for you")
+
+        mock_pisa = mock.MagicMock()
+        mock_pisa.status.err = 0
+        # The pisa.CreatePDF writes to a BytesIO dest
+        def fake_create_pdf(src, dest):
+            dest.write(b"%PDF-1.4 fake pdf content")
+            return mock_pisa.status
+        mock_pisa.CreatePDF.side_effect = fake_create_pdf
+
+        with mock.patch.dict("sys.modules", {
+            "weasyprint": mock_weasyprint,
+        }):
+            from customer_management import pdf_utils
+            with mock.patch.object(pdf_utils, "pisa", mock_pisa, create=True):
+                result = pdf_utils.generate_quotation_pdf(version)
+                self.assertIsInstance(result, bytes)
+                self.assertTrue(len(result) > 0)
+
+    def test_xhtml2pdf_error_raises(self):
+        """pdf_utils.py:58-59 — xhtml2pdf error raises RuntimeError."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "Thing", "quantity": 1, "unit_price": 10}],
+        )
+        version = q.current_version
+
+        mock_weasyprint = mock.MagicMock()
+        mock_weasyprint.HTML.side_effect = Exception("No weasyprint")
+
+        mock_pisa = mock.MagicMock()
+        mock_pisa.status.err = 1  # error
+
+        with mock.patch.dict("sys.modules", {
+            "weasyprint": mock_weasyprint,
+        }):
+            from customer_management import pdf_utils
+            with mock.patch.object(pdf_utils, "pisa", mock_pisa, create=True):
+                with self.assertRaises(RuntimeError) as ctx:
+                    pdf_utils.generate_quotation_pdf(version)
+                self.assertIn("xhtml2pdf", str(ctx.exception))
+
+    def _make_lead(self):
+        return CRMService.create_lead(
+            user=self.user, name="PDF Utils Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email="pdf@example.com",
+        )
+
+
+# ==============================================================================
+# SECTION 26: ADDITIONAL VIEW ERROR PATHS
+# ==============================================================================
+
+
+class ViewAdditionalErrorPathTests(CRMBaseTestCase):
+    """Additional view-level error paths not covered elsewhere."""
+
+    def test_submit_already_submitted_quotation(self):
+        """views.py:714-718 — submitting a PENDING quotation triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/submit/", format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_approve_draft_quotation(self):
+        """views.py:745-749 — approving a draft quotation triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/approve/", format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_send_draft_quotation(self):
+        """views.py:799-803 — sending a draft quotation triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/send/", format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_accept_draft_quotation(self):
+        """views.py:859-863 — accepting a draft quotation triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/accept/", format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reject_draft_quotation(self):
+        """views.py:896-900 — rejecting a draft quotation triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/reject/",
+            {"rejection_reason": "Too expensive"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reject_approval_draft_quotation(self):
+        """views.py:773-777 — rejecting approval on draft triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/reject-approval/",
+            {"reason": "Nope"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_revision_no_version(self):
+        """views.py:833-837 — revision when quotation has no version triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        q.versions.all().delete()
+        q.refresh_from_db()
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/revision/",
+            {"terms": "New terms"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_send_email_not_found(self):
+        """views.py — sending email for non-existent quotation triggers 404."""
+        fake_id = uuid4()
+        response = self.client.post(
+            f"/api/crm/quotations/{fake_id}/send-email/",
+            {"recipient_email": "test@example.com"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_reject_without_reason(self):
+        """views.py:884-888 — reject without reason triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        QuotationService.send_quotation(user=self.user, quotation=q)
+        response = self.client.post(
+            f"/api/crm/quotations/{q.id}/reject/",
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("rejection_reason", response.data)
+
+    def test_update_draft_invalid_status(self):
+        """views.py:688-692 — updating non-draft quotation triggers 400."""
+        q = QuotationService.create_quotation(
+            user=self.user, lead=self._make_lead(),
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        QuotationService.send_quotation(user=self.user, quotation=q)
+        response = self.client.patch(
+            f"/api/crm/quotations/{q.id}/update-draft/",
+            {"terms": "New terms"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_send_email_auto_approves(self):
+        """views.py — send_email on APPROVED quotation auto-sends first."""
+        lead = CRMService.create_lead(
+            user=self.user, name="AutoAppr Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email="auto@example.com",
+        )
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        q.refresh_from_db()
+        # Should be APPROVED (no approval_required on stage1)
+        self.assertEqual(q.current_version.status, QuotationStatus.APPROVED)
+
+        with mock.patch("django.core.mail.EmailMessage") as MockEmail:
+            mock_instance = MockEmail.return_value
+            mock_instance.send.return_value = None
+            response = self.client.post(
+                f"/api/crm/quotations/{q.id}/send-email/",
+                {"recipient_email": "auto@example.com"},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            # After email, quotation should be SENT (auto-send triggered)
+            q.refresh_from_db()
+            self.assertEqual(q.status, QuotationStatus.SENT)
+
+    def _make_lead(self):
+        return CRMService.create_lead(
+            user=self.user, name="ErrorPath Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email="err@example.com",
+        )
+
+
+# ==============================================================================
+# SECTION 27: AUDIT LOG DETAIL TESTS
+# ==============================================================================
+
+
+class AuditLogDetailTests(CRMBaseTestCase):
+    """Verify audit logs are created for each major action with correct content."""
+
+    def test_lead_source_created_audit(self):
+        source = CRMService.create_lead_source(
+            user=self.user, name="Audit Source",
+        )
+        log = AuditLog.objects.filter(
+            entity_type="LeadSource", action="LEAD_SOURCE_CREATED",
+        ).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.new_value["name"], "Audit Source")
+
+    def test_pipeline_created_audit(self):
+        pipeline = CRMService.create_pipeline(
+            user=self.user, name="Audit Pipeline",
+        )
+        log = AuditLog.objects.filter(
+            entity_type="Pipeline", action="PIPELINE_CREATED",
+        ).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.new_value["name"], "Audit Pipeline")
+
+    def test_pipeline_stage_created_audit(self):
+        stage = CRMService.create_pipeline_stage(
+            user=self.user, pipeline=self.pipeline,
+            name="Audit Stage", display_order=10,
+        )
+        log = AuditLog.objects.filter(
+            entity_type="PipelineStage", action="PIPELINE_STAGE_CREATED",
+        ).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.new_value["name"], "Audit Stage")
+
+    def test_lead_created_audit(self):
+        lead = CRMService.create_lead(
+            user=self.user, name="Audit Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1,
+        )
+        log = AuditLog.objects.filter(
+            entity_type="Lead", action="LEAD_CREATED",
+        ).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.new_value["name"], "Audit Lead")
+
+    def test_quotation_approved_audit(self):
+        pl, st = self._create_approval_pipeline("Audit Appr PL")
+        reviewer = User.objects.create_user(
+            username="reviewer", email="reviewer@example.com",
+            password="Password123!", phone_number="5555555555",
+            role=self.role,
+        )
+        lead = CRMService.create_lead(
+            user=self.user, name="Audit Appr Lead", source=self.source,
+            assigned_to=self.user, pipeline=pl, current_stage=st,
+        )
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        QuotationService.approve_quotation(reviewer_user=reviewer, quotation=q)
+        log = AuditLog.objects.filter(
+            entity_type="Quotation", action="QUOTATION_APPROVED",
+        ).first()
+        self.assertIsNotNone(log)
+
+    def test_quotation_rejected_audit(self):
+        lead = CRMService.create_lead(
+            user=self.user, name="Rej Audit Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email="rej@example.com",
+        )
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        QuotationService.send_quotation(user=self.user, quotation=q)
+        QuotationService.reject_quotation(
+            user=self.user, quotation=q, rejection_reason="Too expensive",
+        )
+        log = AuditLog.objects.filter(
+            entity_type="Quotation", action="QUOTATION_REJECTED",
+        ).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.new_value["rejection_reason"], "Too expensive")
+
+    def test_quotation_version_created_audit(self):
+        lead = CRMService.create_lead(
+            user=self.user, name="Ver Audit Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email="ver@example.com",
+        )
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        QuotationService.send_quotation(user=self.user, quotation=q)
+        QuotationService.create_revision(
+            user=self.user, quotation=q,
+            line_items=[{"description": "Y", "quantity": 2, "unit_price": 50}],
+        )
+        log = AuditLog.objects.filter(
+            entity_type="Quotation", action="QUOTATION_VERSION_CREATED",
+        ).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.new_value["version"], 2)
+
+    def test_quotation_email_sent_audit(self):
+        lead = CRMService.create_lead(
+            user=self.user, name="Email Audit Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email="emaill@example.com",
+        )
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        QuotationService.submit_quotation_for_approval(user=self.user, quotation=q)
+        q.refresh_from_db()
+
+        with mock.patch("django.core.mail.EmailMessage") as MockEmail:
+            mock_instance = MockEmail.return_value
+            mock_instance.send.return_value = None
+            QuotationService.send_quotation_email(
+                user=self.user, quotation=q,
+                recipient_email="emaill@example.com",
+            )
+        log = AuditLog.objects.filter(
+            entity_type="Quotation", action="QUOTATION_EMAIL_SENT",
+        ).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.new_value["sent_to"], "emaill@example.com")
+
+    def test_quotation_email_failed_audit(self):
+        from smtplib import SMTPException
+        lead = CRMService.create_lead(
+            user=self.user, name="Fail Audit Lead", source=self.source,
+            assigned_to=self.user, pipeline=self.pipeline,
+            current_stage=self.stage1, email="fail@example.com",
+        )
+        q = QuotationService.create_quotation(
+            user=self.user, lead=lead,
+            line_items=[{"description": "X", "quantity": 1, "unit_price": 100}],
+        )
+        q.current_version.status = QuotationStatus.APPROVED
+        q.current_version.save(update_fields=["status"])
+        q.status = QuotationStatus.APPROVED
+        q.save(update_fields=["status"])
+
+        with mock.patch("django.core.mail.EmailMessage") as MockEmail:
+            mock_instance = MockEmail.return_value
+            mock_instance.send.side_effect = SMTPException("Server down")
+            with self.assertRaises(ValidationError):
+                QuotationService.send_quotation_email(
+                    user=self.user, quotation=q,
+                )
+        log = AuditLog.objects.filter(
+            entity_type="Quotation", action="QUOTATION_EMAIL_FAILED",
+        ).first()
+        self.assertIsNotNone(log)
+        self.assertEqual(log.new_value["error"], "Server down")

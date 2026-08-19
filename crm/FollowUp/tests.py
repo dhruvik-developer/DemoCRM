@@ -1,10 +1,19 @@
 from datetime import timedelta
 
+from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APITestCase
 
 from accounts.models import CustomUser, Role
+
+from customer_management.models import (
+    LeadSource,
+    Pipeline,
+    PipelineStage,
+    Lead,
+)
 
 from Task.models import (
     Task,
@@ -37,6 +46,18 @@ class FollowUpAPITestCase(APITestCase):
             description="Employee role",
         )
 
+        ct = ContentType.objects.get_for_model(Task)
+        for codename in (
+            "view_followup", "add_followup", "change_followup",
+            "delete_followup", "add_followup_note",
+        ):
+            perm, _ = Permission.objects.get_or_create(
+                codename=codename,
+                content_type=ct,
+                defaults={"name": f"Can {codename}"},
+            )
+            self.role.permissions.add(perm)
+
         self.user = CustomUser.objects.create_user(
             email="followupuser@example.com",
             username="followupuser",
@@ -66,12 +87,48 @@ class FollowUpAPITestCase(APITestCase):
         )
 
         # ==================================================
+        # LEAD
+        # ==================================================
+
+        self.lead_source = LeadSource.objects.create(
+            name="Website",
+            description="Website lead source",
+            created_by=self.user,
+        )
+
+        self.pipeline = Pipeline.objects.create(
+            name="Sales Pipeline",
+            description="Test pipeline",
+            created_by=self.user,
+        )
+
+        self.pipeline_stage = PipelineStage.objects.create(
+            pipeline=self.pipeline,
+            name="New",
+            description="New lead",
+            display_order=1,
+        )
+
+        self.lead = Lead.objects.create(
+            name="Rahul",
+            email="rahul@example.com",
+            phone="9999999999",
+            company_name="Rahul Company",
+            source=self.lead_source,
+            assigned_to=self.user,
+            pipeline=self.pipeline,
+            current_stage=self.pipeline_stage,
+            status=Lead.Status.ACTIVE,
+        )
+
+        # ==================================================
         # TASK
         # ==================================================
 
         self.task = Task.objects.create(
             assigned_to=self.user,
             created_by=self.user,
+            lead=self.lead,
             task_title="Customer FollowUp Task",
             description="Task for customer followup",
             due_date=(
@@ -477,12 +534,16 @@ class FollowUpAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_followup_forbidden_for_other_user(self):
+        basic_role = Role.objects.create(
+            rolename="Basic",
+            description="No followup permissions",
+        )
         other_user = CustomUser.objects.create_user(
             email="followupother@example.com",
             username="followupother",
             password="Test@123",
             phone_number="9999999991",
-            role=self.role,
+            role=basic_role,
         )
         self.client.force_authenticate(user=other_user)
         response = self.client.get(f"/api/followups/{self.followup.followup_id}/")

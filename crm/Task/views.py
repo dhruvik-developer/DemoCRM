@@ -1005,6 +1005,9 @@ class MeetingDetailView(APIView):
     Get meeting details.
     """
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "GET": "view_meeting",
+    }
 
     def get(self, request, meeting_id):
         try:
@@ -1061,6 +1064,9 @@ class MeetingRescheduleView(APIView):
     Change meeting date/time.
     """
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "PATCH": "change_meeting",
+    }
 
     def patch(self, request, meeting_id):
         try:
@@ -1147,6 +1153,9 @@ class MeetingStatusUpdateView(APIView):
     Change meeting status.
     """
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "PATCH": "change_meeting",
+    }
 
     def patch(self, request, meeting_id):
         try:
@@ -1235,6 +1244,9 @@ class MeetingParticipantAddView(APIView):
     Add a participant.
     """
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "POST": "add_meeting_participant",
+    }
 
     def post(self, request, meeting_id):
         try:
@@ -1388,6 +1400,9 @@ class MeetingParticipantRemoveView(APIView):
     Remove participant from meeting.
     """
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "DELETE": "delete_meeting_participant",
+    }
 
     def delete(self, request, meeting_id, user_id):
         try:
@@ -1520,6 +1535,11 @@ class ReminderDetailView(APIView):
         Delete reminder
     """
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "GET": "view_reminder",
+        "PATCH": "change_reminder",
+        "DELETE": "delete_reminder",
+    }
 
     def get_reminder(self, reminder_id):
         return get_object_or_404(
@@ -1703,6 +1723,9 @@ class ReminderStatusUpdateView(APIView):
     Change reminder status.
     """
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "PATCH": "change_reminder",
+    }
 
     def patch(self, request, reminder_id):
         try:

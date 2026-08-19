@@ -39,6 +39,7 @@ from .serializers import (
     QuotationVersionSerializer,
 )
 from .services import CRMService, QuotationService
+from .pdf_utils import generate_quotation_pdf
 
 
 class LeadSourceListCreateView(APIView):
@@ -921,8 +922,6 @@ class QuotationPDFView(APIView):
     }
 
     def get(self, request, pk):
-        from .pdf_utils import generate_quotation_pdf
-
         quotation = get_object_or_404(Quotation, pk=pk)
 
         version_param = request.query_params.get("version")

@@ -34,7 +34,8 @@ class FollowUpListCreateView(APIView):
     """
     permission_classes = [CanCommunicateWithlead]
     permission_names = {
-                    "POST": "add_followup",
+        "GET": "view_followup",
+        "POST": "add_followup",
     }
     # ------------------------------------------------------
     # LIST FOLLOWUPS
@@ -187,6 +188,11 @@ class FollowUpDetailView(APIView):
         Delete FollowUp
     """
     permission_classes = [IsAuthenticated, CanCommunicateWithlead]
+    permission_names = {
+        "GET": "view_followup",
+        "PATCH": "change_followup",
+        "DELETE": "delete_followup",
+    }
 
     def get_followup(self, followup_id):
         return get_object_or_404(
@@ -354,6 +360,9 @@ class FollowUpNoteCreateView(APIView):
     Add a note to a FollowUp.
     """
     permission_classes = [IsAuthenticated, CanCommunicateWithlead]
+    permission_names = {
+        "POST": "add_followup_note",
+    }
 
     def post(self, request, followup_id):
         try:

@@ -812,7 +812,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_UPDATED,
             outcome=f"Updated draft Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
         )
@@ -861,7 +861,7 @@ class QuotationService:
                 user=user,
                 activity_type=Activity.ActivityType.QUOTATION_SUBMITTED,
                 outcome=f"Submitted Quotation {quotation.quotation_number} (v{version.version_number}) for approval",
-                lead=quotation.lead,
+                lead=quotation.lead if not quotation.customer else None,
                 customer=quotation.customer,
                 quotation=quotation,
             )
@@ -889,7 +889,7 @@ class QuotationService:
                 user=user,
                 activity_type=Activity.ActivityType.QUOTATION_APPROVED,
                 outcome=f"Auto-approved Quotation {quotation.quotation_number} (v{version.version_number}) (no manager approval required)",
-                lead=quotation.lead,
+                lead=quotation.lead if not quotation.customer else None,
                 customer=quotation.customer,
                 quotation=quotation,
             )
@@ -957,7 +957,7 @@ class QuotationService:
             user=reviewer_user,
             activity_type=Activity.ActivityType.QUOTATION_APPROVED,
             outcome=f"Approved Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
         )
@@ -1014,7 +1014,7 @@ class QuotationService:
             user=reviewer_user,
             activity_type=Activity.ActivityType.QUOTATION_APPROVAL_REJECTED,
             outcome=f"Rejected approval for Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
             notes=reason,
@@ -1062,7 +1062,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_SENT,
             outcome=f"Sent Quotation {quotation.quotation_number} (v{version.version_number}) to client",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
             follow_up_required=True,
@@ -1196,7 +1196,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_VERSION_CREATED,
             outcome=f"Created Quotation revision {quotation.quotation_number} (v{new_version_num})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
         )
@@ -1241,7 +1241,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_ACCEPTED,
             outcome=f"Client accepted Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
         )
@@ -1305,7 +1305,7 @@ class QuotationService:
             user=user,
             activity_type=Activity.ActivityType.QUOTATION_REJECTED,
             outcome=f"Client rejected Quotation {quotation.quotation_number} (v{version.version_number})",
-            lead=quotation.lead,
+            lead=quotation.lead if not quotation.customer else None,
             customer=quotation.customer,
             quotation=quotation,
             notes=rejection_reason,
@@ -1321,7 +1321,6 @@ class QuotationService:
         return quotation
 
     @staticmethod
-    @transaction.atomic
     def send_quotation_email(
         *,
         user,
@@ -1336,37 +1335,38 @@ class QuotationService:
         from smtplib import SMTPException
         from .pdf_utils import generate_quotation_pdf
 
-        quotation = Quotation.objects.select_for_update().get(pk=quotation.pk)
+        with transaction.atomic():
+            quotation = Quotation.objects.select_for_update().get(pk=quotation.pk)
 
-        if version_number is not None:
-            version = quotation.versions.filter(version_number=version_number).first()
+            if version_number is not None:
+                version = quotation.versions.filter(version_number=version_number).first()
+                if not version:
+                    raise ValidationError(f"Quotation version {version_number} does not exist.")
+            else:
+                version = quotation.current_version
+
             if not version:
-                raise ValidationError(f"Quotation version {version_number} does not exist.")
-        else:
-            version = quotation.current_version
+                raise ValidationError("Quotation has no active version.")
 
-        if not version:
-            raise ValidationError("Quotation has no active version.")
+            if version.status in [QuotationStatus.DRAFT, QuotationStatus.PENDING_APPROVAL]:
+                raise ValidationError(
+                    f"Quotation PDF delivery is blocked for version in state '{version.status}'. Approved or sent version required."
+                )
 
-        if version.status in [QuotationStatus.DRAFT, QuotationStatus.PENDING_APPROVAL]:
-            raise ValidationError(
-                f"Quotation PDF delivery is blocked for version in state '{version.status}'. Approved or sent version required."
-            )
+            to_email = recipient_email
+            if not to_email:
+                if quotation.customer and quotation.customer.email:
+                    to_email = quotation.customer.email
+                elif quotation.lead and quotation.lead.email:
+                    to_email = quotation.lead.email
 
-        to_email = recipient_email
-        if not to_email:
-            if quotation.customer and quotation.customer.email:
-                to_email = quotation.customer.email
-            elif quotation.lead and quotation.lead.email:
-                to_email = quotation.lead.email
+            if not to_email:
+                raise ValidationError("Recipient email is required to send quotation.")
 
-        if not to_email:
-            raise ValidationError("Recipient email is required to send quotation.")
-
-        if version.status == QuotationStatus.APPROVED:
-            QuotationService.send_quotation(user=user, quotation=quotation)
-            version.refresh_from_db()
-            quotation.refresh_from_db()
+            if version.status == QuotationStatus.APPROVED:
+                QuotationService.send_quotation(user=user, quotation=quotation)
+                version.refresh_from_db()
+                quotation.refresh_from_db()
 
         pdf_bytes = generate_quotation_pdf(version)
 

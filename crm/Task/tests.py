@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
 from rest_framework import status
@@ -43,6 +45,15 @@ class TaskAPITestCase(APITestCase):
             rolename="Employee",
             description="Employee role",
         )
+
+        ct = ContentType.objects.get_for_model(Task)
+        for codename in ("add_task", "task_assign", "task_update"):
+            perm, _ = Permission.objects.get_or_create(
+                codename=codename,
+                content_type=ct,
+                defaults={"name": f"Can {codename}"},
+            )
+            self.role.permissions.add(perm)
 
         self.user = CustomUser.objects.create_user(
             email="taskuser@example.com",
@@ -470,6 +481,15 @@ class MeetingAPITestCase(APITestCase):
             description="Employee role",
         )
 
+        ct = ContentType.objects.get_for_model(Task)
+        for codename in ("view_meeting", "change_meeting", "add_meeting_participant", "delete_meeting_participant"):
+            perm, _ = Permission.objects.get_or_create(
+                codename=codename,
+                content_type=ct,
+                defaults={"name": f"Can {codename}"},
+            )
+            self.role.permissions.add(perm)
+
         self.user = CustomUser.objects.create_user(
             email="meetinguser@example.com",
             username="meetinguser",
@@ -824,12 +844,16 @@ class MeetingAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_meeting_forbidden_for_other_user(self):
+        basic_role = Role.objects.create(
+            rolename="Basic",
+            description="No meeting permissions",
+        )
         other_user = CustomUser.objects.create_user(
             email="meetingother@example.com",
             username="meetingother",
             password="Test@123",
             phone_number="9999999992",
-            role=self.role,
+            role=basic_role,
         )
         meeting = self.create_meeting()
         self.client.force_authenticate(user=other_user)
@@ -901,6 +925,15 @@ class ReminderAPITestCase(APITestCase):
             rolename="Employee",
             description="Employee role",
         )
+
+        ct = ContentType.objects.get_for_model(Task)
+        for codename in ("view_reminder", "change_reminder", "delete_reminder"):
+            perm, _ = Permission.objects.get_or_create(
+                codename=codename,
+                content_type=ct,
+                defaults={"name": f"Can {codename}"},
+            )
+            self.role.permissions.add(perm)
 
         self.user = CustomUser.objects.create_user(
             email="reminderuser@example.com",
@@ -1222,12 +1255,16 @@ class ReminderAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_reminder_forbidden_for_other_user(self):
+        basic_role = Role.objects.create(
+            rolename="Basic",
+            description="No reminder permissions",
+        )
         other_user = CustomUser.objects.create_user(
             email="other@example.com",
             username="otheruser",
             password="Test@123",
             phone_number="9999999993",
-            role=self.role,
+            role=basic_role,
         )
         reminder = Reminder.objects.create(
             task_id=None,
