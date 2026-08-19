@@ -1,4 +1,5 @@
 #from rest_framework.permissions import BasePermission
+
 from accounts.permissions import HasDynamicPermission
 
 # def is_manager(user):

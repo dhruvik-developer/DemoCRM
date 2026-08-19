@@ -44,9 +44,7 @@ class Task(models.Model):
     #Developer 2 - Lead
     lead = models.ForeignKey(
         "customer_management.Lead",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
+        on_delete=models.PROTECT,
         related_name="tasks"
     )
     # Developer 2 - Customer

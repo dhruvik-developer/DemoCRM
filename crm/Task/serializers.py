@@ -109,17 +109,17 @@ class TaskSerializer(serializers.ModelSerializer):
         return value
 
     def validate(self, attrs):
-        assigned_to = attrs.get("assigned_to")
-        created_by = attrs.get("created_by")
+        lead = attrs.get(
+            "lead",
+            getattr(self.instance, "lead", None)
+        )
 
-        if assigned_to and created_by and assigned_to == created_by:
-            # This is NOT necessarily an error in a CRM.
-            # So we allow it.
-            pass
+        if not lead:
+            raise serializers.ValidationError({
+                "lead": "Lead is required to create a task."
+            })
 
         return attrs
-
-
 # ============================================================
 # MEETING
 # ============================================================
