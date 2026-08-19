@@ -33,6 +33,10 @@ from .serializers import (
 from .pagination import CRMPageNumberPagination
 from .services import send_meeting_creation_emails
 
+from Notification.notification_utils import trigger_notification_event
+from Notification.models import NotificationEventType
+from Notification.notification_utils import create_notification
+
 
 logger = logging.getLogger(__name__)
 
