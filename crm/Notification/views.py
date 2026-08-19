@@ -38,30 +38,44 @@ class NotificationTemplateListView(APIView):
     }
 
     def get(self, request):
-        templates = NotificationTemplate.objects.all()
+        try:
+            templates = NotificationTemplate.objects.all()
 
-        event_type = request.query_params.get("event_type")
-        if event_type:
-            templates = templates.filter(event_type=event_type)
+            event_type = request.query_params.get("event_type")
+            if event_type:
+                templates = templates.filter(event_type=event_type)
 
-        is_active = request.query_params.get("is_active")
-        if is_active is not None:
-            active_bool = is_active.lower() in ("true", "1")
-            templates = templates.filter(is_active=active_bool)
+            is_active = request.query_params.get("is_active")
+            if is_active is not None:
+                active_bool = is_active.lower() in ("true", "1")
+                templates = templates.filter(is_active=active_bool)
 
-        serializer = NotificationTemplateSerializer(templates, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            serializer = NotificationTemplateSerializer(templates, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error("Failed to list notification templates: %s", e)
+            return Response(
+                {"error": "Failed to retrieve notification templates."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     def post(self, request):
-        serializer = NotificationTemplateSerializer(data=request.data)
-        if serializer.is_valid():
-            template = serializer.save()
-            logger.info("NotificationTemplate created: %s (ID: %s)", template.name, template.pk)
+        try:
+            serializer = NotificationTemplateSerializer(data=request.data)
+            if serializer.is_valid():
+                template = serializer.save()
+                logger.info("NotificationTemplate created: %s (ID: %s)", template.name, template.pk)
+                return Response(
+                    NotificationTemplateSerializer(template).data,
+                    status=status.HTTP_201_CREATED,
+                )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error("Failed to create notification template: %s", e)
             return Response(
-                NotificationTemplateSerializer(template).data,
-                status=status.HTTP_201_CREATED,
+                {"error": "Failed to create notification template."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class NotificationTemplateDetailView(APIView):
@@ -92,46 +106,73 @@ class NotificationTemplateDetailView(APIView):
         return get_object_or_404(NotificationTemplate, pk=pk)
 
     def get(self, request, pk):
-        template = self.get_template(pk)
-        serializer = NotificationTemplateSerializer(template)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            template = self.get_template(pk)
+            serializer = NotificationTemplateSerializer(template)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error("Failed to retrieve notification template %s: %s", pk, e)
+            return Response(
+                {"error": "Failed to retrieve notification template."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     def put(self, request, pk):
-        template = self.get_template(pk)
-        serializer = NotificationTemplateSerializer(template, data=request.data)
-        if serializer.is_valid():
-            template = serializer.save()
+        try:
+            template = self.get_template(pk)
+            serializer = NotificationTemplateSerializer(template, data=request.data)
+            if serializer.is_valid():
+                template = serializer.save()
+                return Response(
+                    NotificationTemplateSerializer(template).data,
+                    status=status.HTTP_200_OK,
+                )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error("Failed to update notification template %s: %s", pk, e)
             return Response(
-                NotificationTemplateSerializer(template).data,
-                status=status.HTTP_200_OK,
+                {"error": "Failed to update notification template."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def patch(self, request, pk):
-        template = self.get_template(pk)
-        serializer = NotificationTemplateSerializer(
-            template, data=request.data, partial=True
-        )
-        if serializer.is_valid():
-            template = serializer.save()
-            return Response(
-                NotificationTemplateSerializer(template).data,
-                status=status.HTTP_200_OK,
+        try:
+            template = self.get_template(pk)
+            serializer = NotificationTemplateSerializer(
+                template, data=request.data, partial=True
             )
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+            if serializer.is_valid():
+                template = serializer.save()
+                return Response(
+                    NotificationTemplateSerializer(template).data,
+                    status=status.HTTP_200_OK,
+                )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error("Failed to update notification template %s: %s", pk, e)
+            return Response(
+                {"error": "Failed to update notification template."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     def delete(self, request, pk):
-        template = self.get_template(pk)
-        # Soft delete: set is_active=False
-        template.is_active = False
-        template.save(update_fields=["is_active", "updated_at"])
-        return Response(
-            {
-                "message": "Notification template deactivated successfully.",
-                "template_id": template.pk,
-            },
-            status=status.HTTP_200_OK,
-        )
+        try:
+            template = self.get_template(pk)
+            template.is_active = False
+            template.save(update_fields=["is_active", "updated_at"])
+            return Response(
+                {
+                    "message": "Notification template deactivated successfully.",
+                    "template_id": template.pk,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception as e:
+            logger.error("Failed to delete notification template %s: %s", pk, e)
+            return Response(
+                {"error": "Failed to delete notification template."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # ==========================================================
@@ -152,29 +193,36 @@ class ManualNotificationSendView(APIView):
     }
 
     def post(self, request):
-        serializer = ManualNotificationSerializer(data=request.data)
-        if not serializer.is_valid():
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            serializer = ManualNotificationSerializer(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        validated_data = serializer.validated_data
-        recipients = validated_data["recipients"]
-        template_id = validated_data.get("template_id")
-        event_type = validated_data.get("event_type") or "MANUAL"
-        custom_message = validated_data.get("custom_message")
-        channel = validated_data.get("channel")
+            validated_data = serializer.validated_data
+            recipients = validated_data["recipients"]
+            template_id = validated_data.get("template_id")
+            event_type = validated_data.get("event_type") or "MANUAL"
+            custom_message = validated_data.get("custom_message")
+            channel = validated_data.get("channel")
 
-        notifications = trigger_notification_event(
-            event_type=event_type,
-            recipient=recipients,
-            template_id=template_id,
-            custom_message=custom_message,
-            channel=channel,
-        )
+            notifications = trigger_notification_event(
+                event_type=event_type,
+                recipient=recipients,
+                template_id=template_id,
+                custom_message=custom_message,
+                channel=channel,
+            )
 
-        return Response(
-            NotificationSerializer(notifications, many=True).data,
-            status=status.HTTP_201_CREATED,
-        )
+            return Response(
+                NotificationSerializer(notifications, many=True).data,
+                status=status.HTTP_201_CREATED,
+            )
+        except Exception as e:
+            logger.error("Failed to send manual notification: %s", e)
+            return Response(
+                {"error": "Failed to send notification."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # ==========================================================
@@ -191,19 +239,26 @@ class UserNotificationListView(APIView):
     permission_classes = [NotificationHasPermission]
 
     def get(self, request):
-        notifications = (
-            Notification.objects.filter(recipient=request.user)
-            .select_related("template", "recipient")
-            .order_by("-created_at")
-        )
+        try:
+            notifications = (
+                Notification.objects.filter(recipient=request.user)
+                .select_related("template", "recipient")
+                .order_by("-created_at")
+            )
 
-        is_read = request.query_params.get("is_read")
-        if is_read is not None:
-            read_bool = is_read.lower() in ("true", "1")
-            notifications = notifications.filter(is_read=read_bool)
+            is_read = request.query_params.get("is_read")
+            if is_read is not None:
+                read_bool = is_read.lower() in ("true", "1")
+                notifications = notifications.filter(is_read=read_bool)
 
-        serializer = NotificationSerializer(notifications, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            serializer = NotificationSerializer(notifications, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error("Failed to list notifications for user %s: %s", request.user, e)
+            return Response(
+                {"error": "Failed to retrieve notifications."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class UserNotificationDetailView(APIView):
@@ -216,13 +271,20 @@ class UserNotificationDetailView(APIView):
     permission_classes = [NotificationHasPermission]
 
     def get(self, request, pk):
-        notification = get_object_or_404(
-            Notification.objects.select_related("template", "recipient"),
-            pk=pk,
-            recipient=request.user,
-        )
-        serializer = NotificationSerializer(notification)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            notification = get_object_or_404(
+                Notification.objects.select_related("template", "recipient"),
+                pk=pk,
+                recipient=request.user,
+            )
+            serializer = NotificationSerializer(notification)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error("Failed to retrieve notification %s: %s", pk, e)
+            return Response(
+                {"error": "Failed to retrieve notification."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class NotificationMarkReadView(APIView):
@@ -236,18 +298,25 @@ class NotificationMarkReadView(APIView):
     permission_classes = [NotificationHasPermission]
 
     def _mark_read(self, request, pk):
-        notification = get_object_or_404(
-            Notification,
-            pk=pk,
-            recipient=request.user,
-        )
-        if not notification.is_read:
-            notification.is_read = True
-            notification.read_at = timezone.now()
-            notification.save(update_fields=["is_read", "read_at"])
+        try:
+            notification = get_object_or_404(
+                Notification,
+                pk=pk,
+                recipient=request.user,
+            )
+            if not notification.is_read:
+                notification.is_read = True
+                notification.read_at = timezone.now()
+                notification.save(update_fields=["is_read", "read_at"])
 
-        serializer = NotificationSerializer(notification)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+            serializer = NotificationSerializer(notification)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            logger.error("Failed to mark notification %s as read: %s", pk, e)
+            return Response(
+                {"error": "Failed to mark notification as read."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     def put(self, request, pk):
         return self._mark_read(request, pk)

@@ -1,5 +1,6 @@
 import uuid
 from decimal import Decimal
+from unittest.mock import patch, MagicMock
 from django.contrib.auth import get_user_model
 from django.core import mail
 from django.test import TestCase
@@ -9,6 +10,7 @@ from rest_framework.test import APIClient
 
 from accounts.models import Role
 from Task.models import Task, TaskCategory, TaskPriority, TaskStatus
+from Task.models import MeetingStatus, MeetingType, ReminderType, ReminderStatus
 from FollowUp.models import Followup, FollowUpStatus, FollowUpTypes
 from customer_management.models import Lead, LeadSource, Pipeline, PipelineStage, Quotation
 from customer_management.services import CRMService, QuotationService
@@ -1486,3 +1488,493 @@ class NotificationPermissionTests(TestCase):
         url = reverse("Notification:user-notification-mark-read", kwargs={"pk": notif.id})
         response = self.client.put(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_manager_can_create_template(self):
+        self.client.force_authenticate(user=self.manager_user)
+        response = self.client.post(
+            reverse("Notification:template-list-create"),
+            {"name": "Mgr Tpl", "event_type": "TASK_ASSIGNED", "message": "Mgr msg", "channel": "IN_APP"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_manager_can_send_manual_notification(self):
+        self.client.force_authenticate(user=self.manager_user)
+        response = self.client.post(
+            reverse("Notification:notification-send"),
+            {
+                "recipient_id": str(self.employee_user.user_id),
+                "custom_message": "Manager manual msg",
+                "channel": "IN_APP",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_manager_can_delete_template(self):
+        tpl = NotificationTemplate.objects.create(
+            name="Delete Me", event_type="TASK_ASSIGNED", message="X", channel="IN_APP"
+        )
+        self.client.force_authenticate(user=self.manager_user)
+        url = reverse("Notification:template-detail", kwargs={"pk": tpl.pk})
+        response = self.client.delete(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        tpl.refresh_from_db()
+        self.assertFalse(tpl.is_active)
+
+    def test_employee_can_access_user_notification_detail(self):
+        self.client.force_authenticate(user=self.employee_user)
+        url = reverse("Notification:user-notification-detail", kwargs={"pk": self.user_notif.id})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+
+# ==========================================================
+# TRY-EXCEPT ERROR PATH TESTS
+# ==========================================================
+
+class TriggerNotificationEventErrorPathTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="erruser",
+            email="erruser@example.com",
+            phone_number="9113340001",
+            password="Password@123",
+        )
+        self.user2 = User.objects.create_user(
+            username="erruser2",
+            email="erruser2@example.com",
+            phone_number="9113340002",
+            password="Password@123",
+        )
+
+    @patch("Notification.notification_utils.Notification.objects.create")
+    def test_per_user_exception_returns_partial_results(self, mock_create):
+        call_count = [0]
+
+        def side_effect(**kwargs):
+            call_count[0] += 1
+            if call_count[0] == 2:
+                raise Exception("DB error on user2")
+            return MagicMock()
+
+        mock_create.side_effect = side_effect
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_ASSIGNED,
+            recipient=[self.user, self.user2],
+            custom_message="Partial test",
+        )
+        self.assertEqual(len(results), 1)
+
+    @patch("Notification.notification_utils.NotificationTemplate.objects")
+    def test_template_fetch_exception_falls_back(self, mock_tmpl_manager):
+        mock_tmpl_manager.filter.side_effect = Exception("DB connection lost")
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_ASSIGNED,
+            recipient=self.user,
+            custom_message="Fallback msg",
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].message, "Fallback msg")
+
+    @patch("Notification.notification_utils.Notification.objects.create")
+    def test_outer_exception_returns_empty(self, mock_create):
+        mock_create.side_effect = Exception("Unexpected")
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_ASSIGNED,
+            recipient=self.user,
+            custom_message="Should fail",
+        )
+        self.assertEqual(results, [])
+
+    def test_queryset_recipient_works(self):
+        users = User.objects.filter(username="erruser")
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_ASSIGNED,
+            recipient=users,
+            custom_message="QuerySet test",
+        )
+        self.assertEqual(len(results), 1)
+
+    @patch("Notification.notification_utils.send_notification_email", return_value=False)
+    def test_email_failure_does_not_crreate(self, mock_email):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_ASSIGNED,
+            recipient=self.user,
+            custom_message="Email fail test",
+            channel=NotificationChannel.EMAIL,
+        )
+        self.assertEqual(len(results), 1)
+        mock_email.assert_called_once()
+
+    def test_list_input_recipient_works(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_ASSIGNED,
+            recipient=[self.user],
+            custom_message="List test",
+        )
+        self.assertEqual(len(results), 1)
+
+    def test_set_input_recipient_works(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_ASSIGNED,
+            recipient={self.user},
+            custom_message="Set test",
+        )
+        self.assertEqual(len(results), 1)
+
+    def test_mixed_valid_invalid_recipients_filtered(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_ASSIGNED,
+            recipient=[self.user, None, self.user2],
+            custom_message="Mixed test",
+        )
+        self.assertEqual(len(results), 2)
+
+
+class CreateNotificationExceptionPathTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="compaterr",
+            email="compaterr@example.com",
+            phone_number="9113340010",
+            password="Password@123",
+        )
+
+    @patch("Notification.notification_utils.trigger_notification_event", side_effect=Exception("Boom"))
+    def test_create_notification_exception_returns_none(self, mock_trigger):
+        from Notification.notification_utils import create_notification
+        result = create_notification(
+            user=self.user, title="Test", message="Should fail",
+        )
+        self.assertIsNone(result)
+
+
+# ==========================================================
+# NEW EVENT TYPE TESTS
+# ==========================================================
+
+class NewEventTypeTriggerTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(
+            username="evtuser",
+            email="evtuser@example.com",
+            phone_number="9113340100",
+            password="Password@123",
+        )
+
+    def test_followup_created_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.FOLLOWUP_CREATED,
+            recipient=self.user,
+            context={"task_title": "Follow up call"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].event_type, NotificationEventType.FOLLOWUP_CREATED)
+        self.assertIn("Follow up call", results[0].message)
+
+    def test_followup_updated_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.FOLLOWUP_UPDATED,
+            recipient=self.user,
+            context={"task_title": "Updated follow up"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].event_type, NotificationEventType.FOLLOWUP_UPDATED)
+
+    def test_followup_deleted_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.FOLLOWUP_DELETED,
+            recipient=self.user,
+            custom_message="Follow up deleted for {{task_title}}",
+            context={"task_title": "Old task"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Old task", results[0].message)
+
+    def test_followup_note_added_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.FOLLOWUP_NOTE_ADDED,
+            recipient=self.user,
+            custom_message="New note added to follow up.",
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].event_type, NotificationEventType.FOLLOWUP_NOTE_ADDED)
+
+    def test_lead_created_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.LEAD_CREATED,
+            recipient=self.user,
+            context={"task_title": "New Lead Inc."},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].event_type, NotificationEventType.LEAD_CREATED)
+
+    def test_lead_assigned_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.LEAD_ASSIGNED,
+            recipient=self.user,
+            custom_message="Lead {{task_title}} assigned to you.",
+            context={"task_title": "Acme Corp"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Acme Corp", results[0].message)
+
+    def test_lead_stage_changed_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.LEAD_STAGE_CHANGED,
+            recipient=self.user,
+            custom_message="Lead moved to {{role_name}} stage.",
+            context={"role_name": "Proposal"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Proposal", results[0].message)
+
+    def test_lead_marked_lost_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.LEAD_MARKED_LOST,
+            recipient=self.user,
+            custom_message="Lead {{task_title}} marked as lost.",
+            context={"task_title": "Dead Corp"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Dead Corp", results[0].message)
+
+    def test_lead_reengaged_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.LEAD_REENGAGED,
+            recipient=self.user,
+            custom_message="Lead {{task_title}} re-engaged!",
+            context={"task_title": "Revival Inc"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Revival Inc", results[0].message)
+
+    def test_lead_converted_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.LEAD_CONVERTED,
+            recipient=self.user,
+            context={"task_title": "Converted Lead Co"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].event_type, NotificationEventType.LEAD_CONVERTED)
+
+    def test_activity_created_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.ACTIVITY_CREATED,
+            recipient=self.user,
+            custom_message="New activity: {{task_title}}",
+            context={"task_title": "Call logged"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Call logged", results[0].message)
+
+    def test_reminder_created_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.REMINDER_CREATED,
+            recipient=self.user,
+            context={"task_title": "Task reminder"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].event_type, NotificationEventType.REMINDER_CREATED)
+
+    def test_reminder_updated_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.REMINDER_UPDATED,
+            recipient=self.user,
+            custom_message="Reminder for {{task_title}} updated.",
+            context={"task_title": "Task reminder"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Task reminder", results[0].message)
+
+    def test_reminder_deleted_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.REMINDER_DELETED,
+            recipient=self.user,
+            custom_message="Reminder for {{task_title}} deleted.",
+            context={"task_title": "Old reminder"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Old reminder", results[0].message)
+
+    def test_reminder_status_changed_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.REMINDER_STATUS_CHANGED,
+            recipient=self.user,
+            custom_message="Reminder status changed for {{task_title}}.",
+            context={"task_title": "Task X"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Task X", results[0].message)
+
+    def test_meeting_created_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.MEETING_CREATED,
+            recipient=self.user,
+            context={"task_title": "Sprint Planning"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].event_type, NotificationEventType.MEETING_CREATED)
+
+    def test_meeting_rescheduled_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.MEETING_RESCHEDULED,
+            recipient=self.user,
+            custom_message="Meeting {{task_title}} rescheduled.",
+            context={"task_title": "Review Meeting"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Review Meeting", results[0].message)
+
+    def test_meeting_status_changed_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.MEETING_STATUS_CHANGED,
+            recipient=self.user,
+            context={"task_title": "Status Sync"},
+        )
+        self.assertEqual(len(results), 1)
+
+    def test_meeting_participant_added_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.MEETING_PARTICIPANT_ADDED,
+            recipient=self.user,
+            custom_message="You were added to meeting {{task_title}}.",
+            context={"task_title": "Design Review"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Design Review", results[0].message)
+
+    def test_meeting_participant_removed_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.MEETING_PARTICIPANT_REMOVED,
+            recipient=self.user,
+            custom_message="Removed from meeting {{task_title}}.",
+            context={"task_title": "Closed Meeting"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("Closed Meeting", results[0].message)
+
+    def test_task_deleted_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_DELETED,
+            recipient=self.user,
+            context={"task_title": "Deleted Task"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0].event_type, NotificationEventType.TASK_DELETED)
+
+    def test_task_status_changed_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_STATUS_CHANGED,
+            recipient=self.user,
+            context={"task_title": "Task X"},
+        )
+        self.assertEqual(len(results), 1)
+
+    def test_task_reminder_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_REMINDER,
+            recipient=self.user,
+            context={"task_title": "Reminder Task"},
+        )
+        self.assertEqual(len(results), 1)
+
+    def test_task_reassigned_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_REASSIGNED,
+            recipient=self.user,
+            context={"task_title": "Reassigned Task"},
+        )
+        self.assertEqual(len(results), 1)
+
+    def test_task_updated_event(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.TASK_UPDATED,
+            recipient=self.user,
+            context={"task_title": "Updated Task"},
+        )
+        self.assertEqual(len(results), 1)
+
+    def test_fallback_for_new_event_without_template(self):
+        for event_type in [
+            NotificationEventType.FOLLOWUP_CREATED,
+            NotificationEventType.LEAD_CREATED,
+            NotificationEventType.ACTIVITY_CREATED,
+            NotificationEventType.MEETING_CREATED,
+            NotificationEventType.REMINDER_CREATED,
+        ]:
+            results = trigger_notification_event(
+                event_type=event_type,
+                recipient=self.user,
+            )
+            self.assertEqual(len(results), 1)
+            self.assertIn(event_type, results[0].message)
+
+    def test_template_with_context_for_new_event(self):
+        NotificationTemplate.objects.create(
+            name="Lead Created",
+            event_type=NotificationEventType.LEAD_CREATED,
+            message="New lead {{task_title}} created by {{user_name}}.",
+            channel=NotificationChannel.IN_APP,
+            is_default=True,
+        )
+        results = trigger_notification_event(
+            event_type=NotificationEventType.LEAD_CREATED,
+            recipient=self.user,
+            context={"task_title": "New Corp"},
+        )
+        self.assertEqual(len(results), 1)
+        self.assertIn("New Corp", results[0].message)
+
+    def test_new_event_email_channel(self):
+        mail.outbox = []
+        results = trigger_notification_event(
+            event_type=NotificationEventType.LEAD_CREATED,
+            recipient=self.user,
+            custom_message="Email lead notification",
+            channel=NotificationChannel.EMAIL,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_new_event_both_channel(self):
+        mail.outbox = []
+        results = trigger_notification_event(
+            event_type=NotificationEventType.ACTIVITY_CREATED,
+            recipient=self.user,
+            custom_message="Activity both",
+            channel=NotificationChannel.BOTH,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_new_event_in_app_no_email(self):
+        mail.outbox = []
+        results = trigger_notification_event(
+            event_type=NotificationEventType.MEETING_CREATED,
+            recipient=self.user,
+            custom_message="Meeting in-app",
+            channel=NotificationChannel.IN_APP,
+        )
+        self.assertEqual(len(results), 1)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_new_event_persistent_storage(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.FOLLOWUP_CREATED,
+            recipient=self.user,
+            custom_message="Persistent follow up msg",
+        )
+        saved_msg = results[0].message
+        results[0].refresh_from_db()
+        self.assertEqual(results[0].message, saved_msg)
+
+    def test_new_event_not_read_by_default(self):
+        results = trigger_notification_event(
+            event_type=NotificationEventType.LEAD_CREATED,
+            recipient=self.user,
+            custom_message="Unread test",
+        )
+        self.assertFalse(results[0].is_read)
+        self.assertIsNone(results[0].read_at)
