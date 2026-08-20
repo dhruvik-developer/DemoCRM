@@ -53,30 +53,10 @@ class TaskListCreateView(APIView):
     POST /api/tasks/
         Only Admin/Manager can create task
     """
-
-    def get_permissions(self):
-        """
-        GET:
-            Any authenticated user can access the list,
-            but queryset will be restricted to assigned tasks.
-
-        POST:
-            HasDynamicPermission checks task_create.
-        """
-
-        if self.request.method == "POST":
-            return [
-                IsAuthenticated(),
-                HasDynamicPermission(),
-            ]
-
-        return [
-            IsAuthenticated(),
-        ]
-
     permission_classes = [CanCommunicateWithLead]
     permission_names = {
         "POST": "add_task",
+        "GET":"view_task"
     }
 
     @extend_schema(
@@ -310,12 +290,7 @@ class TaskListCreateView(APIView):
                 task.task_id,
                 request.user.pk,
             )
-
-            return Response(
-                {"error": ("Something went wrong while fetching tasks.")},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
         except (Http404, APIException):
             raise
 
@@ -337,40 +312,12 @@ class TaskListCreateView(APIView):
 
 class TaskDetailView(APIView):
 
-    def get_permissions(self):
-
-        # ---------------------------------------------
-        # GET
-        # Employee can view assigned task
-        # Admin/Manager can view any task
-        # ---------------------------------------------
-        if self.request.method == "GET":
-            return [
-                IsAuthenticated(),
-            ]
-
-        # ---------------------------------------------
-        # PATCH
-        # Employee can update assigned task
-        # Admin/Manager can update any task
-        # ---------------------------------------------
-        if self.request.method == "PATCH":
-            return [
-                IsAuthenticated(),
-            ]
-
-        if self.request.method == "DELETE":
-            return [
-                IsAuthenticated(),
-            ]
-        # ---------------------------------------------
-        # DELETE
-        # Only dynamic permission
-        # ---------------------------------------------
-        return [
-            IsAuthenticated(),
-            HasDynamicPermission(),
-        ]
+    permission_classes = [CanCommunicateWithLead]
+    permission_names = {
+            "GET": "view_task",
+            "PATCH":"change_task",
+            "DELETE":"delete_task"
+        }
 
     def get_task(self, task_id):
         return get_object_or_404(
@@ -732,8 +679,7 @@ class TaskAssignView(APIView):
     """
 
     permission_classes = [
-        IsAuthenticated,
-        HasDynamicPermission,
+        CanCommunicateWithLead
     ]
 
     permission_names = {
@@ -863,11 +809,6 @@ class TaskStatusUpdateView(APIView):
     Only users with task_update permission
     can change task status.
     """
-
-    permission_classes = [
-        IsAuthenticated,
-        HasDynamicPermission,
-    ]
     permission_classes = [CanCommunicateWithLead]
     permission_names = {
         "PATCH": "task_update",
@@ -1008,8 +949,7 @@ class MeetingCreateView(APIView):
     Create a meeting.
     """
 
-    permission_classes = [IsAuthenticated]
-
+    permission_classes = [CanCommunicateWithLead]
     @extend_schema(
         tags=["Meetings"],
         summary="Create a meeting",

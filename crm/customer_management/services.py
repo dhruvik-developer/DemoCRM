@@ -9,7 +9,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
-
+from Task.models import Task, TaskStatus, TaskPriority, TaskCategory
 from .models import (
     Activity,
     AuditLog,
@@ -33,6 +33,7 @@ class CRMService:
     # ---------------------------------------------------------
 
     @staticmethod
+    @transaction.atomic
     def create_audit_log(
         *,
         user,
@@ -435,10 +436,11 @@ class CRMService:
         return lead
 
     # ---------------------------------------------------------
-    # CREATE ACTIVITY
+    # CREATE ACTIVITY + AUTO TASK TRIGGER
     # ---------------------------------------------------------
 
     @staticmethod
+    @transaction.atomic
     def create_activity(
         *,
         user,
@@ -498,6 +500,56 @@ class CRMService:
                 "quotation": str(quotation.id) if quotation else None,
             },
         )
+        # =========================================================================
+        # 🚀 AUTOMATIC TASK CREATION (followup=True)
+        # =========================================================================
+        if follow_up_required and follow_up_date:
+            task_status, _ = TaskStatus.objects.get_or_create(
+                status_name="Pending",
+                defaults={"is_active": True}
+            )
+            task_priority, _ = TaskPriority.objects.get_or_create(
+                priority_name="High" if activity_type in ["MEETING", "DEMO"] else "Medium",
+                defaults={"is_active": True}
+            )
+            task_category, _ = TaskCategory.objects.get_or_create(
+                category_name="Follow-Up",
+                defaults={"is_active": True}
+            )
+            target_lead = lead or getattr(customer, "lead", None)
+            assigned_user = (
+                target_lead.assigned_to if (target_lead and getattr(target_lead, "assigned_to", None))
+                else user
+            )
+            target_name = target_lead.name if target_lead else (customer.name if customer else "Client")
+            task_title = f"Follow-up: {activity.get_activity_type_display()} - {target_name}"
+            task_desc = notes if notes else f"Follow-up required for {activity.get_activity_type_display()} (Outcome: {outcome})"
+            if target_lead:
+                auto_task = Task.objects.create(
+                    assigned_to=assigned_user,
+                    created_by=user,
+                    lead=target_lead,
+                    customer=customer,
+                    task_title=task_title,
+                    description=task_desc,
+                    due_date=follow_up_date,
+                    status=task_status,
+                    priority=task_priority,
+                    category=task_category,
+                    is_active=True,
+                )
+                CRMService.create_audit_log(
+                    user=user,
+                    entity_type="Task",
+                    entity_id=auto_task.task_id,
+                    action="TASK_AUTO_CREATED_FROM_ACTIVITY",
+                    new_value={
+                        "task_id": auto_task.task_id,
+                        "task_title": auto_task.task_title,
+                        "activity_id": str(activity.id),
+                        "due_date": str(follow_up_date),
+                    },
+                )
 
         return activity
 

@@ -284,3 +284,27 @@ LOGGING = {
         },
     },
 }
+# ==============================================================================
+# CELERY & REDIS SETTINGS
+# ==============================================================================
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+CELERY_RESULT_BACKEND = "redis://127.0.0.1:6379/0"
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "Asia/Kolkata" 
+
+from celery.schedules import crontab
+
+# CELERY BEAT PERIODIC SCHEDULES
+CELERY_BEAT_SCHEDULE = {
+
+    "send-task-due-reminders-daily": {
+        "task": "Task.tasks.task_due_reminder_job",
+        "schedule": crontab(hour=9, minute=0), 
+    },
+    "process-meeting-reminders-every-5-mins": {
+        "task": "Task.tasks.meeting_reminder_job",
+        "schedule": crontab(minute="*/5"),
+    },
+}

@@ -207,13 +207,6 @@ class Reminder(models.Model):
         blank=True,
         related_name="user_reminders",
     )
-    reminder_for = models.ForeignKey(
-        "accounts.CustomUser",
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="user_reminders",
-    )
     # Reminder Type
     reminder_type_id = models.ForeignKey(
         ReminderType, on_delete=models.PROTECT, related_name="reminders"

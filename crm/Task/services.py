@@ -1,6 +1,5 @@
 import logging
 from datetime import datetime, timedelta
-
 from django.db import transaction
 from django.conf import settings
 from django.core.mail import send_mail
@@ -10,6 +9,8 @@ from .models import (
     Reminder,
     ReminderStatus,
     ReminderType,
+    Task,            
+    TaskStatus,      
 )
 
 from FollowUp.notification_utils import create_notification
@@ -33,7 +34,7 @@ def send_lead_meeting_reminder_email(meeting):
 
         if not lead:
             logger.warning(
-                "Cannot send lead meeting email: lead missing " "meeting_id=%s",
+                "Cannot send lead meeting email: lead missing meeting_id=%s",
                 getattr(meeting, "meeting_id", None),
             )
             return False
@@ -42,7 +43,7 @@ def send_lead_meeting_reminder_email(meeting):
 
         if not lead_email:
             logger.warning(
-                "Cannot send lead meeting email: lead email missing " "meeting_id=%s",
+                "Cannot send lead meeting email: lead email missing meeting_id=%s",
                 getattr(meeting, "meeting_id", None),
             )
             return False
@@ -51,7 +52,7 @@ def send_lead_meeting_reminder_email(meeting):
 
         if not lead_email:
             logger.warning(
-                "Cannot send lead meeting email: empty email " "meeting_id=%s",
+                "Cannot send lead meeting email: empty email meeting_id=%s",
                 getattr(meeting, "meeting_id", None),
             )
             return False
@@ -163,7 +164,7 @@ def send_meeting_reminder_email(
     try:
         if not recipient_email:
             logger.warning(
-                "Cannot send meeting email: recipient email missing " "meeting_id=%s",
+                "Cannot send meeting email: recipient email missing meeting_id=%s",
                 getattr(meeting, "meeting_id", None),
             )
             return False
@@ -172,7 +173,7 @@ def send_meeting_reminder_email(
 
         if not recipient_email:
             logger.warning(
-                "Cannot send meeting email: empty recipient email " "meeting_id=%s",
+                "Cannot send meeting email: empty recipient email meeting_id=%s",
                 getattr(meeting, "meeting_id", None),
             )
             return False
@@ -274,7 +275,7 @@ def create_meeting_reminder(
     try:
         if not meeting or not reminder_for:
             logger.warning(
-                "Meeting reminder not created: " "meeting or reminder_for missing."
+                "Meeting reminder not created: meeting or reminder_for missing."
             )
             return None
 
@@ -292,7 +293,7 @@ def create_meeting_reminder(
 
         if not meeting_date or not start_time:
             logger.warning(
-                "Meeting reminder not created: date/time missing " "meeting_id=%s",
+                "Meeting reminder not created: date/time missing meeting_id=%s",
                 getattr(meeting, "meeting_id", None),
             )
             return None
@@ -330,16 +331,14 @@ def create_meeting_reminder(
             reminder_status_id=reminder_status,
             reminder_datetime=reminder_datetime,
             message=(
-                f"Reminder: {meeting.meeting_title} " f"is scheduled at {start_time}."
+                f"Reminder: {meeting.meeting_title} is scheduled at {start_time}."
             ),
             created_by=meeting.created_by,
             is_sent=False,
         )
 
         logger.info(
-            "Meeting reminder created: "
-            "reminder_id=%s meeting_id=%s reminder_for=%s "
-            "reminder_datetime=%s",
+            "Meeting reminder created: reminder_id=%s meeting_id=%s reminder_for=%s reminder_datetime=%s",
             reminder.reminder_id,
             getattr(meeting, "meeting_id", None),
             getattr(reminder_for, "pk", None),
@@ -440,8 +439,7 @@ def create_meeting_database_records(meeting):
                 raise ValueError("Failed to create meeting reminder.")
 
         logger.info(
-            "Meeting database records created successfully: "
-            "meeting_id=%s reminder_id=%s",
+            "Meeting database records created successfully: meeting_id=%s reminder_id=%s",
             meeting.meeting_id,
             getattr(reminder, "reminder_id", None),
         )
@@ -475,7 +473,7 @@ def send_meeting_creation_emails(meeting):
 
         except Exception:
             logger.exception(
-                "Error sending email to lead: " "meeting_id=%s",
+                "Error sending email to lead: meeting_id=%s",
                 getattr(
                     meeting,
                     "meeting_id",
@@ -503,7 +501,7 @@ def send_meeting_creation_emails(meeting):
 
             except Exception:
                 logger.exception(
-                    "Error sending creator email: " "meeting_id=%s user_id=%s",
+                    "Error sending creator email: meeting_id=%s user_id=%s",
                     getattr(
                         meeting,
                         "meeting_id",
@@ -525,7 +523,7 @@ def send_meeting_creation_emails(meeting):
             reminder = create_meeting_database_records(meeting)
 
             logger.info(
-                "Meeting database workflow completed: " "meeting_id=%s reminder_id=%s",
+                "Meeting database workflow completed: meeting_id=%s reminder_id=%s",
                 meeting.meeting_id,
                 getattr(
                     reminder,
@@ -537,7 +535,7 @@ def send_meeting_creation_emails(meeting):
         except Exception:
 
             logger.exception(
-                "Meeting database workflow failed: " "meeting_id=%s",
+                "Meeting database workflow failed: meeting_id=%s",
                 meeting.meeting_id,
             )
 
@@ -548,7 +546,7 @@ def send_meeting_creation_emails(meeting):
         # ==================================================
 
         logger.info(
-            "Meeting creation workflow completed: " "meeting_id=%s",
+            "Meeting creation workflow completed: meeting_id=%s",
             getattr(
                 meeting,
                 "meeting_id",
@@ -561,7 +559,7 @@ def send_meeting_creation_emails(meeting):
     except Exception:
 
         logger.exception(
-            "Unexpected error in meeting creation workflow: " "meeting_id=%s",
+            "Unexpected error in meeting creation workflow: meeting_id=%s",
             getattr(
                 meeting,
                 "meeting_id",
@@ -593,7 +591,7 @@ def send_due_reminder_notification(reminder):
             if reminder.reminder_for:
                 create_notification(
                     user=reminder.reminder_for,
-                    title=(f"Meeting Starting in 15 Mins: " f"{meeting.meeting_title}"),
+                    title=(f"Meeting Starting in 15 Mins: {meeting.meeting_title}"),
                     message=(
                         f"Your meeting '{meeting.meeting_title}' "
                         f"will start at {meeting.start_time}."
@@ -602,7 +600,7 @@ def send_due_reminder_notification(reminder):
                 )
 
                 logger.info(
-                    "Reminder notification created: " "reminder_id=%s user_id=%s",
+                    "Reminder notification created: reminder_id=%s user_id=%s",
                     reminder.reminder_id,
                     getattr(
                         reminder.reminder_for,
@@ -621,13 +619,12 @@ def send_due_reminder_notification(reminder):
             ):
                 send_mail(
                     subject=(
-                        f"Meeting Starting in 15 Minutes - " f"{meeting.meeting_title}"
+                        f"Meeting Starting in 15 Minutes - {meeting.meeting_title}"
                     ),
                     message=(
                         f"Hello,\n\n"
                         f"Your meeting '{meeting.meeting_title}' "
-                        f"will start in 15 minutes "
-                        f"at {meeting.start_time}."
+                        f"will start in 15 minutes at {meeting.start_time}."
                     ),
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[reminder.reminder_for.email],
@@ -635,7 +632,7 @@ def send_due_reminder_notification(reminder):
                 )
 
                 logger.info(
-                    "Due reminder email sent to host: " "reminder_id=%s recipient=%s",
+                    "Due reminder email sent to host: reminder_id=%s recipient=%s",
                     reminder.reminder_id,
                     reminder.reminder_for.email,
                 )
@@ -650,14 +647,12 @@ def send_due_reminder_notification(reminder):
             ):
                 send_mail(
                     subject=(
-                        f"Meeting Starting in 15 Minutes - " f"{meeting.meeting_title}"
+                        f"Meeting Starting in 15 Minutes - {meeting.meeting_title}"
                     ),
                     message=(
-                        f"Hello "
-                        f"{getattr(meeting.lead, 'name', '')},\n\n"
+                        f"Hello {getattr(meeting.lead, 'name', '')},\n\n"
                         f"Your meeting '{meeting.meeting_title}' "
-                        f"will start in 15 minutes "
-                        f"at {meeting.start_time}."
+                        f"will start in 15 minutes at {meeting.start_time}."
                     ),
                     from_email=settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[meeting.lead.email],
@@ -665,7 +660,7 @@ def send_due_reminder_notification(reminder):
                 )
 
                 logger.info(
-                    "Due reminder email sent to lead: " "reminder_id=%s recipient=%s",
+                    "Due reminder email sent to lead: reminder_id=%s recipient=%s",
                     reminder.reminder_id,
                     meeting.lead.email,
                 )
@@ -749,28 +744,104 @@ def process_due_meeting_reminders():
                     reminder.save(update_fields=["is_sent"])
                     sent_count += 1
                     logger.info(
-                        "Due reminder processed successfully: " "reminder_id=%s",
+                        "Due reminder processed successfully: reminder_id=%s",
                         reminder.reminder_id,
                     )
                 else:
                     logger.warning(
-                        "Due reminder was not sent: " "reminder_id=%s",
+                        "Due reminder was not sent: reminder_id=%s",
                         reminder.reminder_id,
                     )
 
             except Exception:
                 logger.exception(
-                    "Error processing due reminder: " "reminder_id=%s",
+                    "Error processing due reminder: reminder_id=%s",
                     reminder.reminder_id,
                 )
 
         logger.info(
-            "Due reminder processing completed: " "sent_count=%s",
+            "Due reminder processing completed: sent_count=%s",
             sent_count,
         )
 
         return sent_count
 
     except Exception:
-        logger.exception("Unexpected error while processing " "due reminders.")
+        logger.exception("Unexpected error while processing due reminders.")
+        return 0
+
+
+# ======================================================
+# 🚀 PROCESS DUE TASK REMINDERS (New Function)
+# ======================================================
+
+
+def process_due_task_reminders():
+    """
+    Finds all active tasks where status is 'Pending' and due_date <= today.
+    Sends in-app notification and email to assigned employee.
+    """
+    try:
+        now = timezone.now()
+        today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+        # Pending tasks jinki due_date aaj ya usse pehle ki hai
+        pending_tasks = Task.objects.filter(
+            is_active=True,
+            status__status_name__icontains="Pending",
+            due_date__isnull=False,
+            due_date__lte=today_end,
+        ).select_related("assigned_to", "lead", "customer", "priority")
+
+        sent_count = 0
+
+        for task in pending_tasks:
+            employee = task.assigned_to
+            if not employee:
+                continue
+
+            target_name = (
+                task.lead.name if task.lead 
+                else (task.customer.name if task.customer else "General")
+            )
+
+            subject = f"⏰ Task Reminder: '{task.task_title}' is due!"
+            message = (
+                f"Hello {employee.username},\n\n"
+                f"Reminder for your pending task:\n"
+                f"• Task: {task.task_title}\n"
+                f"• Client: {target_name}\n"
+                f"• Due Date: {task.due_date.strftime('%d-%b-%Y %I:%M %p')}\n"
+                f"• Description: {task.description or 'No description'}\n\n"
+                f"Best regards,\nCRM System"
+            )
+
+            # In-App Notification create karein
+            create_notification(
+                user=employee,
+                title=subject,
+                message=f"Task '{task.task_title}' is due for {target_name}.",
+                type_name="Task Reminder",
+            )
+
+            # Email send karein
+            if getattr(employee, "email", None):
+                try:
+                    send_mail(
+                        subject=subject,
+                        message=message,
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[employee.email],
+                        fail_silently=True,
+                    )
+                except Exception:
+                    pass
+
+            sent_count += 1
+
+        logger.info("Due task reminders processed: sent_count=%s", sent_count)
+        return sent_count
+
+    except Exception:
+        logger.exception("Error processing due task reminders.")
         return 0
