@@ -2,8 +2,8 @@ import logging
 import re
 from django.conf import settings
 from django.core.mail import send_mail
-from django.utils import timezone
 from .models import Notification, NotificationChannel, NotificationTemplate
+from django.db.models.query import QuerySet
 
 logger = logging.getLogger(__name__)
 
@@ -50,9 +50,12 @@ def trigger_notification_event(
         if recipient is None:
             return []
 
-        if not isinstance(recipient, (list, tuple, set, QuerySet if 'QuerySet' in locals() else type(None))):
+        if not isinstance(
+            recipient,
+            (list, tuple, set, QuerySet if "QuerySet" in locals() else type(None)),
+        ):
             try:
-                from django.db.models.query import QuerySet
+
                 if isinstance(recipient, QuerySet):
                     recipients = list(recipient)
                 else:
@@ -80,9 +83,15 @@ def trigger_notification_event(
                 templates = NotificationTemplate.objects.filter(
                     event_type=event_type, is_active=True
                 )
-                template = templates.filter(is_default=True).first() or templates.first()
+                template = (
+                    templates.filter(is_default=True).first() or templates.first()
+                )
         except Exception as e:
-            logger.error("Failed to fetch notification template for event '%s': %s", event_type, e)
+            logger.error(
+                "Failed to fetch notification template for event '%s': %s",
+                event_type,
+                e,
+            )
             template = None
 
         # 2. Render final message
@@ -91,7 +100,12 @@ def trigger_notification_event(
         elif template:
             final_message = render_template(template.message, context)
         else:
-            title_val = context.get("task_title") or context.get("quotation_number") or context.get("role_name") or ""
+            title_val = (
+                context.get("task_title")
+                or context.get("quotation_number")
+                or context.get("role_name")
+                or ""
+            )
             if title_val:
                 final_message = f"Notification ({event_type}): {title_val}"
             else:
@@ -128,14 +142,19 @@ def trigger_notification_event(
                 )
 
                 # 4. Handle EMAIL / BOTH channels
-                if final_channel in (NotificationChannel.EMAIL, NotificationChannel.BOTH):
+                if final_channel in (
+                    NotificationChannel.EMAIL,
+                    NotificationChannel.BOTH,
+                ):
                     send_notification_email(user, event_type, user_message)
 
                 created_notifications.append(notification)
             except Exception as e:
                 logger.error(
                     "Failed to create notification for user '%s' (event='%s'): %s",
-                    getattr(user, "username", user), event_type, e,
+                    getattr(user, "username", user),
+                    event_type,
+                    e,
                 )
 
         return created_notifications
@@ -143,7 +162,8 @@ def trigger_notification_event(
     except Exception as e:
         logger.error(
             "Unexpected error in trigger_notification_event (event='%s'): %s",
-            event_type, e,
+            event_type,
+            e,
         )
         return []
 
@@ -169,7 +189,16 @@ def send_notification_email(recipient, subject, message):
 
 
 # Backwards compatibility alias for code calling create_notification
-def create_notification(user, title, message, type_name="System", template=None, scheduled_at=None, edited_by=None, is_customized=False):
+def create_notification(
+    user,
+    title,
+    message,
+    type_name="System",
+    template=None,
+    scheduled_at=None,
+    edited_by=None,
+    is_customized=False,
+):
     """Backward compatibility function wrapping trigger_notification_event."""
     try:
         results = trigger_notification_event(

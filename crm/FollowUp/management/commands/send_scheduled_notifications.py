@@ -28,9 +28,9 @@ class Command(BaseCommand):
         count = 0
 
         for notification in due:
-            if send_notification_email(notification.recipient, notification.event_type, notification.message):
+            if send_notification_email(
+                notification.recipient, notification.event_type, notification.message
+            ):
                 count += 1
 
-        self.stdout.write(
-            self.style.SUCCESS(f"Sent {count} pending notification(s).")
-        )
+        self.stdout.write(self.style.SUCCESS(f"Sent {count} pending notification(s)."))

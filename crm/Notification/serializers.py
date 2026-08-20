@@ -1,6 +1,11 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Notification, NotificationTemplate, NotificationChannel, NotificationEventType
+from .models import (
+    Notification,
+    NotificationTemplate,
+    NotificationChannel,
+    NotificationEventType,
+)
 
 User = get_user_model()
 
@@ -111,7 +116,9 @@ class ManualNotificationSerializer(serializers.Serializer):
         if template_id:
             if not NotificationTemplate.objects.filter(pk=template_id).exists():
                 raise serializers.ValidationError(
-                    {"template_id": f"NotificationTemplate with ID {template_id} does not exist."}
+                    {
+                        "template_id": f"NotificationTemplate with ID {template_id} does not exist."
+                    }
                 )
 
         return attrs

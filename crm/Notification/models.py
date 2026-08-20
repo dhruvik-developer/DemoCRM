@@ -17,7 +17,10 @@ class NotificationEventType(models.TextChoices):
     MEETING_RESCHEDULED = "MEETING_RESCHEDULED", "Meeting Rescheduled"
     MEETING_STATUS_CHANGED = "MEETING_STATUS_CHANGED", "Meeting Status Changed"
     MEETING_PARTICIPANT_ADDED = "MEETING_PARTICIPANT_ADDED", "Meeting Participant Added"
-    MEETING_PARTICIPANT_REMOVED = "MEETING_PARTICIPANT_REMOVED", "Meeting Participant Removed"
+    MEETING_PARTICIPANT_REMOVED = (
+        "MEETING_PARTICIPANT_REMOVED",
+        "Meeting Participant Removed",
+    )
 
     # Reminder Events
     REMINDER_CREATED = "REMINDER_CREATED", "Reminder Created"
@@ -37,9 +40,15 @@ class NotificationEventType(models.TextChoices):
     QUOTATION_CREATED = "QUOTATION_CREATED", "Quotation Created"
     QUOTATION_UPDATED = "QUOTATION_UPDATED", "Quotation Updated"
     QUOTATION_SENT = "QUOTATION_SENT", "Quotation Sent"
-    QUOTATION_REVISION_CREATED = "QUOTATION_REVISION_CREATED", "Quotation Revision Created"
+    QUOTATION_REVISION_CREATED = (
+        "QUOTATION_REVISION_CREATED",
+        "Quotation Revision Created",
+    )
     QUOTATION_ACCEPTED = "QUOTATION_ACCEPTED", "Quotation Accepted"
-    QUOTATION_CLIENT_REJECTED = "QUOTATION_CLIENT_REJECTED", "Quotation Rejected by Client"
+    QUOTATION_CLIENT_REJECTED = (
+        "QUOTATION_CLIENT_REJECTED",
+        "Quotation Rejected by Client",
+    )
     QUOTATION_EMAIL_SENT = "QUOTATION_EMAIL_SENT", "Quotation Email Sent"
     QUOTATION_SUBMITTED = "QUOTATION_SUBMITTED", "Quotation Submitted"
     QUOTATION_APPROVED = "QUOTATION_APPROVED", "Quotation Approved"

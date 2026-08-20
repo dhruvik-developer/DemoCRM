@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from audit_log.models import Activity, AuditLog
+from audit_log.models import Activity
 
 from .models import (
     Customer,
