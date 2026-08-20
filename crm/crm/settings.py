@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "drf_spectacular",
     "accounts",
+    "audit_log",
     "Task",
     "FollowUp",
     "customer_management",

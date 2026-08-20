@@ -12,9 +12,9 @@ from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
+from audit_log.models import Activity, AuditLog
+
 from .models import (
-    Activity,
-    AuditLog,
     Customer,
     Lead,
     LeadSource,

@@ -13,9 +13,9 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from audit_log.models import Activity, AuditLog
+
 from .models import (
-    Activity,
-    AuditLog,
     Customer,
     Lead,
     LeadSource,

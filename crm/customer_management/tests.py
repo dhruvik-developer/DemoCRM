@@ -11,9 +11,8 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from accounts.models import Role
+from audit_log.models import Activity, AuditLog
 from customer_management.models import (
-    Activity,
-    AuditLog,
     Customer,
     Lead,
     LeadSource,
