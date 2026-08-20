@@ -3,6 +3,22 @@
 from django.db import migrations, models
 
 
+def deduplicate_phones(apps, schema_editor):
+    Customer = apps.get_model("customer_management", "Customer")
+    seen_phones = set()
+    for customer in Customer.objects.filter(phone__isnull=False).order_by("created_at"):
+        phone = customer.phone
+        if phone in seen_phones:
+            counter = 1
+            while f"{phone}_{counter}" in seen_phones:
+                counter += 1
+            customer.phone = f"{phone}_{counter}"
+            customer.save(update_fields=["phone"])
+            seen_phones.add(customer.phone)
+        else:
+            seen_phones.add(phone)
+
+
 class Migration(migrations.Migration):
 
     dependencies = [
@@ -13,6 +29,7 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.RunPython(deduplicate_phones, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name="customer",
             constraint=models.UniqueConstraint(
