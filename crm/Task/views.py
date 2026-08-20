@@ -331,6 +331,20 @@ class TaskListCreateView(APIView):
                 request.user.pk,
             )
 
+            if task.assigned_to and task.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_ASSIGNED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name()
+                        or task.assigned_to.username,
+                        "employee_name": request.user.get_full_name()
+                        or request.user.username,
+                        "task_title": task.task_title,
+                        "due_date": str(task.due_date) if task.due_date else "N/A",
+                    },
+                )
+
             return Response(
                 TaskSerializer(task, context={"request": request}).data,
                 status=status.HTTP_201_CREATED,
@@ -595,6 +609,20 @@ class TaskDetailView(APIView):
                 request.user.pk,
             )
 
+            if task.assigned_to and task.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_UPDATED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name()
+                        or task.assigned_to.username,
+                        "employee_name": request.user.get_full_name()
+                        or request.user.username,
+                        "task_title": task.task_title,
+                        "due_date": str(task.due_date) if task.due_date else "N/A",
+                    },
+                )
+
             return Response(
                 TaskSerializer(task, context={"request": request}).data,
                 status=status.HTTP_200_OK,
@@ -823,6 +851,23 @@ class TaskAssignView(APIView):
                 ]
             )
 
+            event_type = (
+                NotificationEventType.TASK_REASSIGNED
+                if old_user
+                else NotificationEventType.TASK_ASSIGNED
+            )
+            trigger_notification_event(
+                event_type=event_type,
+                recipient=new_user,
+                context={
+                    "user_name": new_user.get_full_name() or new_user.username,
+                    "employee_name": request.user.get_full_name()
+                    or request.user.username,
+                    "task_title": task.task_title,
+                    "due_date": str(task.due_date) if task.due_date else "N/A",
+                },
+            )
+
             logger.info(
                 "Task assigned successfully: "
                 "task_id=%s old_user_id=%s "
@@ -957,6 +1002,21 @@ class TaskStatusUpdateView(APIView):
                     "updated_at",
                 ]
             )
+
+            if task.assigned_to and task.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_STATUS_CHANGED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name()
+                        or task.assigned_to.username,
+                        "employee_name": request.user.get_full_name()
+                        or request.user.username,
+                        "task_title": task.task_title,
+                        "previous_status": old_status.status_name,
+                        "new_status": new_status.status_name,
+                    },
+                )
 
             logger.info(
                 "Task status updated successfully: "

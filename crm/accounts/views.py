@@ -906,7 +906,3 @@ class PermissionDetailAPIView(APIView):
         return Response(
             {"message": "Permission deleted successfully."}, status=status.HTTP_200_OK
         )
-
-
-# Backward compatibility alias
-PermissionAPIView = PermissionListCreateAPIView
