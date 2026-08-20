@@ -36,7 +36,7 @@ class FollowUpListCreateView(APIView):
     }
 
     # ======================================================
-    # 1. LIST FOLLOWUPS (Sirf assigned task wale dikhenge)
+    # 1. LIST FOLLOWUPS 
     # ======================================================
     def get(self, request):
         try:
@@ -49,9 +49,6 @@ class FollowUpListCreateView(APIView):
                 "created_by",
             ).order_by("-created_at")
 
-            # --------------------------------------------------
-            # 🔒 ROLE-BASED VISIBILITY CHECK
-            # --------------------------------------------------
             if not user.is_superuser:
                 role = getattr(user, "role", None)
                 if role is None:
@@ -126,7 +123,7 @@ class FollowUpListCreateView(APIView):
             )
 
     # ======================================================
-    # 2. CREATE FOLLOWUP (Sirf assigned task par add hoga)
+    # 2. CREATE FOLLOWUP
     # ======================================================
     def post(self, request):
         try:
@@ -154,7 +151,6 @@ class FollowUpListCreateView(APIView):
 
             role_name = getattr(role, "rolename", "").strip().lower() if role else ""
 
-            # 🔒 EMPLOYEE CHECK: Sirf assigned task par hi follow-up add kar sakta hai
             if not user.is_superuser and role_name not in ["admin", "manager"]:
                 if task.assigned_to_id != user.pk:
                     return Response(
@@ -221,10 +217,6 @@ class FollowUpDetailView(APIView):
             ),
             followup_id=followup_id,
         )
-
-    # ======================================================
-    # 🔒 CHECK ACCESS (Detail / Update / Delete ke liye)
-    # ======================================================
     def check_followup_access(self, request, followup):
         user = request.user
 
