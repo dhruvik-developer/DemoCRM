@@ -78,38 +78,3 @@ class ActivityLog(models.Model):
     reference_id = models.PositiveIntegerField(blank=True, null=True)
     ip_address = models.GenericIPAddressField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
-
-
-# ==============================================================================
-#                                    NOTIFICATION API
-# ==============================================================================
-class NotificationType(models.Model):
-    notification_type_id = models.AutoField(primary_key=True)
-    type_name = models.CharField(max_length=100)
-    is_active = models.BooleanField(default=True)
-
-
-class NotificationTemplate(models.Model):
-    template_id = models.AutoField(primary_key=True)
-    subject = models.CharField(max_length=255)
-    body = models.TextField()
-    is_active = models.BooleanField(default=True)
-
-
-class Notification(models.Model):
-    notification_id = models.AutoField(primary_key=True)
-    # Developer 1 - User
-    user_id = models.ForeignKey(
-        "accounts.CustomUser", on_delete=models.CASCADE, related_name="notifications"
-    )
-    notification_type_id = models.ForeignKey(
-        NotificationType, on_delete=models.PROTECT, related_name="notifications"
-    )
-    template_id = models.ForeignKey(
-        NotificationTemplate, on_delete=models.PROTECT, related_name="notifications"
-    )
-    title = models.CharField(max_length=255)
-    message = models.TextField()
-    is_read = models.BooleanField(default=False)
-    read_at = models.DateTimeField(blank=True, null=True)
-    created_at = models.DateTimeField(auto_now_add=True)

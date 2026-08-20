@@ -6,9 +6,6 @@ from .models import (
     ActivityType,
     ActivityAction,
     ActivityLog,
-    NotificationType,
-    NotificationTemplate,
-    Notification,
 )
 
 admin.site.register(FollowUpStatus)
@@ -17,6 +14,3 @@ admin.site.register(Followup)
 admin.site.register(ActivityType)
 admin.site.register(ActivityAction)
 admin.site.register(ActivityLog)
-admin.site.register(NotificationType)
-admin.site.register(NotificationTemplate)
-admin.site.register(Notification)

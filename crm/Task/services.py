@@ -13,7 +13,7 @@ from .models import (
     TaskStatus,      
 )
 
-from FollowUp.notification_utils import create_notification
+from Notification.notification_utils import create_notification
 
 
 logger = logging.getLogger(__name__)

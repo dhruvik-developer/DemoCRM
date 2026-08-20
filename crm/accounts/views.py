@@ -22,6 +22,7 @@ from rest_framework_simplejwt.tokens import RefreshToken  # type: ignore
 from django.shortcuts import get_object_or_404
 from django.contrib.auth.models import Permission
 from .permissions import HasDynamicPermission
+from rest_framework_simplejwt.exceptions import TokenError
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 
 logger = logging.getLogger(__name__)
@@ -131,7 +132,14 @@ class LoginAPIView(APIView):
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
 
-            refresh = RefreshToken.for_user(user)
+            try:
+                refresh = RefreshToken.for_user(user)
+            except Exception:
+                logger.exception("Token generation failed for user %s", user.user_id)
+                return Response(
+                    {"error": "Failed to generate tokens. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
             logger.info("User %s logged in successfully", user.user_id)
 
@@ -184,8 +192,24 @@ class LogoutAPIView(APIView):
                 status=status.HTTP_200_OK,
             )
 
-        except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+        except TokenError as e:
+            if "blacklisted" in str(e).lower():
+                return Response(
+                    {"message": "You are already logged out."},
+                    status=status.HTTP_200_OK,
+                )
+
+            return Response(
+                {"error": "Invalid or expired refresh token."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+            logger.exception("Logout failed for user %s", request.user)
+            return Response(
+                {"error": "Logout failed. Please try again."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
 
 class RefreshTokenAPIView(APIView):
@@ -273,8 +297,15 @@ class ChangePasswordAPIView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            user.set_password(new_password)
-            user.save()
+            try:
+                user.set_password(new_password)
+                user.save()
+            except Exception:
+                logger.exception("Password change failed for user %s", request.user)
+                return Response(
+                    {"error": "Failed to change password. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
             return Response(
                 {"message": "Password changed successfully."}, status=status.HTTP_200_OK
@@ -376,8 +407,15 @@ class RoleListCreateAPIView(APIView):
                 status=status.HTTP_403_FORBIDDEN,
             )
 
-        roles = Role.objects.prefetch_related("permissions").order_by("role_id")
-        serializer = RoleListSerializer(roles, many=True)
+        try:
+            roles = Role.objects.prefetch_related("permissions").order_by("role_id")
+            serializer = RoleListSerializer(roles, many=True)
+        except Exception:
+            logger.exception("Failed to retrieve roles")
+            return Response(
+                {"error": "Failed to retrieve roles. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(
             {"message": "Roles retrieved successfully.", "roles": serializer.data},
@@ -405,7 +443,16 @@ class RoleListCreateAPIView(APIView):
         serializer = RoleSerializer(data=request.data)
 
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except Exception:
+                logger.exception(
+                    "Failed to create role %s", request.data.get("rolename")
+                )
+                return Response(
+                    {"error": "Failed to create role. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
             return Response(
                 {"message": "Role created successfully.", "role": serializer.data},
@@ -467,7 +514,14 @@ class RoleDetailAPIView(APIView):
         serializer = RoleSerializer(role, data=request.data, partial=True)
 
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except Exception:
+                logger.exception("Failed to update role %s", role.rolename)
+                return Response(
+                    {"error": "Failed to update role. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
 
             return Response(
                 {"message": "Role updated successfully.", "role": serializer.data},
@@ -475,6 +529,48 @@ class RoleDetailAPIView(APIView):
             )
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def patch(self, request, role_id):
+        role = get_object_or_404(Role, role_id=role_id)
+
+        if role.rolename == "Admin":
+            return Response(
+                {"error": "Admin role cannot be updated."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        permission_ids = request.data.get("permissions")
+
+        if not permission_ids:
+            return Response(
+                {"error": "permissions is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        permissions = Permission.objects.filter(id__in=permission_ids)
+
+        if permissions.count() != len(set(permission_ids)):
+            return Response(
+                {"error": "One or more permission IDs are invalid."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            role.permissions.add(*permissions)
+        except Exception as e:
+            logger.exception("Failed to add permissions to role %s", role.rolename)
+            return Response(
+                {"error": "Failed to add permissions. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "message": "Permissions added successfully.",
+                "role": RoleSerializer(role).data,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @extend_schema(
         summary="Delete a role",
@@ -517,7 +613,15 @@ class RoleDetailAPIView(APIView):
             )
 
         role_name = role.rolename
-        role.delete()
+
+        try:
+            role.delete()
+        except Exception:
+            logger.exception("Failed to delete role %s", role_name)
+            return Response(
+                {"error": "Failed to delete role. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(
             {"message": "Role deleted successfully.", "role": role_name},
@@ -594,7 +698,26 @@ class AssignRoleAPIView(APIView):
         role = get_object_or_404(Role, role_id=role_id)
 
         user.role = role
-        user.save()
+
+        try:
+            user.save()
+            from Notification.notification_utils import trigger_notification_event
+            from Notification.models import NotificationEventType
+
+            trigger_notification_event(
+                event_type=NotificationEventType.ROLE_CHANGED,
+                recipient=user,
+                context={
+                    "user_name": user.get_full_name() or user.username,
+                    "role_name": role.rolename,
+                },
+            )
+        except Exception:
+            logger.exception("Failed to assign role to user %s", user.username)
+            return Response(
+                {"error": "Failed to assign role. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(
             {
@@ -661,7 +784,17 @@ class PermissionListCreateAPIView(APIView):
         serializer = PermissionSerializer(data=request.data)
 
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except Exception:
+                logger.exception(
+                    "Failed to create permission %s", request.data.get("codename")
+                )
+                return Response(
+                    {"error": "Failed to create permission. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
             return Response(
                 {
                     "message": "Permission created successfully.",
@@ -715,7 +848,15 @@ class PermissionDetailAPIView(APIView):
         serializer = PermissionSerializer(permission, data=request.data, partial=True)
 
         if serializer.is_valid():
-            serializer.save()
+            try:
+                serializer.save()
+            except Exception:
+                logger.exception("Failed to update permission %s", permission.codename)
+                return Response(
+                    {"error": "Failed to update permission. Please try again."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+
             return Response(
                 {
                     "message": "Permission updated successfully.",
@@ -752,7 +893,15 @@ class PermissionDetailAPIView(APIView):
     )
     def delete(self, request, permission_id):
         permission = get_object_or_404(Permission, id=permission_id)
-        permission.delete()
+
+        try:
+            permission.delete()
+        except Exception:
+            logger.exception("Failed to delete permission %s", permission.codename)
+            return Response(
+                {"error": "Failed to delete permission. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         return Response(
             {"message": "Permission deleted successfully."}, status=status.HTTP_200_OK

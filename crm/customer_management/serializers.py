@@ -1,8 +1,8 @@
 from rest_framework import serializers
 
+from audit_log.models import Activity, AuditLog
+
 from .models import (
-    Activity,
-    AuditLog,
     Customer,
     Lead,
     LeadSource,

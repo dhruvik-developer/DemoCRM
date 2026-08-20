@@ -33,6 +33,8 @@ from .serializers import (
 from .pagination import CRMPageNumberPagination
 from .services import send_meeting_creation_emails
 
+from Notification.notification_utils import trigger_notification_event
+from Notification.models import NotificationEventType
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +292,26 @@ class TaskListCreateView(APIView):
                 task.task_id,
                 request.user.pk,
             )
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+            if task.assigned_to and task.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_ASSIGNED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name()
+                        or task.assigned_to.username,
+                        "employee_name": request.user.get_full_name()
+                        or request.user.username,
+                        "task_title": task.task_title,
+                        "due_date": str(task.due_date) if task.due_date else "N/A",
+                    },
+                )
+
+            return Response(
+                TaskSerializer(task, context={"request": request}).data,
+                status=status.HTTP_201_CREATED,
+            )
+
         except (Http404, APIException):
             raise
 
@@ -527,6 +548,20 @@ class TaskDetailView(APIView):
                 request.user.pk,
             )
 
+            if task.assigned_to and task.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_UPDATED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name()
+                        or task.assigned_to.username,
+                        "employee_name": request.user.get_full_name()
+                        or request.user.username,
+                        "task_title": task.task_title,
+                        "due_date": str(task.due_date) if task.due_date else "N/A",
+                    },
+                )
+
             return Response(
                 TaskSerializer(task, context={"request": request}).data,
                 status=status.HTTP_200_OK,
@@ -761,6 +796,23 @@ class TaskAssignView(APIView):
                 ]
             )
 
+            event_type = (
+                NotificationEventType.TASK_REASSIGNED
+                if old_user
+                else NotificationEventType.TASK_ASSIGNED
+            )
+            trigger_notification_event(
+                event_type=event_type,
+                recipient=new_user,
+                context={
+                    "user_name": new_user.get_full_name() or new_user.username,
+                    "employee_name": request.user.get_full_name()
+                    or request.user.username,
+                    "task_title": task.task_title,
+                    "due_date": str(task.due_date) if task.due_date else "N/A",
+                },
+            )
+
             logger.info(
                 "Task assigned successfully: "
                 "task_id=%s old_user_id=%s "
@@ -891,6 +943,21 @@ class TaskStatusUpdateView(APIView):
                 ]
             )
 
+            if task.assigned_to and task.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_STATUS_CHANGED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name()
+                        or task.assigned_to.username,
+                        "employee_name": request.user.get_full_name()
+                        or request.user.username,
+                        "task_title": task.task_title,
+                        "previous_status": old_status.status_name,
+                        "new_status": new_status.status_name,
+                    },
+                )
+
             logger.info(
                 "Task status updated successfully: "
                 "task_id=%s old_status=%s "
@@ -984,6 +1051,26 @@ class MeetingCreateView(APIView):
                 meeting.meeting_id,
                 request.user.pk,
             )
+
+            # Notify the task assignee about meeting creation.
+            if (
+                meeting.task_id
+                and meeting.task_id.assigned_to
+                and meeting.task_id.assigned_to != request.user
+            ):
+                trigger_notification_event(
+                    event_type=NotificationEventType.MEETING_CREATED,
+                    recipient=meeting.task_id.assigned_to,
+                    context={
+                        "user_name": meeting.task_id.assigned_to.get_full_name()
+                        or meeting.task_id.assigned_to.username,
+                        "employee_name": request.user.get_full_name()
+                        or request.user.username,
+                        "meeting_title": meeting.meeting_title,
+                        "meeting_date": str(meeting.meeting_date),
+                        "start_time": str(meeting.start_time),
+                    },
+                )
 
             return Response(
                 MeetingSerializer(meeting, context={"request": request}).data,
