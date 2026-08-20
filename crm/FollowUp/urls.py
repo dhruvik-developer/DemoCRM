@@ -4,8 +4,6 @@ from .views import (
     FollowUpListCreateView,
     FollowUpDetailView,
     FollowUpNoteCreateView,
-    UserNotificationListView,
-    NotificationDetailView,
 )
 
 
@@ -20,16 +18,5 @@ urlpatterns = [
         "<int:followup_id>/notes/",
         FollowUpNoteCreateView.as_view(),
         name="followup-add-note",
-    ),
-    # ======================================================
-    # NOTIFICATION
-    # ======================================================
-    path(
-        "notifications/", UserNotificationListView.as_view(), name="notification-list"
-    ),
-    path(
-        "notifications/<int:notification_id>/",
-        NotificationDetailView.as_view(),
-        name="notification-detail",
     ),
 ]

@@ -6,13 +6,15 @@ from uuid import uuid4
 logger = logging.getLogger(__name__)
 
 from django.core.exceptions import ValidationError
+from Notification.notification_utils import trigger_notification_event
+from Notification.models import NotificationEventType
 from django.db import transaction
 from django.utils import timezone
 from rest_framework.exceptions import PermissionDenied
 
+from audit_log.models import Activity, AuditLog
+
 from .models import (
-    Activity,
-    AuditLog,
     Customer,
     Lead,
     LeadSource,
@@ -238,6 +240,17 @@ class CRMService:
             },
         )
 
+        trigger_notification_event(
+            event_type=NotificationEventType.LEAD_CREATED,
+            recipient=assigned_to,
+            context={
+                "user_name": assigned_to.get_full_name() or assigned_to.username,
+                "employee_name": user.get_full_name() or user.username,
+                "lead_name": lead.name,
+                "lead_id": lead.id,
+            },
+        )
+
         return lead
 
     # ---------------------------------------------------------
@@ -272,6 +285,17 @@ class CRMService:
             },
             new_value={
                 "assigned_to": str(new_assignee.user_id),
+            },
+        )
+
+        trigger_notification_event(
+            event_type=NotificationEventType.LEAD_ASSIGNED,
+            recipient=new_assignee,
+            context={
+                "user_name": new_assignee.get_full_name() or new_assignee.username,
+                "employee_name": user.get_full_name() or user.username,
+                "lead_name": lead.name,
+                "lead_id": lead.id,
             },
         )
 
@@ -343,6 +367,21 @@ class CRMService:
             },
         )
 
+        if lead.assigned_to and lead.assigned_to != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.LEAD_STAGE_CHANGED,
+                recipient=lead.assigned_to,
+                context={
+                    "user_name": lead.assigned_to.get_full_name()
+                    or lead.assigned_to.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "lead_name": lead.name,
+                    "lead_id": lead.id,
+                    "old_stage": old_stage.name,
+                    "new_stage": next_stage.name,
+                },
+            )
+
         return lead
 
     # ---------------------------------------------------------
@@ -389,6 +428,20 @@ class CRMService:
             },
         )
 
+        if lead.assigned_to and lead.assigned_to != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.LEAD_MARKED_LOST,
+                recipient=lead.assigned_to,
+                context={
+                    "user_name": lead.assigned_to.get_full_name()
+                    or lead.assigned_to.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "lead_name": lead.name,
+                    "lead_id": lead.id,
+                    "lost_reason": lost_reason,
+                },
+            )
+
         return lead
 
     # ---------------------------------------------------------
@@ -431,6 +484,19 @@ class CRMService:
                 "status": Lead.Status.ACTIVE,
             },
         )
+
+        if lead.assigned_to and lead.assigned_to != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.LEAD_REENGAGED,
+                recipient=lead.assigned_to,
+                context={
+                    "user_name": lead.assigned_to.get_full_name()
+                    or lead.assigned_to.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "lead_name": lead.name,
+                    "lead_id": lead.id,
+                },
+            )
 
         return lead
 
@@ -498,6 +564,28 @@ class CRMService:
                 "quotation": str(quotation.id) if quotation else None,
             },
         )
+
+        notify_recipients = set()
+        if lead and lead.assigned_to and lead.assigned_to != user:
+            notify_recipients.add(lead.assigned_to)
+        if customer:
+
+            assigned = getattr(customer, "assigned_to", None)
+            if assigned and assigned != user:
+                notify_recipients.add(assigned)
+
+        for recipient in notify_recipients:
+            trigger_notification_event(
+                event_type=NotificationEventType.ACTIVITY_CREATED,
+                recipient=recipient,
+                context={
+                    "user_name": recipient.get_full_name() or recipient.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "activity_type": activity.activity_type,
+                    "lead_name": lead.name if lead else "",
+                    "customer_name": customer.name if customer else "",
+                },
+            )
 
         return activity
 
@@ -579,6 +667,18 @@ class CRMService:
                     "customer": str(customer.id),
                 },
             )
+
+        trigger_notification_event(
+            event_type=NotificationEventType.LEAD_CONVERTED,
+            recipient=user,
+            context={
+                "user_name": user.get_full_name() or user.username,
+                "lead_name": lead.name,
+                "lead_id": lead.id,
+                "customer_name": customer.name,
+                "customer_id": customer.id,
+            },
+        )
 
         return customer
 
@@ -701,6 +801,20 @@ class QuotationService:
             total,
         )
 
+        if assigned_user and assigned_user != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_CREATED,
+                recipient=assigned_user,
+                context={
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "quotation_number": quotation.quotation_number,
+                    "total_amount": str(total),
+                    "lead_name": lead.name,
+                },
+            )
+
         return quotation
 
     @staticmethod
@@ -778,6 +892,20 @@ class QuotationService:
             quotation=quotation,
         )
 
+        assigned_user = version.assigned_to
+        if assigned_user and assigned_user != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_UPDATED,
+                recipient=assigned_user,
+                context={
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "quotation_number": quotation.quotation_number,
+                    "version": version.version_number,
+                },
+            )
+
         return quotation
 
     @staticmethod
@@ -828,6 +956,17 @@ class QuotationService:
                 customer=quotation.customer,
                 quotation=quotation,
             )
+
+            recipient = version.assigned_to or user
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_SUBMITTED,
+                recipient=recipient,
+                context={
+                    "user_name": recipient.get_full_name() or recipient.username,
+                    "quotation_number": quotation.quotation_number,
+                    "employee_name": user.get_full_name() or user.username,
+                },
+            )
         else:
             version.status = QuotationStatus.APPROVED
             version.approved_at = timezone.now()
@@ -856,6 +995,19 @@ class QuotationService:
                 customer=quotation.customer,
                 quotation=quotation,
             )
+
+            auto_assignee = version.assigned_to or user
+            if auto_assignee and auto_assignee != user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.QUOTATION_APPROVED,
+                    recipient=auto_assignee,
+                    context={
+                        "user_name": auto_assignee.get_full_name()
+                        or auto_assignee.username,
+                        "employee_name": user.get_full_name() or user.username,
+                        "quotation_number": quotation.quotation_number,
+                    },
+                )
 
         return quotation
 
@@ -934,6 +1086,19 @@ class QuotationService:
             quotation=quotation,
         )
 
+        recipient = version.created_by or version.assigned_to
+        if recipient:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_APPROVED,
+                recipient=recipient,
+                context={
+                    "user_name": recipient.get_full_name() or recipient.username,
+                    "manager_name": reviewer_user.get_full_name()
+                    or reviewer_user.username,
+                    "quotation_number": quotation.quotation_number,
+                },
+            )
+
         return quotation
 
     @staticmethod
@@ -998,6 +1163,20 @@ class QuotationService:
             quotation=quotation,
             notes=reason,
         )
+
+        recipient = version.created_by or version.assigned_to
+        if recipient:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_REJECTED,
+                recipient=recipient,
+                context={
+                    "user_name": recipient.get_full_name() or recipient.username,
+                    "manager_name": reviewer_user.get_full_name()
+                    or reviewer_user.username,
+                    "quotation_number": quotation.quotation_number,
+                    "reason": reason or "",
+                },
+            )
 
         return quotation
 
@@ -1079,6 +1258,20 @@ class QuotationService:
                 "status": QuotationIntegrationEvent.Status.PENDING,
             },
         )
+
+        assigned_user = version.assigned_to
+        if assigned_user and assigned_user != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_SENT,
+                recipient=assigned_user,
+                context={
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "quotation_number": quotation.quotation_number,
+                    "version": version.version_number,
+                },
+            )
 
         return quotation
 
@@ -1198,6 +1391,21 @@ class QuotationService:
             quotation=quotation,
         )
 
+        assigned_user = new_version.assigned_to
+        if assigned_user and assigned_user != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_REVISION_CREATED,
+                recipient=assigned_user,
+                context={
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "quotation_number": quotation.quotation_number,
+                    "version": new_version_num,
+                    "revision_reason": revision_reason or "",
+                },
+            )
+
         return quotation
 
     @staticmethod
@@ -1242,6 +1450,20 @@ class QuotationService:
             customer=quotation.customer,
             quotation=quotation,
         )
+
+        assigned_user = version.assigned_to
+        if assigned_user and assigned_user != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_ACCEPTED,
+                recipient=assigned_user,
+                context={
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "quotation_number": quotation.quotation_number,
+                    "version": version.version_number,
+                },
+            )
 
         customer = None
         if quotation.lead and quotation.lead.status == Lead.Status.ACTIVE:
@@ -1312,6 +1534,21 @@ class QuotationService:
             quotation=quotation,
             notes=rejection_reason,
         )
+
+        assigned_user = version.assigned_to
+        if assigned_user and assigned_user != user:
+            trigger_notification_event(
+                event_type=NotificationEventType.QUOTATION_CLIENT_REJECTED,
+                recipient=assigned_user,
+                context={
+                    "user_name": assigned_user.get_full_name()
+                    or assigned_user.username,
+                    "employee_name": user.get_full_name() or user.username,
+                    "quotation_number": quotation.quotation_number,
+                    "version": version.version_number,
+                    "rejection_reason": rejection_reason,
+                },
+            )
 
         if quotation.lead and quotation.lead.status == Lead.Status.ACTIVE:
             CRMService.mark_lead_lost(
