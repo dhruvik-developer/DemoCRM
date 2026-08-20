@@ -326,6 +326,18 @@ class BusinessOperationIntegrationTests(TestCase):
         self.task_category = TaskCategory.objects.create(category_name="General")
 
     def test_task_creation_triggers_notification(self):
+        source = LeadSource.objects.create(name="Web", created_by=self.admin_user)
+        pipeline = Pipeline.objects.create(name="Sales", created_by=self.admin_user)
+        stage = PipelineStage.objects.create(
+            pipeline=pipeline, name="New", display_order=1
+        )
+        lead = Lead.objects.create(
+            name="Test Lead",
+            source=source,
+            assigned_to=self.admin_user,
+            pipeline=pipeline,
+            current_stage=stage,
+        )
         self.client.force_authenticate(user=self.admin_user)
         url = reverse("task-list-create")
         data = {
@@ -334,6 +346,7 @@ class BusinessOperationIntegrationTests(TestCase):
             "priority": self.task_priority.pk,
             "category": self.task_category.pk,
             "assigned_to": str(self.employee_user.pk),
+            "lead": str(lead.pk),
         }
         res = self.client.post(url, data, format="json")
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)

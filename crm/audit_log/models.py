@@ -6,6 +6,16 @@ from django.db import models
 
 
 class AuditLog(models.Model):
+    """
+    Audit log for tracking CRM mutations.
+
+    NOTE: `entity_id` is a UUIDField but some entities (Task, Meeting, Reminder,
+    FollowUp) use integer AutoField PKs. When logging those entities, cast the
+    int PK to a string UUID-compatible format or use a deterministic mapping.
+    A future migration to CharField for `entity_id` is recommended for full
+    compatibility.
+    """
+
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
 
     user = models.ForeignKey(
@@ -124,6 +134,19 @@ class Activity(models.Model):
             raise ValidationError(
                 "An Activity cannot belong to both a Lead and a Customer."
             )
+
+        if self.lead_id:
+            from customer_management.models import Lead
+
+            lead_status = (
+                Lead.objects.filter(pk=self.lead_id)
+                .values_list("status", flat=True)
+                .first()
+            )
+            if lead_status == Lead.Status.CONVERTED:
+                raise ValidationError(
+                    "An Activity cannot be created against a CONVERTED Lead. Use the Customer instead."
+                )
 
         if self.follow_up_required and not self.follow_up_date:
             raise ValidationError(
