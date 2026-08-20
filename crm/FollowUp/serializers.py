@@ -4,9 +4,6 @@ from .models import (
     FollowUpNote,
     FollowUpStatus,
     FollowUpTypes,
-    ActivityAction,
-    ActivityLog,
-    ActivityType,
 )
 from django.utils import timezone
 
@@ -89,44 +86,5 @@ class FollowUpNoteSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Note must contain at least 2 characters."
             )
-
-        return value
-
-
-# ============================================================
-# ACTIVITY LOG
-# ============================================================
-
-
-class ActivityTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ActivityType
-        fields = "__all__"
-
-
-class ActivityActionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ActivityAction
-        fields = "__all__"
-
-
-class ActivityLogSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ActivityLog
-        fields = "__all__"
-        read_only_fields = (
-            "activity_id",
-            "created_at",
-        )
-
-    def validate_description(self, value):
-        if value:
-            value = value.strip()
-
-        return value
-
-    def validate_reference_id(self, value):
-        if value is not None and value <= 0:
-            raise serializers.ValidationError("Reference ID must be greater than 0.")
 
         return value
