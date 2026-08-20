@@ -6,7 +6,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("Task", "0008_alter_task_lead"),
+        ("Task", "0008_remove_reminder_is_sent_remove_reminder_reminder_for"),
         ("Task", "0009_reminder_is_sent_reminder_reminder_for_and_more"),
     ]
 
