@@ -3,7 +3,6 @@ from .models import (
     FollowUpStatus,
     FollowUpTypes,
     Followup,
-    FollowUpNote,
     ActivityType,
     ActivityAction,
     ActivityLog,
@@ -15,7 +14,6 @@ from .models import (
 admin.site.register(FollowUpStatus)
 admin.site.register(FollowUpTypes)
 admin.site.register(Followup)
-admin.site.register(FollowUpNote)
 admin.site.register(ActivityType)
 admin.site.register(ActivityAction)
 admin.site.register(ActivityLog)
