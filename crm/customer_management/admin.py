@@ -1,8 +1,8 @@
 from django.contrib import admin
 
+from audit_log.models import Activity, AuditLog
+
 from .models import (
-    Activity,
-    AuditLog,
     Customer,
     Lead,
     LeadSource,
@@ -120,36 +120,6 @@ class ActivityAdmin(admin.ModelAdmin):
         "notes",
     )
     readonly_fields = ("id", "created_at", "updated_at")
-
-
-@admin.register(AuditLog)
-class AuditLogAdmin(admin.ModelAdmin):
-    list_display = (
-        "action",
-        "entity_type",
-        "entity_id",
-        "user",
-        "created_at",
-    )
-    list_filter = (
-        "action",
-        "entity_type",
-    )
-    search_fields = (
-        "entity_type",
-        "action",
-    )
-    readonly_fields = (
-        "id",
-        "user",
-        "entity_type",
-        "entity_id",
-        "action",
-        "old_value",
-        "new_value",
-        "metadata",
-        "created_at",
-    )
 
 
 from .models import Quotation, QuotationVersion, QuotationLineItem, QuotationApproval

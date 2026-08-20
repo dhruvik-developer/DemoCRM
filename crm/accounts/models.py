@@ -28,6 +28,7 @@ class CustomUser(AbstractUser):
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # passowrd field is coming from AbstractUser
 
     objects = CustomUserManager()  # Use the custom user manager
 

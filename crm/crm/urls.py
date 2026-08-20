@@ -28,6 +28,7 @@ urlpatterns = [
     path("api/", include("accounts.urls")),  # Include the accounts app URLs
     path("api/tasks/", include("Task.urls")),
     path("api/followups/", include("FollowUp.urls")),
+    path("api/", include("Notification.urls")),
     path(
         "api/crm/", include("customer_management.urls")
     ),  # Include the customer management urls
