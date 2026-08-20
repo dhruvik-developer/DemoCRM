@@ -4,15 +4,14 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
-        ('Task', '0002_task_customer_task_lead'),
+        ("Task", "0002_task_customer_task_lead"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='reminder',
-            name='is_sent',
+            model_name="reminder",
+            name="is_sent",
             field=models.BooleanField(default=False),
         ),
     ]

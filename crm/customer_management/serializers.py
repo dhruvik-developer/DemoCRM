@@ -82,18 +82,14 @@ class PipelineStageSerializer(serializers.ModelSerializer):
 
         if pipeline and not pipeline.is_active:
             raise serializers.ValidationError(
-                {
-                    "pipeline": "Cannot use an inactive pipeline."
-                }
+                {"pipeline": "Cannot use an inactive pipeline."}
             )
 
         display_order = attrs.get("display_order")
 
         if display_order is not None and display_order < 1:
             raise serializers.ValidationError(
-                {
-                    "display_order": "Display order must be at least 1."
-                }
+                {"display_order": "Display order must be at least 1."}
             )
 
         return attrs
@@ -134,16 +130,12 @@ class LeadSerializer(serializers.ModelSerializer):
 
         if source and not source.is_active:
             raise serializers.ValidationError(
-                {
-                    "source": "Cannot use an inactive lead source."
-                }
+                {"source": "Cannot use an inactive lead source."}
             )
 
         if pipeline and not pipeline.is_active:
             raise serializers.ValidationError(
-                {
-                    "pipeline": "Cannot use an inactive pipeline."
-                }
+                {"pipeline": "Cannot use an inactive pipeline."}
             )
 
         target_pipeline_id = (
@@ -155,9 +147,7 @@ class LeadSerializer(serializers.ModelSerializer):
         if current_stage:
             if not current_stage.is_active:
                 raise serializers.ValidationError(
-                    {
-                        "current_stage": "Cannot use an inactive stage."
-                    }
+                    {"current_stage": "Cannot use an inactive stage."}
                 )
 
             if target_pipeline_id and current_stage.pipeline_id != target_pipeline_id:
@@ -172,11 +162,7 @@ class LeadSerializer(serializers.ModelSerializer):
 
         if assigned_to and not assigned_to.is_active:
             raise serializers.ValidationError(
-                {
-                    "assigned_to": (
-                        "An inactive employee cannot be assigned a Lead."
-                    )
-                }
+                {"assigned_to": ("An inactive employee cannot be assigned a Lead.")}
             )
 
         # A Lead that is LOST or CONVERTED is in a terminal state. State
@@ -199,13 +185,10 @@ class LeadSerializer(serializers.ModelSerializer):
         # status is read-only, it can never be set to LOST through a PATCH,
         # so any attempt to set lost_reason on a non-lost Lead is invalid.
         if "lost_reason" in attrs and (
-            self.instance is None
-            or self.instance.status != Lead.Status.LOST
+            self.instance is None or self.instance.status != Lead.Status.LOST
         ):
             raise serializers.ValidationError(
-                {
-                    "lost_reason": "Lost reason can only be set on a lost Lead."
-                }
+                {"lost_reason": "Lost reason can only be set on a lost Lead."}
             )
 
         return attrs
@@ -265,7 +248,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 "Activity must belong to a Lead or Customer."
             )
-        
+
         if lead and customer:
             raise serializers.ValidationError(
                 "Activity cannot belong to both a Lead and a Customer."
@@ -287,8 +270,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {
                     "follow_up_date": (
-                        "Follow-up date is required when "
-                        "follow-up is required."
+                        "Follow-up date is required when follow-up is required."
                     )
                 }
             )
@@ -297,8 +279,7 @@ class ActivitySerializer(serializers.ModelSerializer):
             raise serializers.ValidationError(
                 {
                     "follow_up_date": (
-                        "Follow-up date cannot be set when "
-                        "follow-up is not required."
+                        "Follow-up date cannot be set when follow-up is not required."
                     )
                 }
             )
@@ -430,9 +411,15 @@ class QuotationVersionSerializer(serializers.ModelSerializer):
 
 
 class QuotationSerializer(serializers.ModelSerializer):
-    current_version_detail = QuotationVersionSerializer(source="current_version", read_only=True)
-    accepted_version_detail = QuotationVersionSerializer(source="accepted_version", read_only=True)
-    all_versions = QuotationVersionSerializer(source="versions", many=True, read_only=True)
+    current_version_detail = QuotationVersionSerializer(
+        source="current_version", read_only=True
+    )
+    accepted_version_detail = QuotationVersionSerializer(
+        source="accepted_version", read_only=True
+    )
+    all_versions = QuotationVersionSerializer(
+        source="versions", many=True, read_only=True
+    )
 
     class Meta:
         model = Quotation

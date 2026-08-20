@@ -16,7 +16,6 @@ import os
 from dotenv import load_dotenv
 
 
-
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -44,7 +43,9 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = os.getenv("DEBUG", "True").lower() == "true"
 
-ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS").split(",") if os.getenv("ALLOWED_HOSTS") else []
+ALLOWED_HOSTS = (
+    os.getenv("ALLOWED_HOSTS").split(",") if os.getenv("ALLOWED_HOSTS") else []
+)
 
 
 # Application definition
@@ -57,6 +58,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
     "accounts",
     "Task",
     "FollowUp",
@@ -134,12 +136,10 @@ STATIC_URL = "static/"
 # settings.py
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": (
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
-    "DEFAULT_PERMISSION_CLASSES": (
-        "rest_framework.permissions.IsAuthenticated",
-    ),
+    "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
     "DEFAULT_THROTTLE_CLASSES": [
         "rest_framework.throttling.UserRateThrottle",
         "rest_framework.throttling.AnonRateThrottle",
@@ -148,16 +148,71 @@ REST_FRAMEWORK = {
         "user": "1000/day",
         "anon": "100/day",
     },
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+# ======================================================
+# DRF-SCPECTACULAR (OpenAPI / Swagger)
+# ======================================================
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "DemoCRM API",
+    "DESCRIPTION": (
+        "REST API for the DemoCRM customer relationship management system.\n\n"
+        "## Authentication\n"
+        "This API uses **JWT (JSON Web Tokens)** for authentication. "
+        "Obtain an access token via the `/api/login/` endpoint and include it "
+        "in the `Authorization` header as `Bearer <access_token>`.\n\n"
+        "## API Modules\n"
+        "- **Accounts** - User registration, login, logout, profiles, roles, and permissions.\n"
+        "- **Customer Management** - Leads, customers, pipelines, quotation workflows, activities, and audit logs.\n"
+        "- **Tasks** - Task management with assignments and status tracking.\n"
+        "- **Meetings** - Meeting scheduling, rescheduling, participants.\n"
+        "- **Reminders** - Reminder creation and management.\n"
+        "- **Follow-ups** - Follow-up tracking with notes.\n"
+        "- **Notifications** - User notifications.\n\n"
+        "## Pagination\n"
+        "List endpoints that support pagination return results in a paginated format "
+        "with `page` and `page_size` query parameters.\n\n"
+        "## Permissions\n"
+        "Most endpoints require authentication. Some endpoints have role-based access "
+        "control (Admin, Manager, Employee)."
+    ),
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "TAGS": [
+        {
+            "name": "Accounts",
+            "description": "Authentication, user profiles, roles, and permissions",
+        },
+        {"name": "Leads", "description": "Lead management and workflow operations"},
+        {"name": "Customers", "description": "Customer management"},
+        {"name": "Pipelines", "description": "Pipeline and pipeline stage management"},
+        {
+            "name": "Quotations",
+            "description": "Quotation creation, workflow, approvals, and PDF generation",
+        },
+        {"name": "Tasks", "description": "Task management"},
+        {
+            "name": "Meetings",
+            "description": "Meeting scheduling and participant management",
+        },
+        {"name": "Reminders", "description": "Reminder management"},
+        {"name": "Follow Ups", "description": "Follow-up tracking and notes"},
+        {"name": "Notifications", "description": "User notifications"},
+        {"name": "Audit Logs", "description": "System audit logs"},
+        {"name": "Lead Sources", "description": "Lead source management"},
+        {"name": "Activities", "description": "Activity tracking"},
+    ],
 }
 
 
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=15),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),
-
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "USER_ID_FIELD": "user_id",
     "USER_ID_CLAIM": "user_id",
-
     "ROTATE_REFRESH_TOKENS": False,
     "BLACKLIST_AFTER_ROTATION": True,
 }
@@ -175,13 +230,10 @@ EMAIL_USE_TLS = os.getenv("EMAIL_USE_TLS", "True").strip("'\" ").lower() == "tru
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "").strip("'\" ")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "").strip("'\" ")
 
-DEFAULT_FROM_EMAIL = os.getenv(
-    "DEFAULT_FROM_EMAIL",
-    EMAIL_HOST_USER
-).strip("'\" ")
+DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", EMAIL_HOST_USER).strip("'\" ")
 
 # ======================================================
-# LOGGER 
+# LOGGER
 # ======================================================
 
 LOGGING = {

@@ -1,54 +1,40 @@
 import logging
-
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from django.db.models import Q
-
-from rest_framework import status
+from rest_framework import status, serializers
 from rest_framework.exceptions import APIException
-from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-
-from .models import (
-    Followup,
-    FollowUpNote
-)
-
+from .models import Followup
 from .serializers import (
     FollowupSerializer,
     FollowUpNoteSerializer,
-
 )
-
+from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
-
-from Task.models import Task
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 
 logger = logging.getLogger(__name__)
+
+from Task.models import Task
 
 
 # ==========================================================
 # FOLLOWUP LIST / CREATE
 # ==========================================================
-
 class FollowUpListCreateView(APIView):
     """
     GET  /api/followups/
         List FollowUps
-
     POST /api/followups/
         Create FollowUp
     """
 
-    # Developer 1 permission system
     permission_classes = [CanCommunicateWithlead]
-
     permission_names = {
-        "POST": "add_followup",
         "GET": "view_followup",
-        #'PATCH':"change_followup"
+        "POST": "add_followup",
     }
 
     # ======================================================
@@ -59,57 +45,37 @@ class FollowUpListCreateView(APIView):
 
         try:
 
-            followups = (
-                Followup.objects
-                .select_related(
-                    "task_id",
-                    "task_id__assigned_to",
-                    "followup_status",
-                    "followup_type",
-                    "created_by",
-                )
-                .order_by("-created_at")
-            )
+            followups = Followup.objects.select_related(
+                "task_id",
+                "task_id__assigned_to",
+                "followup_status",
+                "followup_type",
+                "created_by",
+            ).order_by("-created_at")
 
             # ==================================================
             # FILTERS
             # ==================================================
 
-            followup_status_id = request.query_params.get(
-                "followup_status"
-            )
+            followup_status_id = request.query_params.get("followup_status")
 
-            followup_type_id = request.query_params.get(
-                "followup_type"
-            )
+            followup_type_id = request.query_params.get("followup_type")
 
-            task_id = request.query_params.get(
-                "task_id"
-            )
+            task_id = request.query_params.get("task_id")
 
-            created_by_id = request.query_params.get(
-                "created_by"
-            )
+            created_by_id = request.query_params.get("created_by")
 
             if followup_status_id:
-                followups = followups.filter(
-                    followup_status_id=followup_status_id
-                )
+                followups = followups.filter(followup_status_id=followup_status_id)
 
             if followup_type_id:
-                followups = followups.filter(
-                    followup_type_id=followup_type_id
-                )
+                followups = followups.filter(followup_type_id=followup_type_id)
 
             if task_id:
-                followups = followups.filter(
-                    task_id=task_id
-                )
+                followups = followups.filter(task_id=task_id)
 
             if created_by_id:
-                followups = followups.filter(
-                    created_by_id=created_by_id
-                )
+                followups = followups.filter(created_by_id=created_by_id)
 
             # ==================================================
             # SEARCH
@@ -120,19 +86,14 @@ class FollowUpListCreateView(APIView):
             if search:
                 followups = followups.filter(
                     Q(description__icontains=search)
-                    | Q(
-                        task_id__task_title__icontains=search
-                    )
+                    | Q(task_id__task_title__icontains=search)
                 )
 
             # ==================================================
             # ORDERING
             # ==================================================
 
-            ordering = request.query_params.get(
-                "ordering",
-                "-created_at"
-            )
+            ordering = request.query_params.get("ordering", "-created_at")
 
             allowed_ordering_fields = {
                 "created_at",
@@ -142,9 +103,7 @@ class FollowUpListCreateView(APIView):
             if ordering.lstrip("-") in allowed_ordering_fields:
                 followups = followups.order_by(ordering)
             else:
-                followups = followups.order_by(
-                    "-created_at"
-                )
+                followups = followups.order_by("-created_at")
 
             # ==================================================
             # PAGINATION
@@ -152,30 +111,21 @@ class FollowUpListCreateView(APIView):
 
             paginator = CRMPageNumberPagination()
 
-            paginator_followups = (
-                paginator.paginate_queryset(
-                    followups,
-                    request,
-                    view=self
-                )
+            paginator_followups = paginator.paginate_queryset(
+                followups, request, view=self
             )
 
             serializer = FollowupSerializer(
-                paginator_followups,
-                many=True,
-                context={"request": request}
+                paginator_followups, many=True, context={"request": request}
             )
 
             logger.info(
-                "FollowUps fetched successfully: "
-                "user_id=%s page=%s",
+                "FollowUps fetched successfully: " "user_id=%s page=%s",
                 request.user.pk,
                 request.query_params.get("page", 1),
             )
 
-            return paginator.get_paginated_response(
-                serializer.data
-            )
+            return paginator.get_paginated_response(serializer.data)
 
         except (Http404, APIException):
             raise
@@ -183,19 +133,13 @@ class FollowUpListCreateView(APIView):
         except Exception:
 
             logger.exception(
-                "Error while fetching FollowUps: "
-                "user_id=%s",
+                "Error while fetching FollowUps: " "user_id=%s",
                 request.user.pk,
             )
 
             return Response(
-                {
-                    "error": (
-                        "Something went wrong while "
-                        "fetching FollowUps."
-                    )
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": ("Something went wrong while " "fetching FollowUps.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     # ======================================================
@@ -215,18 +159,13 @@ class FollowUpListCreateView(APIView):
             if not task_id:
 
                 logger.warning(
-                    "FollowUp creation failed: "
-                    "task_id missing user_id=%s",
+                    "FollowUp creation failed: " "task_id missing user_id=%s",
                     request.user.pk,
                 )
 
                 return Response(
-                    {
-                        "task_id": (
-                            "This field is required."
-                        )
-                    },
-                    status=status.HTTP_400_BAD_REQUEST
+                    {"task_id": ("This field is required.")},
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
 
             # ----------------------------------------------
@@ -234,11 +173,9 @@ class FollowUpListCreateView(APIView):
             # ----------------------------------------------
 
             task = get_object_or_404(
-                Task.objects.select_related(
-                    "assigned_to"
-                ),
+                Task.objects.select_related("assigned_to"),
                 task_id=task_id,
-                is_active=True
+                is_active=True,
             )
 
             user = request.user
@@ -247,34 +184,21 @@ class FollowUpListCreateView(APIView):
             # GET ROLE
             # ----------------------------------------------
 
-            role = getattr(
-                user,
-                "role",
-                None
-            )
+            role = getattr(user, "role", None)
 
             if role is None:
 
                 logger.warning(
-                    "FollowUp creation denied: "
-                    "no role assigned user_id=%s",
+                    "FollowUp creation denied: " "no role assigned user_id=%s",
                     user.pk,
                 )
 
                 return Response(
-                    {
-                        "detail": (
-                            "No role assigned to user."
-                        )
-                    },
-                    status=status.HTTP_403_FORBIDDEN
+                    {"detail": ("No role assigned to user.")},
+                    status=status.HTTP_403_FORBIDDEN,
                 )
 
-            role_name = getattr(
-                role,
-                "rolename",
-                ""
-            ).strip().lower()
+            role_name = getattr(role, "rolename", "").strip().lower()
 
             # ==================================================
             # ADMIN / MANAGER
@@ -320,7 +244,7 @@ class FollowUpListCreateView(APIView):
                                 "assigned to you."
                             )
                         },
-                        status=status.HTTP_403_FORBIDDEN
+                        status=status.HTTP_403_FORBIDDEN,
                     )
 
                 logger.info(
@@ -336,8 +260,7 @@ class FollowUpListCreateView(APIView):
             # ==================================================
 
             serializer = FollowupSerializer(
-                data=request.data,
-                context={"request": request}
+                data=request.data, context={"request": request}
             )
 
             if not serializer.is_valid():
@@ -350,18 +273,13 @@ class FollowUpListCreateView(APIView):
                     serializer.errors,
                 )
 
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
             # ==================================================
             # SAVE FOLLOWUP
             # ==================================================
 
-            followup = serializer.save(
-                created_by=user
-            )
+            followup = serializer.save(created_by=user)
 
             logger.info(
                 "FollowUp created successfully: "
@@ -372,11 +290,8 @@ class FollowUpListCreateView(APIView):
             )
 
             return Response(
-                FollowupSerializer(
-                    followup,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_201_CREATED
+                FollowupSerializer(followup, context={"request": request}).data,
+                status=status.HTTP_201_CREATED,
             )
 
         except (Http404, APIException):
@@ -385,20 +300,16 @@ class FollowUpListCreateView(APIView):
         except Exception:
 
             logger.exception(
-                "Error while creating FollowUp: "
-                "user_id=%s",
+                "Error while creating FollowUp: " "user_id=%s",
                 request.user.pk,
             )
 
             return Response(
-                {
-                    "error": (
-                        "Something went wrong while "
-                        "creating the FollowUp."
-                    )
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": ("Something went wrong while " "creating the FollowUp.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
 # ==========================================================
 # FOLLOWUP DETAIL / UPDATE / DELETE
 # ==========================================================
@@ -434,7 +345,7 @@ class FollowUpDetailView(APIView):
                 "followup_type",
                 "created_by",
             ),
-            followup_id=followup_id
+            followup_id=followup_id,
         )
 
     # ======================================================
@@ -452,23 +363,15 @@ class FollowUpDetailView(APIView):
 
         if role is None:
             logger.warning(
-                "FollowUp access denied: "
-                "no role assigned user_id=%s",
-                user.pk
+                "FollowUp access denied: " "no role assigned user_id=%s", user.pk
             )
 
             return Response(
-                {
-                    "detail": "No role assigned to user."
-                },
-                status=status.HTTP_403_FORBIDDEN
+                {"detail": "No role assigned to user."},
+                status=status.HTTP_403_FORBIDDEN,
             )
 
-        role_name = getattr(
-            role,
-            "rolename",
-            ""
-        ).strip().lower()
+        role_name = getattr(role, "rolename", "").strip().lower()
 
         # Admin / Manager can access any FollowUp
         if role_name in ["admin", "manager"]:
@@ -483,17 +386,16 @@ class FollowUpDetailView(APIView):
                 "assigned_to_id=%s",
                 followup.followup_id,
                 user.pk,
-                followup.task_id.assigned_to_id
+                followup.task_id.assigned_to_id,
             )
 
             return Response(
                 {
                     "detail": (
-                        "You can only access FollowUps "
-                        "for tasks assigned to you."
+                        "You can only access FollowUps " "for tasks assigned to you."
                     )
                 },
-                status=status.HTTP_403_FORBIDDEN
+                status=status.HTTP_403_FORBIDDEN,
             )
 
         return None
@@ -506,50 +408,34 @@ class FollowUpDetailView(APIView):
         try:
             followup = self.get_followup(followup_id)
 
-            access_error = self.check_followup_access(
-                request,
-                followup
-            )
+            access_error = self.check_followup_access(request, followup)
 
             if access_error:
                 return access_error
 
-            serializer = FollowupSerializer(
-                followup,
-                context={"request": request}
-            )
+            serializer = FollowupSerializer(followup, context={"request": request})
 
             logger.info(
-                "FollowUp fetched successfully: "
-                "followup_id=%s user_id=%s",
+                "FollowUp fetched successfully: " "followup_id=%s user_id=%s",
                 followup.followup_id,
                 request.user.pk,
             )
 
-            return Response(
-                serializer.data,
-                status=status.HTTP_200_OK
-            )
+            return Response(serializer.data, status=status.HTTP_200_OK)
 
         except (Http404, APIException):
             raise
 
         except Exception:
             logger.exception(
-                "Error while fetching FollowUp: "
-                "followup_id=%s user_id=%s",
+                "Error while fetching FollowUp: " "followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
 
             return Response(
-                {
-                    "error": (
-                        "Something went wrong while "
-                        "fetching the FollowUp."
-                    )
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": ("Something went wrong while " "fetching the FollowUp.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     # ======================================================
@@ -560,19 +446,13 @@ class FollowUpDetailView(APIView):
         try:
             followup = self.get_followup(followup_id)
 
-            access_error = self.check_followup_access(
-                request,
-                followup
-            )
+            access_error = self.check_followup_access(request, followup)
 
             if access_error:
                 return access_error
 
             serializer = FollowupSerializer(
-                followup,
-                data=request.data,
-                partial=True,
-                context={"request": request}
+                followup, data=request.data, partial=True, context={"request": request}
             )
 
             if not serializer.is_valid():
@@ -585,26 +465,19 @@ class FollowUpDetailView(APIView):
                     serializer.errors,
                 )
 
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
             followup = serializer.save()
 
             logger.info(
-                "FollowUp updated successfully: "
-                "followup_id=%s user_id=%s",
+                "FollowUp updated successfully: " "followup_id=%s user_id=%s",
                 followup.followup_id,
                 request.user.pk,
             )
 
             return Response(
-                FollowupSerializer(
-                    followup,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_200_OK
+                FollowupSerializer(followup, context={"request": request}).data,
+                status=status.HTTP_200_OK,
             )
 
         except (Http404, APIException):
@@ -612,20 +485,14 @@ class FollowUpDetailView(APIView):
 
         except Exception:
             logger.exception(
-                "Error while updating FollowUp: "
-                "followup_id=%s user_id=%s",
+                "Error while updating FollowUp: " "followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
 
             return Response(
-                {
-                    "error": (
-                        "Something went wrong while "
-                        "updating the FollowUp."
-                    )
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": ("Something went wrong while " "updating the FollowUp.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     # ======================================================
@@ -636,10 +503,7 @@ class FollowUpDetailView(APIView):
         try:
             followup = self.get_followup(followup_id)
 
-            access_error = self.check_followup_access(
-                request,
-                followup
-            )
+            access_error = self.check_followup_access(request, followup)
 
             if access_error:
                 return access_error
@@ -647,8 +511,7 @@ class FollowUpDetailView(APIView):
             followup.delete()
 
             logger.info(
-                "FollowUp deleted successfully: "
-                "followup_id=%s user_id=%s",
+                "FollowUp deleted successfully: " "followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
@@ -656,9 +519,9 @@ class FollowUpDetailView(APIView):
             return Response(
                 {
                     "message": "FollowUp deleted successfully.",
-                    "followup_id": followup_id
+                    "followup_id": followup_id,
                 },
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
             )
 
         except (Http404, APIException):
@@ -666,35 +529,60 @@ class FollowUpDetailView(APIView):
 
         except Exception:
             logger.exception(
-                "Error while deleting FollowUp: "
-                "followup_id=%s user_id=%s",
+                "Error while deleting FollowUp: " "followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
 
             return Response(
-                {
-                    "error": (
-                        "Something went wrong while "
-                        "deleting the FollowUp."
-                    )
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"error": ("Something went wrong while " "deleting the FollowUp.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
 
 # ==========================================================
 # FOLLOWUP NOTE
 # ==========================================================
 class FollowUpNoteCreateView(APIView):
 
-    permission_classes = [
-        CanCommunicateWithlead
-    ]
+    permission_classes = [CanCommunicateWithlead]
 
     permission_names = {
         "POST": "add_followup_note",
     }
 
+    @extend_schema(
+        tags=["Follow Ups"],
+        summary="Add a note to a follow-up",
+        description=(
+            "Create a new note associated with a specific follow-up. "
+            "The `created_by` field is automatically set to the authenticated user. "
+            "Requires the `add_followup_note` permission."
+        ),
+        operation_id="followup_add_note",
+        parameters=[
+            OpenApiParameter(
+                name="followup_id",
+                type=int,
+                description="Unique identifier of the parent follow-up",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        request=FollowUpNoteSerializer,
+        responses={
+            201: FollowUpNoteSerializer,
+            400: FollowUpNoteSerializer,
+            404: inline_serializer(
+                "FollowUpNoteNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "FollowUpNoteServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def post(self, request, followup_id):
 
         try:
@@ -704,7 +592,7 @@ class FollowUpNoteCreateView(APIView):
                     "task_id",
                     "task_id__assigned_to",
                 ),
-                followup_id=followup_id
+                followup_id=followup_id,
             )
 
             user = request.user
@@ -715,25 +603,15 @@ class FollowUpNoteCreateView(APIView):
 
             if not user.is_superuser:
 
-                role = getattr(
-                    user,
-                    "role",
-                    None
-                )
+                role = getattr(user, "role", None)
 
                 if role is None:
                     return Response(
-                        {
-                            "detail": "No role assigned to user."
-                        },
-                        status=status.HTTP_403_FORBIDDEN
+                        {"detail": "No role assigned to user."},
+                        status=status.HTTP_403_FORBIDDEN,
                     )
 
-                role_name = getattr(
-                    role,
-                    "rolename",
-                    ""
-                ).strip().lower()
+                role_name = getattr(role, "rolename", "").strip().lower()
 
                 # Admin / Manager -> any FollowUp note
                 if role_name in ["admin", "manager"]:
@@ -750,7 +628,7 @@ class FollowUpNoteCreateView(APIView):
                             "assigned_to_id=%s",
                             followup_id,
                             user.pk,
-                            followup.task_id.assigned_to_id
+                            followup.task_id.assigned_to_id,
                         )
 
                         return Response(
@@ -761,7 +639,7 @@ class FollowUpNoteCreateView(APIView):
                                     "assigned to you."
                                 )
                             },
-                            status=status.HTTP_403_FORBIDDEN
+                            status=status.HTTP_403_FORBIDDEN,
                         )
 
             # ==================================================
@@ -769,8 +647,7 @@ class FollowUpNoteCreateView(APIView):
             # ==================================================
 
             serializer = FollowUpNoteSerializer(
-                data=request.data,
-                context={"request": request}
+                data=request.data, context={"request": request}
             )
 
             if not serializer.is_valid():
@@ -780,251 +657,37 @@ class FollowUpNoteCreateView(APIView):
                     "followup_id=%s user_id=%s errors=%s",
                     followup_id,
                     user.pk,
-                    serializer.errors
+                    serializer.errors,
                 )
 
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
             # ==================================================
             # CREATE NOTE
             # ==================================================
 
-            note = serializer.save(
-                followup_id=followup,
-                created_by=user
-            )
+            note = serializer.save(followup_id=followup, created_by=user)
 
             logger.info(
                 "FollowUp note created successfully: "
                 "note_id=%s followup_id=%s user_id=%s",
                 note.note_id,
                 followup_id,
-                user.pk
+                request.user.pk,
             )
-
             return Response(
-                FollowUpNoteSerializer(
-                    note,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_201_CREATED
+                FollowUpNoteSerializer(note, context={"request": request}).data,
+                status=status.HTTP_201_CREATED,
             )
-
         except (Http404, APIException):
             raise
-
         except Exception:
-
             logger.exception(
-                "Error while creating FollowUp note: "
-                "followup_id=%s user_id=%s",
+                "Error while creating FollowUp note: followup_id=%s user_id=%s",
                 followup_id,
-                request.user.pk
-            )
-
-            return Response(
-                {
-                    "error": (
-                        "Something went wrong while "
-                        "creating the FollowUp note."
-                    )
-                },
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-#==================================================================
-# FOLLOWUP DEATAIL / UPDATE / DELETE
-#===================================================================
-class FollowUpNoteDetailView(APIView):
-
-    permission_classes = [
-        CanCommunicateWithlead
-    ]
-
-    permission_names = {
-        "GET": "view_followupnote",
-        "PATCH": "change_followupnote",
-        "DELETE": "delete_followupnote",
-    }
-
-    def get_note(self, note_id):
-
-        return get_object_or_404(
-            FollowUpNote.objects.select_related(
-                "followup_id",
-                "followup_id__task_id",
-                "followup_id__task_id__assigned_to",
-                "created_by",
-            ),
-            note_id=note_id
-        )
-
-    def check_note_access(self, request, note):
-        user = request.user
-        if user.is_superuser:
-            return None
-        role = getattr(user, "role", None)
-        if role is None:
-            return Response(
-                {"detail": "No role assigned to user."},
-                status=status.HTTP_403_FORBIDDEN
-            )
-        role_name = getattr(
-            role,
-            "rolename",
-            ""
-        ).strip().lower()
-        # Admin / Manager
-        if role_name in ["admin", "manager"]:
-            return None
-
-        # Assigned employee only
-        if note.followup_id.task_id.assigned_to_id != user.pk:
-
-            logger.warning(
-                "FollowUp note access denied: "
-                "note_id=%s user_id=%s assigned_to_id=%s",
-                note.note_id,
-                user.pk,
-                note.followup_id.task_id.assigned_to_id
+                request.user.pk,
             )
             return Response(
-                {
-                    "detail": (
-                        "You can only access notes "
-                        "for tasks assigned to you."
-                    )
-                },
-                status=status.HTTP_403_FORBIDDEN
+                {"error": "Something went wrong while creating the FollowUp note."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        return None
-    # ======================================================
-    # DETAIL
-    # ======================================================
-    def get(self, request, note_id):
-        try:
-            note = self.get_note(note_id)
-
-            access_error = self.check_note_access(
-                request,
-                note
-            )
-
-            if access_error:
-                return access_error
-
-            serializer = FollowUpNoteSerializer(
-                note,
-                context={"request": request}
-            )
-            return Response(
-                serializer.data,
-                status=status.HTTP_200_OK
-            )
-        except (Http404, APIException):
-            raise
-        except Exception:
-            logger.exception(
-                "Error while fetching note: "
-                "note_id=%s user_id=%s",
-                note_id,
-                request.user.pk
-            )
-            return Response(
-                {"error": "Something went wrong while fetching the note."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    # ======================================================
-    # UPDATE
-    # ======================================================
-    def patch(self, request, note_id):
-        try:
-            note = self.get_note(note_id)
-            access_error = self.check_note_access(
-                request,
-                note
-            )
-            if access_error:
-                return access_error
-            serializer = FollowUpNoteSerializer(
-                note,
-                data=request.data,
-                partial=True,
-                context={"request": request}
-            )
-            if not serializer.is_valid():
-
-                return Response(
-                    serializer.errors,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            note = serializer.save()
-            logger.info(
-                "FollowUp note updated successfully: "
-                "note_id=%s user_id=%s",
-                note.note_id,
-                request.user.pk
-            )
-            return Response(
-                FollowUpNoteSerializer(
-                    note,
-                    context={"request": request}
-                ).data,
-                status=status.HTTP_200_OK
-            )
-        except (Http404, APIException):
-            raise
-        except Exception:
-            logger.exception(
-                "Error while updating note: "
-                "note_id=%s user_id=%s",
-                note_id,
-                request.user.pk
-            )
-            return Response(
-                {"error": "Something went wrong while updating the note."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    # ======================================================
-    # DELETE
-    # ======================================================
-
-    def delete(self, request, note_id):
-        try:
-            note = self.get_note(note_id)
-            access_error = self.check_note_access(
-                request,
-                note
-            )
-            if access_error:
-                return access_error
-            note.delete()
-            logger.info(
-                "FollowUp note deleted successfully: "
-                "note_id=%s user_id=%s",
-                note_id,
-                request.user.pk
-            )
-            return Response(
-                {
-                    "message": "FollowUp note deleted successfully.",
-                    "note_id": note_id
-                },
-                status=status.HTTP_200_OK
-            )
-        except (Http404, APIException):
-            raise
-        except Exception:
-            logger.exception(
-                "Error while deleting note: "
-                "note_id=%s user_id=%s",
-                note_id,
-                request.user.pk
-            )
-            return Response(
-                {"error": "Something went wrong while deleting the note."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR )

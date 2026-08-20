@@ -1,4 +1,4 @@
-#from rest_framework.permissions import BasePermission
+# from rest_framework.permissions import BasePermission
 
 from accounts.permissions import HasDynamicPermission
 
@@ -12,6 +12,7 @@ from accounts.permissions import HasDynamicPermission
 #         return False
 #     role_name = getattr(role, "rolename", getattr(role, "role_name", ""))
 #     return str(role_name).strip().lower() == "manager"
+
 
 class CanCommunicateWithLead(HasDynamicPermission):
     # message = "Only the lead owner, task assignee, creator, or manager can communicate with this record."

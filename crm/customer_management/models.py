@@ -120,7 +120,6 @@ class PipelineStage(models.Model):
 
 
 class Lead(models.Model):
-
     class Status(models.TextChoices):
         ACTIVE = "ACTIVE", "Active"
         LOST = "LOST", "Lost"
@@ -173,8 +172,12 @@ class Lead(models.Model):
         db_table = "lead"
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["assigned_to", "status"], name="lead_assigned_status_idx"),
-            models.Index(fields=["pipeline", "current_stage"], name="lead_pipeline_stage_idx"),
+            models.Index(
+                fields=["assigned_to", "status"], name="lead_assigned_status_idx"
+            ),
+            models.Index(
+                fields=["pipeline", "current_stage"], name="lead_pipeline_stage_idx"
+            ),
             models.Index(fields=["created_at"], name="lead_created_at_idx"),
         ]
 
@@ -199,26 +202,18 @@ class Lead(models.Model):
         # Lost Lead validation.
         if self.status == self.Status.LOST:
             if not self.lost_reason:
-                errors["lost_reason"] = (
-                    "Lost reason is required when a Lead is lost."
-                )
+                errors["lost_reason"] = "Lost reason is required when a Lead is lost."
 
             if not self.lost_at:
-                errors["lost_at"] = (
-                    "Lost timestamp is required when a Lead is lost."
-                )
+                errors["lost_at"] = "Lost timestamp is required when a Lead is lost."
 
         # Non-lost Leads should not contain lost metadata.
         if self.status != self.Status.LOST:
             if self.lost_reason:
-                errors["lost_reason"] = (
-                    "Lost reason can only be set for a lost Lead."
-                )
+                errors["lost_reason"] = "Lost reason can only be set for a lost Lead."
 
             if self.lost_at:
-                errors["lost_at"] = (
-                    "Lost timestamp can only be set for a lost Lead."
-                )
+                errors["lost_at"] = "Lost timestamp can only be set for a lost Lead."
 
         if errors:
             raise ValidationError(errors)
@@ -253,7 +248,6 @@ class Customer(models.Model):
 
 
 class Activity(models.Model):
-
     class ActivityType(models.TextChoices):
         CALL = "CALL", "Call"
         EMAIL = "EMAIL", "Email"
@@ -264,10 +258,19 @@ class Activity(models.Model):
         QUOTATION_UPDATED = "QUOTATION_UPDATED", "Quotation Updated"
         QUOTATION_SUBMITTED = "QUOTATION_SUBMITTED", "Quotation Submitted"
         QUOTATION_APPROVED = "QUOTATION_APPROVED", "Quotation Approved"
-        QUOTATION_APPROVAL_REJECTED = "QUOTATION_APPROVAL_REJECTED", "Quotation Approval Rejected"
+        QUOTATION_APPROVAL_REJECTED = (
+            "QUOTATION_APPROVAL_REJECTED",
+            "Quotation Approval Rejected",
+        )
         QUOTATION_SENT = "QUOTATION_SENT", "Quotation Sent"
-        QUOTATION_REVISION_REQUESTED = "QUOTATION_REVISION_REQUESTED", "Quotation Revision Requested"
-        QUOTATION_VERSION_CREATED = "QUOTATION_VERSION_CREATED", "Quotation Version Created"
+        QUOTATION_REVISION_REQUESTED = (
+            "QUOTATION_REVISION_REQUESTED",
+            "Quotation Revision Requested",
+        )
+        QUOTATION_VERSION_CREATED = (
+            "QUOTATION_VERSION_CREATED",
+            "Quotation Version Created",
+        )
         QUOTATION_ACCEPTED = "QUOTATION_ACCEPTED", "Quotation Accepted"
         QUOTATION_REJECTED = "QUOTATION_REJECTED", "Quotation Rejected"
         QUOTATION_PDF_GENERATED = "QUOTATION_PDF_GENERATED", "Quotation PDF Generated"
@@ -343,7 +346,7 @@ class Activity(models.Model):
             raise ValidationError(
                 "Follow-up date cannot be set when follow-up is not required."
             )
-    
+
     def __str__(self):
         return f"{self.activity_type} - {self.outcome}"
 
@@ -546,9 +549,7 @@ class QuotationVersion(models.Model):
         ]
 
     def __str__(self):
-        return (
-            f"{self.quotation.quotation_number} v{self.version_number}"
-        )
+        return f"{self.quotation.quotation_number} v{self.version_number}"
 
 
 class QuotationLineItem(models.Model):
@@ -579,7 +580,6 @@ class QuotationLineItem(models.Model):
 
 
 class QuotationApproval(models.Model):
-
     class Decision(models.TextChoices):
         PENDING = "PENDING", "Pending"
         APPROVED = "APPROVED", "Approved"

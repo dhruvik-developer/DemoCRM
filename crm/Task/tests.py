@@ -1,5 +1,7 @@
 from datetime import timedelta
 
+from django.contrib.auth.models import Permission
+from django.contrib.contenttypes.models import ContentType
 from django.utils import timezone
 
 from rest_framework import status
@@ -43,6 +45,15 @@ class TaskAPITestCase(APITestCase):
             rolename="Employee",
             description="Employee role",
         )
+
+        ct = ContentType.objects.get_for_model(Task)
+        for codename in ("add_task", "task_assign", "task_update"):
+            perm, _ = Permission.objects.get_or_create(
+                codename=codename,
+                content_type=ct,
+                defaults={"name": f"Can {codename}"},
+            )
+            self.role.permissions.add(perm)
 
         self.user = CustomUser.objects.create_user(
             email="taskuser@example.com",
@@ -111,17 +122,13 @@ class TaskAPITestCase(APITestCase):
         # AUTHENTICATE
         # --------------------------------------------------
 
-        self.client.force_authenticate(
-            user=self.user
-        )
+        self.client.force_authenticate(user=self.user)
 
         # --------------------------------------------------
         # COMMON DATES
         # --------------------------------------------------
 
-        self.future_datetime = (
-            timezone.now() + timedelta(days=1)
-        )
+        self.future_datetime = timezone.now() + timedelta(days=1)
 
         self.future_date = self.future_datetime.date()
 
@@ -147,26 +154,17 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_task_list_requires_authentication(self):
+        self.client.force_authenticate(user=None)
 
-        self.client.force_authenticate(
-            user=None
-        )
+        response = self.client.get("/api/tasks/")
 
-        response = self.client.get(
-            "/api/tasks/"
-        )
-
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_401_UNAUTHORIZED
-        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # ======================================================
     # TASK - CREATE
     # ======================================================
 
     def test_create_task(self):
-
         response = self.client.post(
             "/api/tasks/",
             {
@@ -188,9 +186,7 @@ class TaskAPITestCase(APITestCase):
             status.HTTP_201_CREATED,
         )
 
-        task = Task.objects.get(
-            task_title="New Task"
-        )
+        task = Task.objects.get(task_title="New Task")
 
         self.assertEqual(
             task.created_by,
@@ -202,7 +198,6 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_create_task_without_title(self):
-
         response = self.client.post(
             "/api/tasks/",
             {
@@ -227,10 +222,7 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_get_task_detail(self):
-
-        response = self.client.get(
-            f"/api/tasks/{self.task.task_id}/"
-        )
+        response = self.client.get(f"/api/tasks/{self.task.task_id}/")
 
         self.assertEqual(
             response.status_code,
@@ -247,7 +239,6 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_update_task(self):
-
         response = self.client.patch(
             f"/api/tasks/{self.task.task_id}/",
             {
@@ -273,10 +264,7 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_delete_task_soft_delete(self):
-
-        response = self.client.delete(
-            f"/api/tasks/{self.task.task_id}/"
-        )
+        response = self.client.delete(f"/api/tasks/{self.task.task_id}/")
 
         self.assertEqual(
             response.status_code,
@@ -285,16 +273,13 @@ class TaskAPITestCase(APITestCase):
 
         self.task.refresh_from_db()
 
-        self.assertFalse(
-            self.task.is_active
-        )
+        self.assertFalse(self.task.is_active)
 
     # ======================================================
     # TASK - ASSIGN
     # ======================================================
 
     def test_assign_task(self):
-
         second_user = CustomUser.objects.create_user(
             email="second@example.com",
             username="seconduser",
@@ -328,7 +313,6 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_update_task_status(self):
-
         completed_status = TaskStatus.objects.create(
             status_name="Completed",
             is_active=True,
@@ -359,7 +343,6 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_task_pagination(self):
-
         for number in range(15):
             Task.objects.create(
                 assigned_to=self.user,
@@ -374,9 +357,7 @@ class TaskAPITestCase(APITestCase):
                 is_active=True,
             )
 
-        response = self.client.get(
-            "/api/tasks/?page=1&page_size=10"
-        )
+        response = self.client.get("/api/tasks/?page=1&page_size=10")
 
         self.assertEqual(
             response.status_code,
@@ -398,10 +379,7 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_task_filter_by_status(self):
-
-        response = self.client.get(
-            f"/api/tasks/?status={self.task_status.status_id}"
-        )
+        response = self.client.get(f"/api/tasks/?status={self.task_status.status_id}")
 
         self.assertEqual(
             response.status_code,
@@ -418,10 +396,7 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_task_search(self):
-
-        response = self.client.get(
-            "/api/tasks/?search=Rahul"
-        )
+        response = self.client.get("/api/tasks/?search=Rahul")
 
         self.assertEqual(
             response.status_code,
@@ -438,10 +413,7 @@ class TaskAPITestCase(APITestCase):
     # ======================================================
 
     def test_task_ordering(self):
-
-        response = self.client.get(
-            "/api/tasks/?ordering=-created_at"
-        )
+        response = self.client.get("/api/tasks/?ordering=-created_at")
 
         self.assertEqual(
             response.status_code,
@@ -460,7 +432,6 @@ class MeetingAPITestCase(APITestCase):
     """
 
     def setUp(self):
-
         # --------------------------------------------------
         # USER / ROLE
         # --------------------------------------------------
@@ -470,6 +441,20 @@ class MeetingAPITestCase(APITestCase):
             description="Employee role",
         )
 
+        ct = ContentType.objects.get_for_model(Task)
+        for codename in (
+            "view_meeting",
+            "change_meeting",
+            "add_meeting_participant",
+            "delete_meeting_participant",
+        ):
+            perm, _ = Permission.objects.get_or_create(
+                codename=codename,
+                content_type=ct,
+                defaults={"name": f"Can {codename}"},
+            )
+            self.role.permissions.add(perm)
+
         self.user = CustomUser.objects.create_user(
             email="meetinguser@example.com",
             username="meetinguser",
@@ -478,9 +463,7 @@ class MeetingAPITestCase(APITestCase):
             role=self.role,
         )
 
-        self.client.force_authenticate(
-            user=self.user
-        )
+        self.client.force_authenticate(user=self.user)
 
         # --------------------------------------------------
         # TASK MASTER DATA
@@ -573,22 +556,15 @@ class MeetingAPITestCase(APITestCase):
     # ======================================================
 
     def test_create_meeting(self):
-
         response = self.client.post(
             "/api/tasks/meetings/",
             {
                 "task_id": self.task.task_id,
                 "lead": str(self.lead.id),
-                "meeting_status_id": (
-                    self.meeting_status.meeting_status_id
-                ),
-                "meeting_type_id": (
-                    self.meeting_type.meeting_type_id
-                ),
+                "meeting_status_id": (self.meeting_status.meeting_status_id),
+                "meeting_type_id": (self.meeting_type.meeting_type_id),
                 "meeting_title": "Client Meeting",
-                "meeting_date": (
-                    timezone.now() + timedelta(days=1)
-                ).date().isoformat(),
+                "meeting_date": (timezone.now() + timedelta(days=1)).date().isoformat(),
                 "start_time": "10:00:00",
                 "end_time": "11:00:00",
                 "location": "Office",
@@ -602,33 +578,22 @@ class MeetingAPITestCase(APITestCase):
             status.HTTP_201_CREATED,
         )
 
-        self.assertTrue(
-            Meeting.objects.filter(
-                meeting_title="Client Meeting"
-            ).exists()
-        )
+        self.assertTrue(Meeting.objects.filter(meeting_title="Client Meeting").exists())
 
     # ======================================================
     # MEETING - INVALID TIME
     # ======================================================
 
     def test_create_meeting_invalid_time(self):
-
         response = self.client.post(
             "/api/tasks/meetings/",
             {
                 "task_id": self.task.task_id,
                 "lead": str(self.lead.id),
-                "meeting_status_id": (
-                    self.meeting_status.meeting_status_id
-                ),
-                "meeting_type_id": (
-                    self.meeting_type.meeting_type_id
-                ),
+                "meeting_status_id": (self.meeting_status.meeting_status_id),
+                "meeting_type_id": (self.meeting_type.meeting_type_id),
                 "meeting_title": "Invalid Meeting",
-                "meeting_date": (
-                    timezone.now() + timedelta(days=1)
-                ).date().isoformat(),
+                "meeting_date": (timezone.now() + timedelta(days=1)).date().isoformat(),
                 "start_time": "11:00:00",
                 "end_time": "10:00:00",
             },
@@ -645,7 +610,6 @@ class MeetingAPITestCase(APITestCase):
     # ======================================================
 
     def test_meeting_detail(self):
-
         meeting = Meeting.objects.create(
             task_id=self.task,
             lead=self.lead,
@@ -660,9 +624,7 @@ class MeetingAPITestCase(APITestCase):
             created_by=self.user,
         )
 
-        response = self.client.get(
-            f"/api/tasks/meetings/{meeting.meeting_id}/"
-        )
+        response = self.client.get(f"/api/tasks/meetings/{meeting.meeting_id}/")
 
         self.assertEqual(
             response.status_code,
@@ -674,17 +636,12 @@ class MeetingAPITestCase(APITestCase):
     # ======================================================
 
     def test_reschedule_meeting(self):
-
         meeting = self.create_meeting()
 
         response = self.client.patch(
-            f"/api/tasks/meetings/"
-            f"{meeting.meeting_id}/reschedule/",
+            f"/api/tasks/meetings/{meeting.meeting_id}/reschedule/",
             {
-                "meeting_date": (
-                    timezone.now()
-                    + timedelta(days=2)
-                ).date().isoformat(),
+                "meeting_date": (timezone.now() + timedelta(days=2)).date().isoformat(),
                 "start_time": "14:00:00",
                 "end_time": "15:00:00",
             },
@@ -708,7 +665,6 @@ class MeetingAPITestCase(APITestCase):
     # ======================================================
 
     def test_update_meeting_status(self):
-
         meeting = self.create_meeting()
 
         completed_status = MeetingStatus.objects.create(
@@ -717,12 +673,9 @@ class MeetingAPITestCase(APITestCase):
         )
 
         response = self.client.patch(
-            f"/api/tasks/meetings/"
-            f"{meeting.meeting_id}/status/",
+            f"/api/tasks/meetings/{meeting.meeting_id}/status/",
             {
-                "meeting_status_id": (
-                    completed_status.meeting_status_id
-                ),
+                "meeting_status_id": (completed_status.meeting_status_id),
             },
             format="json",
         )
@@ -744,7 +697,6 @@ class MeetingAPITestCase(APITestCase):
     # ======================================================
 
     def test_add_meeting_participant(self):
-
         meeting = self.create_meeting()
 
         second_user = CustomUser.objects.create_user(
@@ -756,8 +708,7 @@ class MeetingAPITestCase(APITestCase):
         )
 
         response = self.client.post(
-            f"/api/tasks/meetings/"
-            f"{meeting.meeting_id}/participants/",
+            f"/api/tasks/meetings/{meeting.meeting_id}/participants/",
             {
                 "user_id": str(second_user.user_id),
                 "participant_role": "Client Representative",
@@ -783,7 +734,6 @@ class MeetingAPITestCase(APITestCase):
     # ======================================================
 
     def test_remove_meeting_participant(self):
-
         meeting = self.create_meeting()
 
         participant = CustomUser.objects.create_user(
@@ -824,12 +774,16 @@ class MeetingAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_meeting_forbidden_for_other_user(self):
+        basic_role = Role.objects.create(
+            rolename="Basic",
+            description="No meeting permissions",
+        )
         other_user = CustomUser.objects.create_user(
             email="meetingother@example.com",
             username="meetingother",
             password="Test@123",
             phone_number="9999999992",
-            role=self.role,
+            role=basic_role,
         )
         meeting = self.create_meeting()
         self.client.force_authenticate(user=other_user)
@@ -865,9 +819,7 @@ class MeetingAPITestCase(APITestCase):
     # ======================================================
 
     def future_date(self):
-        return (
-            timezone.now() + timedelta(days=1)
-        ).date()
+        return (timezone.now() + timedelta(days=1)).date()
 
     def create_meeting(self):
         return Meeting.objects.create(
@@ -885,14 +837,12 @@ class MeetingAPITestCase(APITestCase):
         )
 
 
-
 class ReminderAPITestCase(APITestCase):
     """
     Developer 3 - Reminder API tests
     """
 
     def setUp(self):
-
         # --------------------------------------------------
         # USER / ROLE
         # --------------------------------------------------
@@ -902,6 +852,15 @@ class ReminderAPITestCase(APITestCase):
             description="Employee role",
         )
 
+        ct = ContentType.objects.get_for_model(Task)
+        for codename in ("view_reminder", "change_reminder", "delete_reminder"):
+            perm, _ = Permission.objects.get_or_create(
+                codename=codename,
+                content_type=ct,
+                defaults={"name": f"Can {codename}"},
+            )
+            self.role.permissions.add(perm)
+
         self.user = CustomUser.objects.create_user(
             email="reminderuser@example.com",
             username="reminderuser",
@@ -910,9 +869,7 @@ class ReminderAPITestCase(APITestCase):
             role=self.role,
         )
 
-        self.client.force_authenticate(
-            user=self.user
-        )
+        self.client.force_authenticate(user=self.user)
 
         # --------------------------------------------------
         # TASK DATA
@@ -1002,9 +959,7 @@ class ReminderAPITestCase(APITestCase):
             meeting_status_id=self.meeting_status,
             meeting_type_id=self.meeting_type,
             meeting_title="Reminder Meeting",
-            meeting_date=(
-                timezone.now() + timedelta(days=1)
-            ).date(),
+            meeting_date=(timezone.now() + timedelta(days=1)).date(),
             start_time="10:00:00",
             end_time="11:00:00",
             location="Office",
@@ -1031,25 +986,16 @@ class ReminderAPITestCase(APITestCase):
     # ======================================================
 
     def test_create_reminder(self):
-
-        reminder_datetime = (
-            timezone.now() + timedelta(hours=1)
-        )
+        reminder_datetime = timezone.now() + timedelta(hours=1)
 
         response = self.client.post(
             "/api/tasks/reminders/",
             {
                 "task_id": self.task.task_id,
                 "meeting_id": self.meeting.meeting_id,
-                "reminder_type_id": (
-                    self.reminder_type.reminder_type_id
-                ),
-                "reminder_status_id": (
-                    self.reminder_status.reminder_status_id
-                ),
-                "reminder_datetime": (
-                    reminder_datetime.isoformat()
-                ),
+                "reminder_type_id": (self.reminder_type.reminder_type_id),
+                "reminder_status_id": (self.reminder_status.reminder_status_id),
+                "reminder_datetime": (reminder_datetime.isoformat()),
                 "message": "Meeting reminder",
             },
             format="json",
@@ -1060,34 +1006,24 @@ class ReminderAPITestCase(APITestCase):
             status.HTTP_201_CREATED,
         )
 
-        self.assertTrue(
-            Reminder.objects.filter(
-                message="Meeting reminder"
-            ).exists()
-        )
+        self.assertTrue(Reminder.objects.filter(message="Meeting reminder").exists())
 
     # ======================================================
     # REMINDER DETAIL
     # ======================================================
 
     def test_reminder_detail(self):
-
         reminder = Reminder.objects.create(
             task_id=self.task,
             meeting_id=self.meeting,
             reminder_type_id=self.reminder_type,
             reminder_status_id=self.reminder_status,
-            reminder_datetime=(
-                timezone.now() + timedelta(hours=1)
-            ),
+            reminder_datetime=(timezone.now() + timedelta(hours=1)),
             message="Existing reminder",
             created_by=self.user,
         )
 
-        response = self.client.get(
-            f"/api/tasks/reminders/"
-            f"{reminder.reminder_id}/"
-        )
+        response = self.client.get(f"/api/tasks/reminders/{reminder.reminder_id}/")
 
         self.assertEqual(
             response.status_code,
@@ -1099,22 +1035,18 @@ class ReminderAPITestCase(APITestCase):
     # ======================================================
 
     def test_update_reminder(self):
-
         reminder = Reminder.objects.create(
             task_id=self.task,
             meeting_id=self.meeting,
             reminder_type_id=self.reminder_type,
             reminder_status_id=self.reminder_status,
-            reminder_datetime=(
-                timezone.now() + timedelta(hours=1)
-            ),
+            reminder_datetime=(timezone.now() + timedelta(hours=1)),
             message="Old reminder",
             created_by=self.user,
         )
 
         response = self.client.patch(
-            f"/api/tasks/reminders/"
-            f"{reminder.reminder_id}/",
+            f"/api/tasks/reminders/{reminder.reminder_id}/",
             {
                 "message": "Updated reminder",
             },
@@ -1138,23 +1070,17 @@ class ReminderAPITestCase(APITestCase):
     # ======================================================
 
     def test_delete_reminder(self):
-
         reminder = Reminder.objects.create(
             task_id=self.task,
             meeting_id=self.meeting,
             reminder_type_id=self.reminder_type,
             reminder_status_id=self.reminder_status,
-            reminder_datetime=(
-                timezone.now() + timedelta(hours=1)
-            ),
+            reminder_datetime=(timezone.now() + timedelta(hours=1)),
             message="Delete reminder",
             created_by=self.user,
         )
 
-        response = self.client.delete(
-            f"/api/tasks/reminders/"
-            f"{reminder.reminder_id}/"
-        )
+        response = self.client.delete(f"/api/tasks/reminders/{reminder.reminder_id}/")
 
         self.assertEqual(
             response.status_code,
@@ -1162,9 +1088,7 @@ class ReminderAPITestCase(APITestCase):
         )
 
         self.assertFalse(
-            Reminder.objects.filter(
-                reminder_id=reminder.reminder_id
-            ).exists()
+            Reminder.objects.filter(reminder_id=reminder.reminder_id).exists()
         )
 
     # ======================================================
@@ -1172,15 +1096,12 @@ class ReminderAPITestCase(APITestCase):
     # ======================================================
 
     def test_update_reminder_status(self):
-
         reminder = Reminder.objects.create(
             task_id=self.task,
             meeting_id=self.meeting,
             reminder_type_id=self.reminder_type,
             reminder_status_id=self.reminder_status,
-            reminder_datetime=(
-                timezone.now() + timedelta(hours=1)
-            ),
+            reminder_datetime=(timezone.now() + timedelta(hours=1)),
             message="Status reminder",
             created_by=self.user,
         )
@@ -1191,12 +1112,9 @@ class ReminderAPITestCase(APITestCase):
         )
 
         response = self.client.patch(
-            f"/api/tasks/reminders/"
-            f"{reminder.reminder_id}/status/",
+            f"/api/tasks/reminders/{reminder.reminder_id}/status/",
             {
-                "reminder_status_id": (
-                    sent_status.reminder_status_id
-                ),
+                "reminder_status_id": (sent_status.reminder_status_id),
             },
             format="json",
         )
@@ -1222,12 +1140,16 @@ class ReminderAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_reminder_forbidden_for_other_user(self):
+        basic_role = Role.objects.create(
+            rolename="Basic",
+            description="No reminder permissions",
+        )
         other_user = CustomUser.objects.create_user(
             email="other@example.com",
             username="otheruser",
             password="Test@123",
             phone_number="9999999993",
-            role=self.role,
+            role=basic_role,
         )
         reminder = Reminder.objects.create(
             task_id=None,
@@ -1245,6 +1167,7 @@ class ReminderAPITestCase(APITestCase):
 
     def test_process_due_meeting_reminders_task_and_meeting(self):
         from Task.services import process_due_meeting_reminders
+
         # Create a due standalone reminder
         due_reminder = Reminder.objects.create(
             task_id=self.task,
@@ -1261,5 +1184,3 @@ class ReminderAPITestCase(APITestCase):
         self.assertGreaterEqual(sent_count, 1)
         due_reminder.refresh_from_db()
         self.assertTrue(due_reminder.is_sent)
-
-

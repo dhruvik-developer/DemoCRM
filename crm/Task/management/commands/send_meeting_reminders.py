@@ -8,5 +8,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         sent_count = process_due_meeting_reminders()
         self.stdout.write(
-            self.style.SUCCESS(f"Successfully processed {sent_count} meeting reminders.")
+            self.style.SUCCESS(
+                f"Successfully processed {sent_count} meeting reminders."
+            )
         )
