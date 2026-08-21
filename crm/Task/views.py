@@ -1,6 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.shortcuts import get_object_or_404
 from django.http import Http404
+from django.db import transaction
 import logging
 
 from rest_framework import status, serializers
@@ -323,7 +324,8 @@ class TaskListCreateView(APIView):
 
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-            task = serializer.save(created_by=request.user)
+            with transaction.atomic():
+                task = serializer.save(created_by=request.user)
 
             logger.info(
                 "Task created successfully: task_id=%s user_id=%s",
@@ -601,7 +603,8 @@ class TaskDetailView(APIView):
 
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-            task = serializer.save()
+            with transaction.atomic():
+                task = serializer.save()
 
             logger.info(
                 "Task updated successfully: task_id=%s user_id=%s",
@@ -842,14 +845,15 @@ class TaskAssignView(APIView):
 
             old_user = task.assigned_to
 
-            task.assigned_to = new_user
+            with transaction.atomic():
+                task.assigned_to = new_user
 
-            task.save(
-                update_fields=[
-                    "assigned_to",
-                    "updated_at",
-                ]
-            )
+                task.save(
+                    update_fields=[
+                        "assigned_to",
+                        "updated_at",
+                    ]
+                )
 
             event_type = (
                 NotificationEventType.TASK_REASSIGNED
@@ -994,14 +998,15 @@ class TaskStatusUpdateView(APIView):
 
             old_status = task.status
 
-            task.status = new_status
+            with transaction.atomic():
+                task.status = new_status
 
-            task.save(
-                update_fields=[
-                    "status",
-                    "updated_at",
-                ]
-            )
+                task.save(
+                    update_fields=[
+                        "status",
+                        "updated_at",
+                    ]
+                )
 
             if task.assigned_to and task.assigned_to != request.user:
                 trigger_notification_event(
@@ -1064,7 +1069,10 @@ class MeetingCreateView(APIView):
     Create a meeting.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "POST": "add_meeting",
+    }
 
     @extend_schema(
         tags=["Meetings"],
@@ -1188,6 +1196,7 @@ class MeetingDetailView(APIView):
                     "created_by",
                 ),
                 meeting_id=meeting_id,
+                is_active=True,
             )
             self.check_object_permissions(request, meeting)
             serializer = MeetingSerializer(meeting, context={"request": request})
@@ -1292,7 +1301,7 @@ class MeetingRescheduleView(APIView):
     )
     def patch(self, request, meeting_id):
         try:
-            meeting = get_object_or_404(Meeting, meeting_id=meeting_id)
+            meeting = get_object_or_404(Meeting, meeting_id=meeting_id, is_active=True)
             self.check_object_permissions(request, meeting)
 
             reschedule_data = {}
@@ -1323,7 +1332,8 @@ class MeetingRescheduleView(APIView):
                     serializer.errors,
                 )
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            meeting = serializer.save()
+            with transaction.atomic():
+                meeting = serializer.save()
             logger.info(
                 "Meeting rescheduled successfully: meeting_id=%s user_id=%s",
                 meeting.meeting_id,
@@ -1428,6 +1438,7 @@ class MeetingStatusUpdateView(APIView):
             meeting = get_object_or_404(
                 Meeting.objects.select_related("meeting_status_id"),
                 meeting_id=meeting_id,
+                is_active=True,
             )
             self.check_object_permissions(request, meeting)
             status_id = request.data.get("meeting_status_id")
@@ -1783,7 +1794,10 @@ class ReminderCreateView(APIView):
     Create a reminder.
     """
 
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "POST": "add_reminder",
+    }
 
     @extend_schema(
         tags=["Reminders"],
@@ -1820,6 +1834,23 @@ class ReminderCreateView(APIView):
                 reminder.reminder_id,
                 request.user.pk,
             )
+
+            try:
+                if reminder.reminder_for and reminder.reminder_for != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.REMINDER_CREATED,
+                        recipient=reminder.reminder_for,
+                        context={
+                            "user_name": reminder.reminder_for.get_full_name()
+                            or reminder.reminder_for.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "message": reminder.message[:100],
+                            "reminder_datetime": str(reminder.reminder_datetime),
+                        },
+                    )
+            except Exception:
+                logger.exception("Failed to send reminder creation notification")
 
             return Response(
                 ReminderSerializer(reminder, context={"request": request}).data,
@@ -1866,6 +1897,7 @@ class ReminderDetailView(APIView):
                 "created_by",
             ),
             reminder_id=reminder_id,
+            is_active=True,
         )
 
     # ------------------------------------------------------
@@ -2156,6 +2188,7 @@ class ReminderStatusUpdateView(APIView):
             reminder = get_object_or_404(
                 Reminder.objects.select_related("reminder_status_id"),
                 reminder_id=reminder_id,
+                is_active=True,
             )
             self.check_object_permissions(request, reminder)
             status_id = request.data.get("reminder_status_id")

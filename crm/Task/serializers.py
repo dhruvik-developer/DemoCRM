@@ -113,11 +113,21 @@ class TaskSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         lead = attrs.get("lead", getattr(self.instance, "lead", None))
+        customer = attrs.get("customer", getattr(self.instance, "customer", None))
 
-        if not lead:
+        if not lead and not customer:
             raise serializers.ValidationError(
-                {"lead": "Lead is required to create a task."}
+                {"lead": "At least a Lead or Customer is required to create a task."}
             )
+
+        if customer and not lead:
+            attrs["lead"] = customer.lead
+
+        if customer and lead:
+            if customer.lead_id != lead.pk:
+                raise serializers.ValidationError(
+                    {"customer": "Customer must belong to the assigned Lead."}
+                )
 
         return attrs
 
@@ -177,6 +187,11 @@ class MeetingSerializer(serializers.ModelSerializer):
                 "Meeting title must contain at least 3 characters."
             )
 
+        return value
+
+    def validate_meeting_date(self, value):
+        if value and value < timezone.now().date():
+            raise serializers.ValidationError("Meeting date cannot be in the past.")
         return value
 
     def validate_start_time(self, value):
@@ -274,3 +289,20 @@ class ReminderSerializer(serializers.ModelSerializer):
             )
 
         return value
+
+    def validate(self, attrs):
+        task = attrs.get("task_id", getattr(self.instance, "task_id", None))
+        meeting = attrs.get("meeting_id", getattr(self.instance, "meeting_id", None))
+
+        if not task and not meeting:
+            raise serializers.ValidationError(
+                {"task_id": "At least a Task or Meeting is required for a reminder."}
+            )
+
+        if task and meeting:
+            if meeting.task_id_id != task.pk:
+                raise serializers.ValidationError(
+                    {"meeting_id": "Meeting must belong to the specified Task."}
+                )
+
+        return attrs

@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.core.validators import RegexValidator
 
 from audit_log.models import Activity, AuditLog
 
@@ -96,6 +97,19 @@ class PipelineStageSerializer(serializers.ModelSerializer):
 
 
 class LeadSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
+    phone = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        validators=[
+            RegexValidator(
+                regex=r"^[0-9+\-()\s]{7,20}$",
+                message="Phone number must be 7-20 characters and contain only digits, +, -, (, ), or spaces.",
+            )
+        ],
+    )
+
     class Meta:
         model = Lead
         fields = [
@@ -195,6 +209,15 @@ class LeadSerializer(serializers.ModelSerializer):
 
 
 class CustomerSerializer(serializers.ModelSerializer):
+    phone = serializers.CharField(
+        validators=[
+            RegexValidator(
+                regex=r"^[0-9+\-()\s]{7,20}$",
+                message="Phone number must be 7-20 characters and contain only digits, +, -, (, ), or spaces.",
+            )
+        ]
+    )
+
     class Meta:
         model = Customer
         fields = [
@@ -209,9 +232,18 @@ class CustomerSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
+            "lead",
             "created_at",
             "updated_at",
         ]
+
+    def validate(self, attrs):
+        lead = attrs.get("lead")
+        if lead and lead.status != "CONVERTED":
+            raise serializers.ValidationError(
+                {"lead": "Customer can only be created from a CONVERTED Lead."}
+            )
+        return attrs
 
 
 class ActivitySerializer(serializers.ModelSerializer):
@@ -441,6 +473,7 @@ class QuotationSerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "quotation_number",
+            "lead",
             "customer",
             "status",
             "current_version",
