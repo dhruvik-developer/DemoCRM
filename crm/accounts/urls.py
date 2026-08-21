@@ -13,6 +13,9 @@ from .views import (
     PermissionDetailAPIView,
 )
 
+# Forgot / Reset password (new - existing imports untouched)
+from .views import ForgotPasswordAPIView, ResetPasswordAPIView
+
 urlpatterns = [
     path("register/", RegisterAPIView.as_view(), name="register"),
     path("login/", LoginAPIView.as_view(), name="login"),
@@ -31,4 +34,7 @@ urlpatterns = [
     path(
         "assign-role/<uuid:user_id>/", AssignRoleAPIView.as_view(), name="assign_role"
     ),
+    # Forgot / Reset password (new)
+    path("forgot-password/", ForgotPasswordAPIView.as_view(), name="forgot_password"),
+    path("reset-password/", ResetPasswordAPIView.as_view(), name="reset_password"),
 ]

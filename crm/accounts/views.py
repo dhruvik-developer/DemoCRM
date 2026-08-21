@@ -906,3 +906,166 @@ class PermissionDetailAPIView(APIView):
         return Response(
             {"message": "Permission deleted successfully."}, status=status.HTTP_200_OK
         )
+
+
+# ==========================================================
+# FORGOT / RESET PASSWORD VIEWS (new - existing code untouched)
+# ==========================================================
+import os
+
+from django.conf import settings as django_settings
+from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+
+from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer
+
+
+class ForgotPasswordAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Request a password reset link",
+        description="Send a password reset link to the given email address. Always returns 200 to avoid revealing whether the email exists. No authentication required.",
+        tags=["Accounts"],
+        operation_id="forgot_password_create",
+        request=ForgotPasswordSerializer,
+        responses={
+            200: inline_serializer(
+                "ForgotPasswordSuccessResponse",
+                fields={"message": serializers.CharField()},
+            ),
+            400: inline_serializer(
+                "ForgotPasswordErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "ForgotPasswordServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        email = serializer.validated_data["email"]
+
+        try:
+            user = CustomUser.objects.filter(email=email).first()
+
+            if user and user.is_active:
+                uid = urlsafe_base64_encode(force_bytes(user.pk))
+                token = default_token_generator.make_token(user)
+
+                frontend_url = os.getenv(
+                    "PASSWORD_RESET_FRONTEND_URL",
+                    "http://localhost:3000/reset-password",
+                )
+                reset_link = f"{frontend_url}?uid={uid}&token={token}"
+                expiry_hours = int(
+                    getattr(django_settings, "PASSWORD_RESET_TIMEOUT", 60 * 60 * 3)
+                    // 3600
+                )
+
+                send_mail(
+                    subject="CRM Password Reset Request",
+                    message=(
+                        f"Hello {user.username},\n\n"
+                        "We received a request to reset your CRM account password.\n"
+                        "Use the link below to set a new password:\n\n"
+                        f"{reset_link}\n\n"
+                        f"This link will expire in {expiry_hours} hour(s).\n"
+                        "If you did not request this, you can safely ignore this email.\n"
+                    ),
+                    from_email=django_settings.DEFAULT_FROM_EMAIL,
+                    recipient_list=[user.email],
+                    fail_silently=False,
+                )
+                logger.info("Password reset email sent to user %s", user.user_id)
+            else:
+                logger.warning(
+                    "Password reset requested for unknown/inactive email: %s", email
+                )
+        except Exception:
+            logger.exception("Failed to process forgot-password request")
+            return Response(
+                {"error": "Failed to send reset email. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        return Response(
+            {
+                "message": "If an account with that email exists, a password reset link has been sent."
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class ResetPasswordAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    @extend_schema(
+        summary="Reset password with token",
+        description="Set a new password using the uid and token received via the password reset email. The token becomes invalid after a successful reset. No authentication required.",
+        tags=["Accounts"],
+        operation_id="reset_password_create",
+        request=ResetPasswordSerializer,
+        responses={
+            200: inline_serializer(
+                "ResetPasswordSuccessResponse",
+                fields={"message": serializers.CharField()},
+            ),
+            400: inline_serializer(
+                "ResetPasswordErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "ResetPasswordServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
+    def post(self, request):
+        serializer = ResetPasswordSerializer(data=request.data)
+
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        uid = serializer.validated_data["uid"]
+        token = serializer.validated_data["token"]
+        new_password = serializer.validated_data["new_password"]
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(uid))
+            user = CustomUser.objects.get(pk=user_id)
+        except (CustomUser.DoesNotExist, ValueError, TypeError, OverflowError):
+            return Response(
+                {"error": "Invalid reset link."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not default_token_generator.check_token(user, token):
+            return Response(
+                {"error": "Invalid or expired reset token."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user.set_password(new_password)
+            user.save()
+        except Exception:
+            logger.exception("Password reset failed for user %s", user.user_id)
+            return Response(
+                {"error": "Failed to reset password. Please try again."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        logger.info("Password reset successfully for user %s", user.user_id)
+
+        return Response(
+            {"message": "Password has been reset successfully."},
+            status=status.HTTP_200_OK,
+        )

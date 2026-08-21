@@ -2654,3 +2654,122 @@ class RegisterViewEdgeCaseTests(AccountTestCase):
     def test_register_missing_fields_returns_400(self):
         response = self.client.post(reverse("register"), {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+# ==========================================================
+# FORGOT / RESET PASSWORD TESTS (new - existing code untouched)
+# ==========================================================
+from django.contrib.auth.tokens import default_token_generator
+from django.core import mail
+from django.test import override_settings
+from django.utils.encoding import force_bytes
+from django.utils.http import urlsafe_base64_encode
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class ForgotPasswordTests(APITestCase):
+    def setUp(self):
+        self.forgot_url = reverse("forgot_password")
+        self.reset_url = reverse("reset_password")
+        self.user = CustomUser.objects.create_user(
+            username="resetuser",
+            email="resetuser@example.com",
+            phone_number="9876543210",
+            password="OldPass@123",
+        )
+
+    def _get_uid_and_token(self, user=None):
+        user = user or self.user
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+        return uid, token
+
+    def test_forgot_password_sends_email_for_existing_user(self):
+        response = self.client.post(
+            self.forgot_url, {"email": "resetuser@example.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("resetuser@example.com", mail.outbox[0].to)
+
+    def test_forgot_password_generic_response_for_unknown_email(self):
+        response = self.client.post(
+            self.forgot_url, {"email": "unknown@example.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertNotIn("error", response.data)
+
+    def test_forgot_password_requires_email(self):
+        response = self.client.post(self.forgot_url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_password_success(self):
+        uid, token = self._get_uid_and_token()
+        response = self.client.post(
+            self.reset_url,
+            {"uid": uid, "token": token, "new_password": "NewPass@456"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewPass@456"))
+
+    def test_reset_password_token_invalid_after_use(self):
+        uid, token = self._get_uid_and_token()
+        first = self.client.post(
+            self.reset_url,
+            {"uid": uid, "token": token, "new_password": "NewPass@456"},
+            format="json",
+        )
+        second = self.client.post(
+            self.reset_url,
+            {"uid": uid, "token": token, "new_password": "AnotherPass@789"},
+            format="json",
+        )
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewPass@456"))
+
+    def test_reset_password_invalid_token(self):
+        uid, _ = self._get_uid_and_token()
+        response = self.client.post(
+            self.reset_url,
+            {"uid": uid, "token": "invalid-token", "new_password": "NewPass@456"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("OldPass@123"))
+
+    def test_reset_password_invalid_uid(self):
+        _, token = self._get_uid_and_token()
+        response = self.client.post(
+            self.reset_url,
+            {"uid": "not-a-valid-uid", "token": token, "new_password": "NewPass@456"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_password_weak_password_rejected(self):
+        uid, token = self._get_uid_and_token()
+        response = self.client.post(
+            self.reset_url,
+            {"uid": uid, "token": token, "new_password": "123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("OldPass@123"))
+
+    def test_reset_password_missing_fields(self):
+        response = self.client.post(self.reset_url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch("accounts.views.send_mail", side_effect=Exception("SMTP down"))
+    def test_forgot_password_returns_500_when_email_fails(self, mock_send_mail):
+        response = self.client.post(
+            self.forgot_url, {"email": "resetuser@example.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
