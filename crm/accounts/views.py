@@ -25,6 +25,23 @@ from .permissions import HasDynamicPermission
 from rest_framework_simplejwt.exceptions import TokenError
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 
+import hashlib
+import hmac
+import secrets
+from datetime import timedelta
+
+from django.conf import settings as django_settings
+from django.core.mail import send_mail
+from django.utils import timezone
+
+from .models import PasswordResetOTP
+from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer
+
+OTP_LENGTH = 6
+OTP_EXPIRY_MINUTES = 10
+OTP_MAX_ATTEMPTS = 5
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -530,6 +547,53 @@ class RoleDetailAPIView(APIView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+    @extend_schema(
+        summary="Add permissions to a role",
+        description="Add permissions to an existing role.",
+        tags=["Accounts"],
+        operation_id="role_patch_permissions",
+        parameters=[
+            OpenApiParameter(
+                name="role_id",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Role ID",
+            ),
+        ],
+        request=inline_serializer(
+            "RolePermissionPatchRequest",
+            fields={
+                "permissions": serializers.ListField(child=serializers.IntegerField()),
+            },
+        ),
+        responses={
+            200: inline_serializer(
+                "RolePermissionPatchSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "role": RoleSerializer(),
+                },
+            ),
+            400: inline_serializer(
+                "RolePermissionPatchBadRequestResponse",
+                fields={
+                    "error": serializers.CharField(),
+                },
+            ),
+            403: inline_serializer(
+                "RolePermissionPatchForbiddenResponse",
+                fields={
+                    "error": serializers.CharField(),
+                },
+            ),
+            404: inline_serializer(
+                "RolePermissionPatchNotFoundResponse",
+                fields={
+                    "detail": serializers.CharField(),
+                },
+            ),
+        },
+    )
     def patch(self, request, role_id):
         role = get_object_or_404(Role, role_id=role_id)
 
@@ -627,10 +691,6 @@ class RoleDetailAPIView(APIView):
             {"message": "Role deleted successfully.", "role": role_name},
             status=status.HTTP_200_OK,
         )
-
-
-# Backward compatibility alias
-RoleAPIView = RoleListCreateAPIView
 
 
 class AssignRoleAPIView(APIView):
@@ -911,23 +971,22 @@ class PermissionDetailAPIView(APIView):
 # ==========================================================
 # FORGOT / RESET PASSWORD VIEWS (new - existing code untouched)
 # ==========================================================
-import os
 
-from django.conf import settings as django_settings
-from django.contrib.auth.tokens import default_token_generator
-from django.core.mail import send_mail
-from django.utils.encoding import force_bytes, force_str
-from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
-from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer
+def _hash_otp(otp):
+    return hashlib.sha256(otp.encode("utf-8")).hexdigest()
 
 
 class ForgotPasswordAPIView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        summary="Request a password reset link",
-        description="Send a password reset link to the given email address. Always returns 200 to avoid revealing whether the email exists. No authentication required.",
+        summary="Request a password reset OTP",
+        description="Send a 6-digit one-time password (OTP) to the given email address. The OTP expires in "
+        + str(OTP_EXPIRY_MINUTES)
+        + " minutes and allows up to "
+        + str(OTP_MAX_ATTEMPTS)
+        + " verification attempts. Always returns 200 to avoid revealing whether the email exists. No authentication required.",
         tags=["Accounts"],
         operation_id="forgot_password_create",
         request=ForgotPasswordSerializer,
@@ -958,34 +1017,33 @@ class ForgotPasswordAPIView(APIView):
             user = CustomUser.objects.filter(email=email).first()
 
             if user and user.is_active:
-                uid = urlsafe_base64_encode(force_bytes(user.pk))
-                token = default_token_generator.make_token(user)
+                otp = "".join(str(secrets.randbelow(10)) for _ in range(OTP_LENGTH))
 
-                frontend_url = os.getenv(
-                    "PASSWORD_RESET_FRONTEND_URL",
-                    "http://localhost:3000/reset-password",
+                PasswordResetOTP.objects.filter(user=user, is_used=False).update(
+                    is_used=True
                 )
-                reset_link = f"{frontend_url}?uid={uid}&token={token}"
-                expiry_hours = int(
-                    getattr(django_settings, "PASSWORD_RESET_TIMEOUT", 60 * 60 * 3)
-                    // 3600
+                PasswordResetOTP.objects.create(
+                    user=user,
+                    otp_hash=_hash_otp(otp),
+                    expires_at=timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES),
                 )
 
                 send_mail(
-                    subject="CRM Password Reset Request",
+                    subject="CRM Password Reset OTP",
                     message=(
                         f"Hello {user.username},\n\n"
                         "We received a request to reset your CRM account password.\n"
-                        "Use the link below to set a new password:\n\n"
-                        f"{reset_link}\n\n"
-                        f"This link will expire in {expiry_hours} hour(s).\n"
+                        "Use the One-Time Password (OTP) below to reset it:\n\n"
+                        f"OTP: {otp}\n\n"
+                        f"This OTP is valid for {OTP_EXPIRY_MINUTES} minutes and can be used only once.\n"
+                        f"You have {OTP_MAX_ATTEMPTS} attempts to enter it correctly.\n"
                         "If you did not request this, you can safely ignore this email.\n"
                     ),
                     from_email=django_settings.DEFAULT_FROM_EMAIL,
                     recipient_list=[user.email],
                     fail_silently=False,
                 )
-                logger.info("Password reset email sent to user %s", user.user_id)
+                logger.info("Password reset OTP sent to user %s", user.user_id)
             else:
                 logger.warning(
                     "Password reset requested for unknown/inactive email: %s", email
@@ -993,13 +1051,13 @@ class ForgotPasswordAPIView(APIView):
         except Exception:
             logger.exception("Failed to process forgot-password request")
             return Response(
-                {"error": "Failed to send reset email. Please try again."},
+                {"error": "Failed to send reset OTP. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         return Response(
             {
-                "message": "If an account with that email exists, a password reset link has been sent."
+                "message": "If an account with that email exists, a password reset OTP has been sent."
             },
             status=status.HTTP_200_OK,
         )
@@ -1009,8 +1067,12 @@ class ResetPasswordAPIView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(
-        summary="Reset password with token",
-        description="Set a new password using the uid and token received via the password reset email. The token becomes invalid after a successful reset. No authentication required.",
+        summary="Reset password with OTP",
+        description="Set a new password using the 6-digit OTP received via email. The OTP expires in "
+        + str(OTP_EXPIRY_MINUTES)
+        + " minutes, allows up to "
+        + str(OTP_MAX_ATTEMPTS)
+        + " attempts and becomes invalid after a successful reset. No authentication required.",
         tags=["Accounts"],
         operation_id="reset_password_create",
         request=ResetPasswordSerializer,
@@ -1035,27 +1097,58 @@ class ResetPasswordAPIView(APIView):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-        uid = serializer.validated_data["uid"]
-        token = serializer.validated_data["token"]
+        email = serializer.validated_data["email"]
+        otp = serializer.validated_data["otp"]
         new_password = serializer.validated_data["new_password"]
 
-        try:
-            user_id = force_str(urlsafe_base64_decode(uid))
-            user = CustomUser.objects.get(pk=user_id)
-        except (CustomUser.DoesNotExist, ValueError, TypeError, OverflowError):
+        user = CustomUser.objects.filter(email=email).first()
+
+        if not user:
             return Response(
-                {"error": "Invalid reset link."}, status=status.HTTP_400_BAD_REQUEST
+                {"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        if not default_token_generator.check_token(user, token):
+        otp_record = (
+            PasswordResetOTP.objects.select_for_update()
+            .filter(user=user, is_used=False, expires_at__gt=timezone.now())
+            .first()
+        )
+
+        if not otp_record:
             return Response(
-                {"error": "Invalid or expired reset token."},
+                {"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if otp_record.attempts >= OTP_MAX_ATTEMPTS:
+            otp_record.is_used = True
+            otp_record.save(update_fields=["is_used"])
+            return Response(
+                {"error": "Too many invalid attempts. Please request a new OTP."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not hmac.compare_digest(otp_record.otp_hash, _hash_otp(otp)):
+            otp_record.attempts += 1
+            otp_record.save(update_fields=["attempts"])
+            remaining = OTP_MAX_ATTEMPTS - otp_record.attempts
+            if remaining <= 0:
+                otp_record.is_used = True
+                otp_record.save(update_fields=["is_used"])
+                return Response(
+                    {"error": "Too many invalid attempts. Please request a new OTP."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return Response(
+                {"error": f"Invalid or expired OTP. {remaining} attempt(s) remaining."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         try:
             user.set_password(new_password)
             user.save()
+
+            otp_record.is_used = True
+            otp_record.save(update_fields=["is_used"])
         except Exception:
             logger.exception("Password reset failed for user %s", user.user_id)
             return Response(
