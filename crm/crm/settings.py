@@ -310,8 +310,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "Task.tasks.task_due_reminder_job",
         "schedule": crontab(hour=9, minute=0), 
     },
-    "process-meeting-reminders-every-5-mins": {
-        "task": "Task.tasks.meeting_reminder_job",
-        "schedule": crontab(minute="*/5"),
-    },
+    "process-meeting-reminders-every-minute": {
+    "task": "Task.tasks.meeting_reminder_job",
+    "schedule": crontab(minute="*"),
+},
 }

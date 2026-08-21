@@ -8,6 +8,8 @@ from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.utils import timezone
+from django.db import transaction
 
 from django.db.models import Q
 
@@ -31,7 +33,12 @@ from .serializers import (
 )
 
 from .pagination import CRMPageNumberPagination
-from .services import send_meeting_creation_emails
+from .tasks import (
+    notify_manager_about_meeting,
+    send_approved_meeting,
+    notify_employee_meeting_rejected,
+    notify_manager_about_reschedule,
+)
 
 from Notification.notification_utils import trigger_notification_event
 from Notification.models import NotificationEventType
@@ -1010,94 +1017,465 @@ class TaskStatusUpdateView(APIView):
 # MEETING
 # ==========================================================
 class MeetingCreateView(APIView):
-    """
-    POST /api/meetings/
 
-    Create a meeting.
+    """
+    POST /api/tasks/meetings/
+
+    Employee creates meeting request.
+
+    Meeting is NOT immediately sent to customer.
+
+    It goes to manager for approval.
     """
 
-    permission_classes = [CanCommunicateWithLead]
+    permission_classes = [
+        IsAuthenticated,
+        CanCommunicateWithLead,
+    ]
+
     @extend_schema(
         tags=["Meetings"],
-        summary="Create a meeting",
-        description="Create a new meeting. Auth: IsAuthenticated. Sends meeting creation emails to participants.",
+        summary="Create meeting request",
+        description=(
+            "Employee creates a meeting request. "
+            "Manager approval is required before "
+            "customer receives meeting email."
+        ),
         operation_id="meeting_create",
         request=MeetingSerializer,
         responses={
             201: MeetingSerializer,
             400: MeetingSerializer,
-            500: inline_serializer(
-                "MeetingCreateServerErrorResponse",
-                fields={"error": serializers.CharField()},
-            ),
         },
     )
     def post(self, request):
+
         try:
+
             serializer = MeetingSerializer(
-                data=request.data, context={"request": request}
+                data=request.data,
+                context={
+                    "request": request
+                },
             )
+
             if not serializer.is_valid():
-                logger.warning(
-                    "Meeting validation failed: user_id=%s errors=%s",
-                    request.user.pk,
+
+                return Response(
                     serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            meeting = serializer.save(created_by=request.user)
-            send_meeting_creation_emails(meeting)
+
+            manager = serializer.validated_data.get(
+                "manager"
+            )
+
+            if not manager:
+
+                return Response(
+                    {
+                        "manager":
+                        "Manager is required."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # ==================================================
+            # VERIFY MANAGER ROLE
+            # ==================================================
+
+            if not manager.role:
+
+                return Response(
+                    {
+                        "manager":
+                        "Selected user does not have a role."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            if (
+                manager.role.rolename.lower()
+                != "manager"
+            ):
+
+                return Response(
+                    {
+                        "manager":
+                        "Selected user must have Manager role."
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # ==================================================
+            # CREATE MEETING
+            # ==================================================
+
+            meeting = serializer.save(
+                created_by=request.user,
+
+                approval_status=(
+                    Meeting.ApprovalStatus.PENDING
+                ),
+
+                approved_by=None,
+
+                approved_at=None,
+
+                rejection_reason=None,
+
+                reminder_sent_at=None,
+            )
+
+            # ==================================================
+            # CELERY
+            # MANAGER APPROVAL REQUEST
+            # ==================================================
+
+            transaction.on_commit(
+                lambda: notify_manager_about_meeting.delay(
+                    meeting.meeting_id
+                )
+            )
+
             logger.info(
-                "Meeting created successfully: meeting_id=%s user_id=%s",
+                "Meeting created: meeting_id=%s "
+                "employee=%s manager=%s",
                 meeting.meeting_id,
+                request.user.pk,
+                manager.pk,
+            )
+
+            return Response(
+                {
+                    "message": (
+                        "Meeting request created "
+                        "and sent to manager for approval."
+                    ),
+
+                    "meeting":
+                    MeetingSerializer(
+                        meeting,
+                        context={
+                            "request": request
+                        },
+                    ).data,
+                },
+
+                status=status.HTTP_201_CREATED,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Meeting creation failed: user_id=%s",
                 request.user.pk,
             )
 
-            # Notify the task assignee about meeting creation.
+            return Response(
+                {
+                    "error":
+                    "Something went wrong while "
+                    "creating the meeting."
+                },
+
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+class MeetingApprovalView(APIView):
+
+    """
+    PATCH /api/tasks/meetings/<meeting_id>/approval/
+
+    Only assigned manager can approve/reject.
+    """
+
+    permission_classes = [
+        IsAuthenticated,
+        CanCommunicateWithLead,
+    ]
+
+    def patch(
+        self,
+        request,
+        meeting_id,
+    ):
+
+        try:
+
+            meeting = get_object_or_404(
+                Meeting.objects.select_related(
+                    "manager",
+                    "created_by",
+                    "lead",
+                ),
+                meeting_id=meeting_id,
+            )
+
+            # ==================================================
+            # ONLY MANAGER CAN APPROVE / REJECT
+            # ==================================================
+
             if (
-                meeting.task_id
-                and meeting.task_id.assigned_to
-                and meeting.task_id.assigned_to != request.user
+                meeting.manager_id
+                != request.user.user_id
             ):
-                trigger_notification_event(
-                    event_type=NotificationEventType.MEETING_CREATED,
-                    recipient=meeting.task_id.assigned_to,
-                    context={
-                        "user_name": meeting.task_id.assigned_to.get_full_name()
-                        or meeting.task_id.assigned_to.username,
-                        "employee_name": request.user.get_full_name()
-                        or request.user.username,
-                        "meeting_title": meeting.meeting_title,
-                        "meeting_date": str(meeting.meeting_date),
-                        "start_time": str(meeting.start_time),
+
+                return Response(
+                    {
+                        "error":
+                        "Only the assigned manager "
+                        "can approve or reject this meeting."
                     },
+
+                    status=status.HTTP_403_FORBIDDEN,
                 )
 
-            return Response(
-                MeetingSerializer(meeting, context={"request": request}).data,
-                status=status.HTTP_201_CREATED,
-            )
-        except (Http404, APIException):
-            raise
-        except Exception:
-            logger.exception(
-                "Error while creating meeting: user_id=%s", request.user.pk
-            )
-            return Response(
-                {"error": "Something went wrong while creating the meeting."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        except (Http404, APIException):
-            raise
-        except Exception:
-            logger.exception(
-                "Error while creating meeting: user_id=%s", request.user.pk
-            )
-            return Response(
-                {"error": "Something went wrong while creating the meeting."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            # ==================================================
+            # MANAGER ROLE CHECK
+            # ==================================================
+
+            if (
+                not request.user.role
+                or request.user.role.rolename.lower()
+                != "manager"
+            ):
+
+                return Response(
+                    {
+                        "error":
+                        "Only a Manager can approve or reject meetings."
+                    },
+
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            # ==================================================
+            # MUST BE PENDING
+            # ==================================================
+
+            if (
+                meeting.approval_status
+                != Meeting.ApprovalStatus.PENDING
+            ):
+
+                return Response(
+                    {
+                        "error":
+                        (
+                            "Meeting is already "
+                            f"{meeting.approval_status}."
+                        )
+                    },
+
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            approval_status = (
+                request.data.get(
+                    "approval_status"
+                )
             )
 
+            # ==================================================
+            # APPROVE
+            # ==================================================
 
+            if (
+                approval_status
+                == Meeting.ApprovalStatus.APPROVED
+            ):
+
+                # Customer ko link bhejni hai
+                if not meeting.meeting_link:
+
+                    return Response(
+                        {
+                            "meeting_link":
+                            (
+                                "Meeting link is required "
+                                "before approval."
+                            )
+                        },
+
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                meeting.approval_status = (
+                    Meeting.ApprovalStatus.APPROVED
+                )
+
+                meeting.approved_by = (
+                    request.user
+                )
+
+                meeting.approved_at = (
+                    timezone.now()
+                )
+
+                meeting.rejection_reason = None
+
+                meeting.reminder_sent_at = None
+
+                meeting.save(
+                    update_fields=[
+                        "approval_status",
+                        "approved_by",
+                        "approved_at",
+                        "rejection_reason",
+                        "reminder_sent_at",
+                        "updated_at",
+                    ]
+                )
+
+                # ==================================================
+                # CELERY
+                #
+                # Employee + Manager + Customer email
+                # ==================================================
+
+                transaction.on_commit(
+                    lambda: send_approved_meeting.delay(
+                        meeting.meeting_id
+                    )
+                )
+
+                return Response(
+                    {
+                        "message":
+                        (
+                            "Meeting approved successfully. "
+                            "Scheduled emails have been queued."
+                        ),
+
+                        "meeting_id":
+                        meeting.meeting_id,
+
+                        "approval_status":
+                        meeting.approval_status,
+                    },
+
+                    status=status.HTTP_200_OK,
+                )
+
+            # ==================================================
+            # REJECT
+            # ==================================================
+
+            if (
+                approval_status
+                == Meeting.ApprovalStatus.REJECTED
+            ):
+
+                rejection_reason = (
+                    request.data.get(
+                        "rejection_reason"
+                    )
+                )
+
+                if not rejection_reason:
+
+                    return Response(
+                        {
+                            "rejection_reason":
+                            "Rejection reason is required."
+                        },
+
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+
+                meeting.approval_status = (
+                    Meeting.ApprovalStatus.REJECTED
+                )
+
+                meeting.approved_by = None
+
+                meeting.approved_at = None
+
+                meeting.rejection_reason = (
+                    rejection_reason
+                )
+
+                meeting.reminder_sent_at = None
+
+                meeting.save(
+                    update_fields=[
+                        "approval_status",
+                        "approved_by",
+                        "approved_at",
+                        "rejection_reason",
+                        "reminder_sent_at",
+                        "updated_at",
+                    ]
+                )
+
+                # ==================================================
+                # CELERY
+                #
+                # Employee rejection email
+                # ==================================================
+
+                transaction.on_commit(
+                    lambda: (
+                        notify_employee_meeting_rejected.delay(
+                            meeting.meeting_id
+                        )
+                    )
+                )
+
+                return Response(
+                    {
+                        "message":
+                        (
+                            "Meeting rejected. "
+                            "Employee has been notified."
+                        ),
+
+                        "meeting_id":
+                        meeting.meeting_id,
+
+                        "approval_status":
+                        meeting.approval_status,
+
+                        "rejection_reason":
+                        meeting.rejection_reason,
+                    },
+
+                    status=status.HTTP_200_OK,
+                )
+
+            # ==================================================
+            # INVALID
+            # ==================================================
+
+            return Response(
+                {
+                    "approval_status":
+                    (
+                        "Use APPROVED or REJECTED."
+                    )
+                },
+
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        except Exception:
+
+            logger.exception(
+                "Meeting approval failed: "
+                "meeting_id=%s user_id=%s",
+                meeting_id,
+                request.user.pk,
+            )
+
+            return Response(
+                {
+                    "error":
+                    "Something went wrong while "
+                    "processing meeting approval."
+                },
+
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 class MeetingDetailView(APIView):
     """
     GET /api/meetings/<meeting_id>/
@@ -1145,91 +1523,108 @@ class MeetingDetailView(APIView):
 
 
 class MeetingRescheduleView(APIView):
+
     """
-    PATCH /api/meetings/<meeting_id>/reschedule/
+    PATCH /api/tasks/meetings/<meeting_id>/reschedule/
 
-    Change meeting date/time.
+    Employee can reschedule a rejected meeting.
+
+    After reschedule:
+        REJECTED
+            ↓
+        PENDING
+            ↓
+        Manager approval again
     """
 
-    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_classes = [
+        IsAuthenticated,
+        CanCommunicateWithLead,
+    ]
 
-    @extend_schema(
-        tags=["Meetings"],
-        summary="Reschedule a meeting",
-        description="Reschedule a meeting by changing its date and/or time. At least one of meeting_date, start_time, or end_time must be provided. Permission: change_meeting.",
-        operation_id="meeting_reschedule",
-        parameters=[
-            OpenApiParameter(
-                name="meeting_id",
-                type=int,
-                description="Meeting ID",
-                required=True,
-                location=OpenApiParameter.PATH,
-            ),
-        ],
-        request={
-            "application/json": {
-                "type": "object",
-                "properties": {
-                    "meeting_date": {
-                        "type": "string",
-                        "format": "date",
-                        "description": "New meeting date (YYYY-MM-DD)",
-                    },
-                    "start_time": {
-                        "type": "string",
-                        "format": "time",
-                        "description": "New start time (HH:MM:SS)",
-                    },
-                    "end_time": {
-                        "type": "string",
-                        "format": "time",
-                        "description": "New end time (HH:MM:SS)",
-                    },
-                },
-            }
-        },
-        responses={
-            200: inline_serializer(
-                "MeetingRescheduleSuccessResponse",
-                fields={
-                    "message": serializers.CharField(),
-                    "meeting": MeetingSerializer(),
-                },
-            ),
-            400: inline_serializer(
-                "MeetingRescheduleErrorResponse",
-                fields={"error": serializers.CharField()},
-            ),
-            403: inline_serializer(
-                "MeetingRescheduleForbiddenResponse",
-                fields={"detail": serializers.CharField()},
-            ),
-            404: inline_serializer(
-                "MeetingRescheduleNotFoundResponse",
-                fields={"detail": serializers.CharField()},
-            ),
-            500: inline_serializer(
-                "MeetingRescheduleServerErrorResponse",
-                fields={"error": serializers.CharField()},
-            ),
-        },
-    )
-    def patch(self, request, meeting_id):
+    def patch(
+        self,
+        request,
+        meeting_id,
+    ):
+
         try:
-            meeting = get_object_or_404(Meeting, meeting_id=meeting_id)
-            self.check_object_permissions(request, meeting)
 
-            reschedule_data = {}
-            for field in ("meeting_date", "start_time", "end_time"):
-                if field in request.data:
-                    reschedule_data[field] = request.data[field]
+            meeting = get_object_or_404(
+                Meeting.objects.select_related(
+                    "manager",
+                    "created_by",
+                ),
+                meeting_id=meeting_id,
+            )
 
-            if not reschedule_data:
+            # ==================================================
+            # ONLY CREATOR / EMPLOYEE CAN RESCHEDULE
+            # ==================================================
+
+            if (
+                meeting.created_by_id
+                != request.user.user_id
+            ):
+
                 return Response(
                     {
-                        "error": "At least one of meeting_date, start_time, or end_time is required."
+                        "error":
+                        "Only the employee who created "
+                        "the meeting can reschedule it."
                     },
+
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            # ==================================================
+            # ONLY REJECTED MEETING
+            # ==================================================
+
+            if (
+                meeting.approval_status
+                != Meeting.ApprovalStatus.REJECTED
+            ):
+
+                return Response(
+                    {
+                        "error":
+                        (
+                            "Only a rejected meeting "
+                            "can be rescheduled."
+                        )
+                    },
+
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            reschedule_data = {}
+
+            for field in (
+                "meeting_date",
+                "start_time",
+                "end_time",
+                "meeting_link",
+                "location",
+            ):
+
+                if field in request.data:
+
+                    reschedule_data[field] = (
+                        request.data[field]
+                    )
+
+            if not reschedule_data:
+
+                return Response(
+                    {
+                        "error":
+                        (
+                            "At least one meeting field "
+                            "is required."
+                        )
+                    },
+
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1237,58 +1632,94 @@ class MeetingRescheduleView(APIView):
                 meeting,
                 data=reschedule_data,
                 partial=True,
-                context={"request": request},
+                context={
+                    "request": request
+                },
             )
+
             if not serializer.is_valid():
-                logger.warning(
-                    "Meeting reschedule validation failed: "
-                    "meeting_id=%s user_id=%s errors=%s",
-                    meeting_id,
-                    request.user.pk,
+
+                return Response(
                     serializer.errors,
+                    status=status.HTTP_400_BAD_REQUEST,
                 )
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            meeting = serializer.save()
-            logger.info(
-                "Meeting rescheduled successfully: " "meeting_id=%s user_id=%s",
-                meeting.meeting_id,
-                request.user.pk,
+
+            # ==================================================
+            # RESET APPROVAL
+            # ==================================================
+
+            meeting = serializer.save(
+                approval_status=(
+                    Meeting.ApprovalStatus.PENDING
+                ),
+
+                approved_by=None,
+
+                approved_at=None,
+
+                rejection_reason=None,
+
+                reminder_sent_at=None,
             )
+
+            # ==================================================
+            # CELERY
+            #
+            # SEND NEW REQUEST TO MANAGER
+            # ==================================================
+
+            transaction.on_commit(
+                lambda: (
+                    notify_manager_about_reschedule.delay(
+                        meeting.meeting_id
+                    )
+                )
+            )
+
+            logger.info(
+                "Meeting rescheduled and sent "
+                "for approval again: meeting_id=%s",
+                meeting.meeting_id,
+            )
+
             return Response(
                 {
-                    "message": "Meeting rescheduled successfully.",
-                    "meeting": MeetingSerializer(
-                        meeting, context={"request": request}
+                    "message":
+                    (
+                        "Meeting rescheduled and "
+                        "sent to manager for approval again."
+                    ),
+
+                    "meeting":
+                    MeetingSerializer(
+                        meeting,
+                        context={
+                            "request": request
+                        },
                     ).data,
                 },
+
                 status=status.HTTP_200_OK,
             )
-        except (Http404, APIException):
-            raise
+
         except Exception:
+
             logger.exception(
-                "Error while rescheduling meeting: meeting_id=%s user_id=%s",
+                "Meeting reschedule failed: "
+                "meeting_id=%s user_id=%s",
                 meeting_id,
                 request.user.pk,
             )
+
             return Response(
-                {"error": "Something went wrong while rescheduling the meeting."},
+                {
+                    "error":
+                    "Something went wrong while "
+                    "rescheduling the meeting."
+                },
+
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-        except (Http404, APIException):
-            raise
-        except Exception:
-            logger.exception(
-                "Error while rescheduling meeting: " "meeting_id=%s user_id=%s",
-                meeting_id,
-                request.user.pk,
-            )
-            return Response(
-                {"error": "Something went wrong while rescheduling the meeting."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-
-
 # ==========================================================
 # CHANGE MEETING STATUS
 # ==========================================================

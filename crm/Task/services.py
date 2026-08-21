@@ -1,16 +1,15 @@
 import logging
 from datetime import datetime, timedelta
-from django.db import transaction
 from django.conf import settings
 from django.core.mail import send_mail
+from django.db import transaction
 from django.utils import timezone
-
 from .models import (
     Reminder,
     ReminderStatus,
     ReminderType,
-    Task,            
-    TaskStatus,      
+    Task,
+    TaskStatus,
 )
 
 from Notification.notification_utils import create_notification
@@ -19,217 +18,253 @@ from Notification.notification_utils import create_notification
 logger = logging.getLogger(__name__)
 
 
-# ======================================================
-# EMAIL: SEND MEETING EMAIL TO LEAD
-# ======================================================
-
-
-def send_lead_meeting_reminder_email(meeting):
+def _get_meeting_lead_name(meeting):
     """
-    Send meeting creation email to the Lead.
+    Get customer / lead name safely.
     """
 
-    try:
-        lead = getattr(meeting, "lead", None)
+    lead = getattr(meeting, "lead", None)
 
-        if not lead:
-            logger.warning(
-                "Cannot send lead meeting email: lead missing meeting_id=%s",
-                getattr(meeting, "meeting_id", None),
-            )
-            return False
+    if not lead:
+        return "Customer"
 
-        lead_email = getattr(lead, "email", None)
+    return (
+        getattr(lead, "name", None)
+        or "Customer"
+    )
 
-        if not lead_email:
-            logger.warning(
-                "Cannot send lead meeting email: lead email missing meeting_id=%s",
-                getattr(meeting, "meeting_id", None),
-            )
-            return False
 
-        lead_email = lead_email.strip()
+def _get_customer_email(meeting):
+    """
+    Get customer email safely from Lead.
+    """
 
-        if not lead_email:
-            logger.warning(
-                "Cannot send lead meeting email: empty email meeting_id=%s",
-                getattr(meeting, "meeting_id", None),
-            )
-            return False
+    lead = getattr(meeting, "lead", None)
 
-        lead_name = (
-            getattr(
-                lead,
-                "name",
-                "",
-            )
-            or "Valued Client"
-        )
+    if not lead:
+        return None
 
-        meeting_title = getattr(
+    email = getattr(
+        lead,
+        "email",
+        None,
+    )
+
+    if not email:
+        return None
+
+    email = email.strip()
+
+    return email or None
+
+
+def _get_meeting_details(meeting):
+    """
+    Return common meeting information.
+    """
+
+    return {
+        "title": getattr(
             meeting,
             "meeting_title",
             "Meeting",
-        )
+        ),
 
-        meeting_date = getattr(
+        "date": getattr(
             meeting,
             "meeting_date",
             "",
-        )
+        ),
 
-        start_time = getattr(
+        "start_time": getattr(
             meeting,
             "start_time",
             "",
-        )
+        ),
 
-        end_time = getattr(
+        "end_time": getattr(
             meeting,
             "end_time",
             "",
-        )
+        ),
 
-        location = (
+        "location": (
             getattr(
                 meeting,
                 "location",
-                "",
+                None,
             )
             or "Online / Office"
-        )
+        ),
 
-        description = (
+        "description": (
             getattr(
                 meeting,
                 "description",
-                "",
+                None,
             )
             or "N/A"
-        )
+        ),
 
-        subject = f"Meeting Scheduled: {meeting_title}"
+        "meeting_link": (
+            getattr(
+                meeting,
+                "meeting_link",
+                None,
+            )
+            or "Not available"
+        ),
 
-        message = (
-            f"Hello {lead_name},\n\n"
-            f"A meeting has been scheduled with you.\n\n"
-            f"Meeting Title: {meeting_title}\n"
-            f"Date: {meeting_date}\n"
-            f"Time: {start_time} - {end_time}\n"
-            f"Location: {location}\n"
-            f"Description: {description}\n\n"
-            f"Please be ready at the scheduled time.\n\n"
-            f"Best regards,\n"
-            f"CRM Team"
-        )
+        "lead_name": _get_meeting_lead_name(
+            meeting
+        ),
 
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[lead_email],
-            fail_silently=False,
-        )
-
-        logger.info(
-            "Meeting email sent to lead: meeting_id=%s recipient=%s",
-            getattr(meeting, "meeting_id", None),
-            lead_email,
-        )
-
-        return True
-
-    except Exception:
-        logger.exception(
-            "Error sending meeting email to lead: meeting_id=%s",
-            getattr(meeting, "meeting_id", None),
-        )
-        return False
+        "customer_email": _get_customer_email(
+            meeting
+        ),
+    }
 
 
-# ======================================================
-# EMAIL: SEND MEETING EMAIL TO EMPLOYEE / CREATOR
-# ======================================================
-
-
-def send_meeting_reminder_email(
-    meeting,
-    recipient_email,
-    recipient_name=None,
-):
+def _get_unique_emails(emails):
     """
-    Send meeting email to an employee/creator/assigned user.
+    Remove empty and duplicate emails.
+    """
+
+    cleaned = []
+
+    for email in emails:
+
+        if not email:
+            continue
+
+        email = email.strip()
+
+        if not email:
+            continue
+
+        if email not in cleaned:
+            cleaned.append(email)
+
+    return cleaned
+
+
+# ======================================================
+# ======================================================
+# MANAGER APPROVAL EMAIL
+# ======================================================
+# ======================================================
+
+
+def send_manager_meeting_approval_email(meeting):
+    """
+    Send meeting approval request to manager.
+
+    This is called when employee creates a meeting.
+
+    IMPORTANT:
+    Customer does NOT receive any email here.
     """
 
     try:
-        if not recipient_email:
+
+        manager = getattr(
+            meeting,
+            "manager",
+            None,
+        )
+
+        if not manager:
+
             logger.warning(
-                "Cannot send meeting email: recipient email missing meeting_id=%s",
-                getattr(meeting, "meeting_id", None),
+                "Manager missing for meeting approval: "
+                "meeting_id=%s",
+                getattr(
+                    meeting,
+                    "meeting_id",
+                    None,
+                ),
             )
+
             return False
 
-        recipient_email = recipient_email.strip()
+        manager_email = getattr(
+            manager,
+            "email",
+            None,
+        )
 
-        if not recipient_email:
+        if not manager_email:
+
             logger.warning(
-                "Cannot send meeting email: empty recipient email meeting_id=%s",
-                getattr(meeting, "meeting_id", None),
+                "Manager email missing: "
+                "meeting_id=%s manager_id=%s",
+                getattr(
+                    meeting,
+                    "meeting_id",
+                    None,
+                ),
+                getattr(
+                    manager,
+                    "pk",
+                    None,
+                ),
             )
+
             return False
 
-        recipient_name = recipient_name or "User"
-
-        meeting_title = getattr(
-            meeting,
-            "meeting_title",
-            "Meeting",
+        details = _get_meeting_details(
+            meeting
         )
 
-        meeting_date = getattr(
+        employee = getattr(
             meeting,
-            "meeting_date",
-            "",
+            "created_by",
+            None,
         )
 
-        start_time = getattr(
-            meeting,
-            "start_time",
-            "",
-        )
-
-        end_time = getattr(
-            meeting,
-            "end_time",
-            "",
-        )
-
-        location = (
+        employee_name = (
             getattr(
-                meeting,
-                "location",
-                "",
+                employee,
+                "username",
+                None,
             )
-            or "Online / Office"
+            or "Employee"
         )
 
-        lead_name = (
-            getattr(meeting.lead, "name", "N/A")
-            if getattr(meeting, "lead", None)
-            else "N/A"
+        subject = (
+            f"Meeting Approval Required: "
+            f"{details['title']}"
         )
-
-        subject = f"Meeting Confirmation: {meeting_title}"
 
         message = (
-            f"Hello {recipient_name},\n\n"
-            f"Your meeting has been scheduled successfully.\n\n"
-            f"Meeting Title: {meeting_title}\n"
-            f"Lead / Client: {lead_name}\n"
-            f"Date: {meeting_date}\n"
-            f"Time: {start_time} - {end_time}\n"
-            f"Location: {location}\n\n"
-            f"Best regards,\n"
+            f"Hello {getattr(manager, 'username', 'Manager')},\n\n"
+
+            f"{employee_name} has requested a meeting "
+            f"that requires your approval.\n\n"
+
+            f"Meeting Title: "
+            f"{details['title']}\n"
+
+            f"Customer: "
+            f"{details['lead_name']}\n"
+
+            f"Date: "
+            f"{details['date']}\n"
+
+            f"Time: "
+            f"{details['start_time']} - "
+            f"{details['end_time']}\n"
+
+            f"Location: "
+            f"{details['location']}\n"
+
+            f"Description: "
+            f"{details['description']}\n\n"
+
+            f"Please open the CRM and "
+            f"approve or reject this meeting.\n\n"
+
+            f"Regards,\n"
             f"CRM System"
         )
 
@@ -237,46 +272,922 @@ def send_meeting_reminder_email(
             subject=subject,
             message=message,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=[recipient_email],
+            recipient_list=[
+                manager_email.strip()
+            ],
             fail_silently=False,
         )
 
         logger.info(
-            "Meeting email sent successfully: meeting_id=%s recipient=%s",
-            getattr(meeting, "meeting_id", None),
-            recipient_email,
+            "Manager approval email sent: "
+            "meeting_id=%s manager=%s",
+            meeting.meeting_id,
+            manager_email,
         )
 
         return True
 
     except Exception:
+
         logger.exception(
-            "Error sending meeting email: meeting_id=%s recipient=%s",
-            getattr(meeting, "meeting_id", None),
-            recipient_email,
+            "Error sending manager approval email: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
         )
+
         return False
 
 
 # ======================================================
-# REMINDER: CREATE MEETING REMINDER
+# MANAGER APPROVAL NOTIFICATION
+# ======================================================
+
+
+def create_manager_meeting_approval_notification(
+    meeting,
+):
+    """
+    Create in-app notification for manager.
+    """
+
+    try:
+
+        manager = getattr(
+            meeting,
+            "manager",
+            None,
+        )
+
+        if not manager:
+            return False
+
+        employee = getattr(
+            meeting,
+            "created_by",
+            None,
+        )
+
+        employee_name = (
+            getattr(
+                employee,
+                "username",
+                None,
+            )
+            or "Employee"
+        )
+
+        create_notification(
+            user=manager,
+
+            title="Meeting Approval Required",
+
+            message=(
+                f"{employee_name} requested meeting "
+                f"'{meeting.meeting_title}' "
+                f"on {meeting.meeting_date} "
+                f"at {meeting.start_time}. "
+                f"Please approve or reject it."
+            ),
+
+            type_name="Meeting Approval",
+        )
+
+        logger.info(
+            "Manager meeting approval notification created: "
+            "meeting_id=%s manager_id=%s",
+            meeting.meeting_id,
+            getattr(
+                manager,
+                "pk",
+                None,
+            ),
+        )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "Error creating manager approval notification: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# EMPLOYEE MEETING REJECTED EMAIL
+# ======================================================
+
+
+def send_meeting_rejected_email(meeting):
+    """
+    Notify employee that manager rejected the meeting.
+    """
+
+    try:
+
+        employee = getattr(
+            meeting,
+            "created_by",
+            None,
+        )
+
+        if not employee:
+            return False
+
+        employee_email = getattr(
+            employee,
+            "email",
+            None,
+        )
+
+        if not employee_email:
+            return False
+
+        manager = getattr(
+            meeting,
+            "manager",
+            None,
+        )
+
+        manager_name = (
+            getattr(
+                manager,
+                "username",
+                None,
+            )
+            or "Manager"
+        )
+
+        reason = (
+            getattr(
+                meeting,
+                "rejection_reason",
+                None,
+            )
+            or "No reason provided."
+        )
+
+        subject = (
+            f"Meeting Rejected: "
+            f"{meeting.meeting_title}"
+        )
+
+        message = (
+            f"Hello {employee.username},\n\n"
+
+            f"Your meeting "
+            f"'{meeting.meeting_title}' "
+            f"has been rejected by "
+            f"{manager_name}.\n\n"
+
+            f"Reason:\n"
+            f"{reason}\n\n"
+
+            f"Please reschedule the meeting "
+            f"and submit it for manager approval again.\n\n"
+
+            f"Regards,\n"
+            f"CRM System"
+        )
+
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[
+                employee_email.strip()
+            ],
+            fail_silently=False,
+        )
+
+        logger.info(
+            "Meeting rejection email sent: "
+            "meeting_id=%s employee=%s",
+            meeting.meeting_id,
+            employee_email,
+        )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "Error sending meeting rejection email: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# EMPLOYEE REJECTION NOTIFICATION
+# ======================================================
+
+
+def create_meeting_rejected_notification(
+    meeting,
+):
+    """
+    Create in-app rejection notification for employee.
+    """
+
+    try:
+
+        employee = getattr(
+            meeting,
+            "created_by",
+            None,
+        )
+
+        if not employee:
+            return False
+
+        manager = getattr(
+            meeting,
+            "manager",
+            None,
+        )
+
+        manager_name = (
+            getattr(
+                manager,
+                "username",
+                None,
+            )
+            or "Manager"
+        )
+
+        reason = (
+            getattr(
+                meeting,
+                "rejection_reason",
+                None,
+            )
+            or "No reason provided."
+        )
+
+        create_notification(
+            user=employee,
+
+            title="Meeting Rejected",
+
+            message=(
+                f"Meeting '{meeting.meeting_title}' "
+                f"was rejected by {manager_name}. "
+                f"Reason: {reason}. "
+                f"Please reschedule the meeting."
+            ),
+
+            type_name="Meeting Rejected",
+        )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "Error creating meeting rejection notification: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# RESCHEDULED MEETING
+# SEND APPROVAL REQUEST AGAIN
+# ======================================================
+
+
+def send_rescheduled_meeting_approval_email(
+    meeting,
+):
+    """
+    After employee reschedules a rejected meeting,
+    send approval request to manager again.
+    """
+
+    try:
+
+        manager = getattr(
+            meeting,
+            "manager",
+            None,
+        )
+
+        if not manager:
+            return False
+
+        manager_email = getattr(
+            manager,
+            "email",
+            None,
+        )
+
+        if not manager_email:
+            return False
+
+        employee = getattr(
+            meeting,
+            "created_by",
+            None,
+        )
+
+        employee_name = (
+            getattr(
+                employee,
+                "username",
+                None,
+            )
+            or "Employee"
+        )
+
+        details = _get_meeting_details(
+            meeting
+        )
+
+        subject = (
+            f"Meeting Rescheduled - Approval Required: "
+            f"{details['title']}"
+        )
+
+        message = (
+            f"Hello {manager.username},\n\n"
+
+            f"{employee_name} has rescheduled "
+            f"the previously rejected meeting.\n\n"
+
+            f"Meeting Title: "
+            f"{details['title']}\n"
+
+            f"Customer: "
+            f"{details['lead_name']}\n"
+
+            f"New Date: "
+            f"{details['date']}\n"
+
+            f"New Time: "
+            f"{details['start_time']} - "
+            f"{details['end_time']}\n"
+
+            f"Location: "
+            f"{details['location']}\n"
+
+            f"Description: "
+            f"{details['description']}\n\n"
+
+            f"Please approve or reject "
+            f"the meeting again.\n\n"
+
+            f"Regards,\n"
+            f"CRM System"
+        )
+
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[
+                manager_email.strip()
+            ],
+            fail_silently=False,
+        )
+
+        logger.info(
+            "Rescheduled meeting approval email sent: "
+            "meeting_id=%s manager=%s",
+            meeting.meeting_id,
+            manager_email,
+        )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "Error sending rescheduled meeting approval email: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# APPROVED MEETING
+# SEND EMAIL TO:
+#
+# 1. EMPLOYEE
+# 2. MANAGER
+# 3. CUSTOMER
+# ======================================================
+
+
+def send_meeting_scheduled_emails(meeting):
+    """
+    Called ONLY after manager approves meeting.
+
+    Sends meeting scheduled email to:
+        - Employee
+        - Manager
+        - Customer
+
+    IMPORTANT:
+    This function must NOT be called when employee
+    initially creates the meeting.
+    """
+
+    try:
+
+        details = _get_meeting_details(
+            meeting
+        )
+
+        employee = getattr(
+            meeting,
+            "created_by",
+            None,
+        )
+
+        manager = getattr(
+            meeting,
+            "manager",
+            None,
+        )
+
+        customer_email = details[
+            "customer_email"
+        ]
+
+        recipients = []
+
+        # ==================================================
+        # EMPLOYEE
+        # ==================================================
+
+        if employee:
+
+            employee_email = getattr(
+                employee,
+                "email",
+                None,
+            )
+
+            if employee_email:
+
+                recipients.append(
+                    employee_email
+                )
+
+        # ==================================================
+        # MANAGER
+        # ==================================================
+
+        if manager:
+
+            manager_email = getattr(
+                manager,
+                "email",
+                None,
+            )
+
+            if manager_email:
+
+                recipients.append(
+                    manager_email
+                )
+
+        # ==================================================
+        # CUSTOMER
+        # ==================================================
+
+        if customer_email:
+
+            recipients.append(
+                customer_email
+            )
+
+        recipients = _get_unique_emails(
+            recipients
+        )
+
+        if not recipients:
+
+            logger.warning(
+                "No recipients for approved meeting: "
+                "meeting_id=%s",
+                meeting.meeting_id,
+            )
+
+            return False
+
+        subject = (
+            f"Meeting Scheduled: "
+            f"{details['title']}"
+        )
+
+        message = (
+            f"Hello,\n\n"
+
+            f"The meeting has been approved "
+            f"and scheduled successfully.\n\n"
+
+            f"Meeting Title: "
+            f"{details['title']}\n"
+
+            f"Customer: "
+            f"{details['lead_name']}\n"
+
+            f"Date: "
+            f"{details['date']}\n"
+
+            f"Time: "
+            f"{details['start_time']} - "
+            f"{details['end_time']}\n"
+
+            f"Location: "
+            f"{details['location']}\n"
+
+            f"Meeting Link: "
+            f"{details['meeting_link']}\n"
+
+            f"Description: "
+            f"{details['description']}\n\n"
+
+            f"Please join the meeting "
+            f"at the scheduled time.\n\n"
+
+            f"Regards,\n"
+            f"CRM System"
+        )
+
+        send_mail(
+            subject=subject,
+
+            message=message,
+
+            from_email=settings.DEFAULT_FROM_EMAIL,
+
+            recipient_list=recipients,
+
+            fail_silently=False,
+        )
+
+        logger.info(
+            "Approved meeting emails sent: "
+            "meeting_id=%s recipients=%s",
+            meeting.meeting_id,
+            recipients,
+        )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "Error sending approved meeting emails: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# 5-MINUTE MEETING REMINDER
+#
+# EMPLOYEE + MANAGER + CUSTOMER
+# ======================================================
+
+
+def send_meeting_5_minute_reminder(
+    meeting,
+):
+    """
+    Send reminder 5 minutes before approved meeting.
+
+    Recipients:
+        - Employee
+        - Manager
+        - Customer
+    """
+
+    try:
+
+        details = _get_meeting_details(
+            meeting
+        )
+
+        employee = getattr(
+            meeting,
+            "created_by",
+            None,
+        )
+
+        manager = getattr(
+            meeting,
+            "manager",
+            None,
+        )
+
+        recipients = []
+
+        # ==================================================
+        # EMPLOYEE
+        # ==================================================
+
+        if employee:
+
+            employee_email = getattr(
+                employee,
+                "email",
+                None,
+            )
+
+            if employee_email:
+
+                recipients.append(
+                    employee_email
+                )
+
+        # ==================================================
+        # MANAGER
+        # ==================================================
+
+        if manager:
+
+            manager_email = getattr(
+                manager,
+                "email",
+                None,
+            )
+
+            if manager_email:
+
+                recipients.append(
+                    manager_email
+                )
+
+        # ==================================================
+        # CUSTOMER
+        # ==================================================
+
+        if details["customer_email"]:
+
+            recipients.append(
+                details["customer_email"]
+            )
+
+        recipients = _get_unique_emails(
+            recipients
+        )
+
+        if not recipients:
+
+            logger.warning(
+                "No recipients for 5-minute reminder: "
+                "meeting_id=%s",
+                meeting.meeting_id,
+            )
+
+            return False
+
+        subject = (
+            f"Meeting Reminder - "
+            f"Starts in 5 Minutes: "
+            f"{details['title']}"
+        )
+
+        message = (
+            f"Hello,\n\n"
+
+            f"This is a reminder that your meeting "
+            f"will start in approximately 5 minutes.\n\n"
+
+            f"Meeting Title: "
+            f"{details['title']}\n"
+
+            f"Customer: "
+            f"{details['lead_name']}\n"
+
+            f"Date: "
+            f"{details['date']}\n"
+
+            f"Time: "
+            f"{details['start_time']} - "
+            f"{details['end_time']}\n"
+
+            f"Location: "
+            f"{details['location']}\n"
+
+            f"Meeting Link: "
+            f"{details['meeting_link']}\n\n"
+
+            f"Please be ready to join the meeting.\n\n"
+
+            f"Regards,\n"
+            f"CRM System"
+        )
+
+        send_mail(
+            subject=subject,
+
+            message=message,
+
+            from_email=settings.DEFAULT_FROM_EMAIL,
+
+            recipient_list=recipients,
+
+            fail_silently=False,
+        )
+
+        logger.info(
+            "5-minute meeting reminder sent: "
+            "meeting_id=%s recipients=%s",
+            meeting.meeting_id,
+            recipients,
+        )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "Error sending 5-minute meeting reminder: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# 5-MINUTE MEETING REMINDER
+# IN-APP NOTIFICATIONS
+# ======================================================
+
+
+def create_meeting_5_minute_notifications(
+    meeting,
+):
+    """
+    Create in-app notifications for:
+        - Employee
+        - Manager
+
+    Customer normally receives email only because
+    customer is a Lead, not CustomUser.
+    """
+
+    try:
+
+        details = _get_meeting_details(
+            meeting
+        )
+
+        message = (
+            f"Meeting '{details['title']}' "
+            f"starts in 5 minutes at "
+            f"{details['start_time']}."
+        )
+
+        # ==================================================
+        # EMPLOYEE
+        # ==================================================
+
+        employee = getattr(
+            meeting,
+            "created_by",
+            None,
+        )
+
+        if employee:
+
+            create_notification(
+                user=employee,
+
+                title=(
+                    f"Meeting Reminder: "
+                    f"{details['title']}"
+                ),
+
+                message=message,
+
+                type_name="Meeting Reminder",
+            )
+
+        # ==================================================
+        # MANAGER
+        # ==================================================
+
+        manager = getattr(
+            meeting,
+            "manager",
+            None,
+        )
+
+        if manager:
+
+            create_notification(
+                user=manager,
+
+                title=(
+                    f"Meeting Reminder: "
+                    f"{details['title']}"
+                ),
+
+                message=message,
+
+                type_name="Meeting Reminder",
+            )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "Error creating 5-minute meeting notifications: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# ======================================================
+# OLD REMINDER DATABASE FUNCTION
+# ======================================================
 # ======================================================
 
 
 def create_meeting_reminder(
     meeting,
     reminder_for,
-    minutes_before=15,
+    minutes_before=5,
 ):
     """
-    Create a database reminder in the Reminder table.
+    Create database Reminder record.
+
+    IMPORTANT:
+    Default is now 5 minutes, not 15.
     """
 
     try:
-        if not meeting or not reminder_for:
+
+        if not meeting:
+
             logger.warning(
-                "Meeting reminder not created: meeting or reminder_for missing."
+                "Meeting reminder not created: "
+                "meeting missing."
             )
+
+            return None
+
+        if not reminder_for:
+
+            logger.warning(
+                "Meeting reminder not created: "
+                "reminder_for missing."
+            )
+
             return None
 
         meeting_date = getattr(
@@ -292,188 +1203,10 @@ def create_meeting_reminder(
         )
 
         if not meeting_date or not start_time:
+
             logger.warning(
-                "Meeting reminder not created: date/time missing meeting_id=%s",
-                getattr(meeting, "meeting_id", None),
-            )
-            return None
-
-        combined_dt = datetime.combine(
-            meeting_date,
-            start_time,
-        )
-        if timezone.is_naive(combined_dt):
-            meeting_datetime = timezone.make_aware(combined_dt)
-        else:
-            meeting_datetime = combined_dt
-
-        reminder_datetime = meeting_datetime - timedelta(minutes=minutes_before)
-
-        reminder_type, _ = ReminderType.objects.get_or_create(
-            type_name="Meeting Reminder",
-            defaults={"is_active": True},
-        )
-
-        reminder_status, _ = ReminderStatus.objects.get_or_create(
-            status_name="Pending",
-            defaults={"is_active": True},
-        )
-
-        reminder = Reminder.objects.create(
-            task_id=getattr(
-                meeting,
-                "task_id",
-                None,
-            ),
-            meeting_id=meeting,
-            reminder_for=reminder_for,
-            reminder_type_id=reminder_type,
-            reminder_status_id=reminder_status,
-            reminder_datetime=reminder_datetime,
-            message=(
-                f"Reminder: {meeting.meeting_title} is scheduled at {start_time}."
-            ),
-            created_by=meeting.created_by,
-            is_sent=False,
-        )
-
-        logger.info(
-            "Meeting reminder created: reminder_id=%s meeting_id=%s reminder_for=%s reminder_datetime=%s",
-            reminder.reminder_id,
-            getattr(meeting, "meeting_id", None),
-            getattr(reminder_for, "pk", None),
-            reminder.reminder_datetime,
-        )
-
-        return reminder
-
-    except Exception:
-        logger.exception(
-            "Error creating meeting reminder: meeting_id=%s",
-            getattr(meeting, "meeting_id", None),
-        )
-        return None
-
-
-# ======================================================
-# MEETING DATABASE WORKFLOW
-# ======================================================
-
-
-def create_meeting_database_records(meeting):
-    """
-    Create all database records related to a meeting
-    in one atomic transaction.
-
-    Database records:
-    1. Creator notification
-    2. Assigned employee notification
-    3. 15-minute reminder
-    """
-
-    lead_name = (
-        getattr(meeting.lead, "name", "Client")
-        if getattr(meeting, "lead", None)
-        else "Client"
-    )
-
-    with transaction.atomic():
-
-        # --------------------------------------------------
-        # 1. CREATOR NOTIFICATION
-        # --------------------------------------------------
-
-        if meeting.created_by:
-
-            create_notification(
-                user=meeting.created_by,
-                title=f"New Meeting: {meeting.meeting_title}",
-                message=(
-                    f"Meeting '{meeting.meeting_title}' "
-                    f"is scheduled with {lead_name} "
-                    f"on {meeting.meeting_date} "
-                    f"at {meeting.start_time}."
-                ),
-                type_name="Meeting",
-            )
-
-        # --------------------------------------------------
-        # 2. ASSIGNED EMPLOYEE NOTIFICATION
-        # --------------------------------------------------
-
-        if (
-            meeting.task_id
-            and meeting.task_id.assigned_to
-            and meeting.task_id.assigned_to != meeting.created_by
-        ):
-
-            assigned_user = meeting.task_id.assigned_to
-
-            create_notification(
-                user=assigned_user,
-                title=f"Meeting Scheduled: {meeting.meeting_title}",
-                message=(
-                    f"Meeting '{meeting.meeting_title}' "
-                    f"is scheduled on your task with {lead_name} "
-                    f"on {meeting.meeting_date} "
-                    f"at {meeting.start_time}."
-                ),
-                type_name="Meeting",
-            )
-
-        # --------------------------------------------------
-        # 3. DATABASE REMINDER
-        # --------------------------------------------------
-
-        reminder = None
-
-        if meeting.created_by:
-
-            reminder = create_meeting_reminder(
-                meeting=meeting,
-                reminder_for=meeting.created_by,
-                minutes_before=15,
-            )
-
-            if reminder is None:
-                raise ValueError("Failed to create meeting reminder.")
-
-        logger.info(
-            "Meeting database records created successfully: meeting_id=%s reminder_id=%s",
-            meeting.meeting_id,
-            getattr(reminder, "reminder_id", None),
-        )
-
-        return reminder
-
-
-# ======================================================
-# MEETING CREATION: EMAILS + DATABASE WORKFLOW
-# ======================================================
-
-
-def send_meeting_creation_emails(meeting):
-    """
-    Called after a Meeting is successfully created.
-
-    1. Sends confirmation email to Lead.
-    2. Sends confirmation email to Creator/Host.
-    3. Creates database notifications and reminder
-       inside one atomic transaction.
-    """
-
-    try:
-
-        # ==================================================
-        # 1. EMAIL TO LEAD
-        # ==================================================
-
-        try:
-            send_lead_meeting_reminder_email(meeting)
-
-        except Exception:
-            logger.exception(
-                "Error sending email to lead: meeting_id=%s",
+                "Meeting reminder not created: "
+                "date/time missing meeting_id=%s",
                 getattr(
                     meeting,
                     "meeting_id",
@@ -481,72 +1214,232 @@ def send_meeting_creation_emails(meeting):
                 ),
             )
 
-        # ==================================================
-        # 2. EMAIL TO CREATOR / HOST
-        # ==================================================
+            return None
 
-        if meeting.created_by and getattr(
-            meeting.created_by,
-            "email",
-            None,
+        combined_datetime = datetime.combine(
+            meeting_date,
+            start_time,
+        )
+
+        if timezone.is_naive(
+            combined_datetime
         ):
 
-            try:
-
-                send_meeting_reminder_email(
-                    meeting=meeting,
-                    recipient_email=meeting.created_by.email,
-                    recipient_name=meeting.created_by.username,
+            meeting_datetime = (
+                timezone.make_aware(
+                    combined_datetime
                 )
-
-            except Exception:
-                logger.exception(
-                    "Error sending creator email: meeting_id=%s user_id=%s",
-                    getattr(
-                        meeting,
-                        "meeting_id",
-                        None,
-                    ),
-                    getattr(
-                        meeting.created_by,
-                        "pk",
-                        None,
-                    ),
-                )
-
-        # ==================================================
-        # 3. DATABASE TRANSACTION
-        # ==================================================
-
-        try:
-
-            reminder = create_meeting_database_records(meeting)
-
-            logger.info(
-                "Meeting database workflow completed: meeting_id=%s reminder_id=%s",
-                meeting.meeting_id,
-                getattr(
-                    reminder,
-                    "reminder_id",
-                    None,
-                ),
             )
 
-        except Exception:
+        else:
 
-            logger.exception(
-                "Meeting database workflow failed: meeting_id=%s",
-                meeting.meeting_id,
+            meeting_datetime = (
+                combined_datetime
             )
 
-            raise
+        reminder_datetime = (
+            meeting_datetime
+            - timedelta(
+                minutes=minutes_before
+            )
+        )
 
-        # ==================================================
-        # WORKFLOW COMPLETED
-        # ==================================================
+        reminder_type, _ = (
+            ReminderType.objects.get_or_create(
+                type_name="Meeting Reminder",
+
+                defaults={
+                    "is_active": True
+                },
+            )
+        )
+
+        reminder_status, _ = (
+            ReminderStatus.objects.get_or_create(
+                status_name="Pending",
+
+                defaults={
+                    "is_active": True
+                },
+            )
+        )
+
+        reminder = Reminder.objects.create(
+
+            task_id=getattr(
+                meeting,
+                "task_id",
+                None,
+            ),
+
+            meeting_id=meeting,
+
+            reminder_for=reminder_for,
+
+            reminder_type_id=reminder_type,
+
+            reminder_status_id=reminder_status,
+
+            reminder_datetime=reminder_datetime,
+
+            message=(
+                f"Reminder: "
+                f"{meeting.meeting_title} "
+                f"is scheduled at "
+                f"{start_time}."
+            ),
+
+            created_by=meeting.created_by,
+
+            is_sent=False,
+        )
 
         logger.info(
-            "Meeting creation workflow completed: meeting_id=%s",
+            "Meeting reminder created: "
+            "reminder_id=%s meeting_id=%s "
+            "reminder_for=%s reminder_datetime=%s",
+
+            reminder.reminder_id,
+
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+
+            getattr(
+                reminder_for,
+                "pk",
+                None,
+            ),
+
+            reminder.reminder_datetime,
+        )
+
+        return reminder
+
+    except Exception:
+
+        logger.exception(
+            "Error creating meeting reminder: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return None
+
+
+# ======================================================
+# CREATE MEETING DATABASE RECORDS
+#
+# IMPORTANT:
+# DO NOT CREATE REMINDER BEFORE APPROVAL
+# ======================================================
+
+
+def create_meeting_database_records(
+    meeting,
+):
+    """
+    Create database notifications related to meeting.
+
+    IMPORTANT:
+    This function DOES NOT create a meeting reminder
+    before manager approval.
+
+    Manager approval notification is handled separately.
+    """
+
+    try:
+
+        with transaction.atomic():
+
+            # ==============================================
+            # MANAGER APPROVAL NOTIFICATION
+            # ==============================================
+
+            create_manager_meeting_approval_notification(
+                meeting
+            )
+
+        logger.info(
+            "Meeting approval database workflow completed: "
+            "meeting_id=%s",
+            meeting.meeting_id,
+        )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "Meeting database workflow failed: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# MEETING CREATION WORKFLOW
+#
+# IMPORTANT:
+# DO NOT SEND CUSTOMER EMAIL HERE
+# ======================================================
+
+
+def send_meeting_creation_emails(
+    meeting,
+):
+    """
+    Called when employee creates a meeting.
+
+    NEW WORKFLOW:
+
+        Employee
+            ↓
+        Meeting created
+            ↓
+        Manager approval request
+
+    NO customer email is sent here.
+
+    NO meeting reminder is created here.
+
+    Customer receives meeting email ONLY after
+    manager approves.
+    """
+
+    try:
+
+        # ==============================================
+        # MANAGER EMAIL
+        # ==============================================
+
+        send_manager_meeting_approval_email(
+            meeting
+        )
+
+        # ==============================================
+        # MANAGER IN-APP NOTIFICATION
+        # ==============================================
+
+        create_manager_meeting_approval_notification(
+            meeting
+        )
+
+        logger.info(
+            "Meeting creation approval workflow completed: "
+            "meeting_id=%s",
             getattr(
                 meeting,
                 "meeting_id",
@@ -559,7 +1452,8 @@ def send_meeting_creation_emails(meeting):
     except Exception:
 
         logger.exception(
-            "Unexpected error in meeting creation workflow: meeting_id=%s",
+            "Unexpected error in meeting creation workflow: "
+            "meeting_id=%s",
             getattr(
                 meeting,
                 "meeting_id",
@@ -571,277 +1465,874 @@ def send_meeting_creation_emails(meeting):
 
 
 # ======================================================
-# DUE REMINDER: SEND EMAIL + NOTIFICATION
+# APPROVED MEETING WORKFLOW
 # ======================================================
 
 
-def send_due_reminder_notification(reminder):
+def process_approved_meeting(
+    meeting,
+):
     """
-    Sends the 15-minute-before email and
-    in-system notification when due.
+    Called AFTER manager approves meeting.
+
+    Does:
+
+        1. Employee scheduled email
+        2. Manager scheduled email
+        3. Customer scheduled email
+        4. Creates 5-minute reminder records if needed
     """
 
     try:
-        meeting = reminder.meeting_id
 
-        if meeting:
-            # --------------------------------------------------
-            # IN-SYSTEM NOTIFICATION
-            # --------------------------------------------------
-            if reminder.reminder_for:
-                create_notification(
-                    user=reminder.reminder_for,
-                    title=(f"Meeting Starting in 15 Mins: {meeting.meeting_title}"),
-                    message=(
-                        f"Your meeting '{meeting.meeting_title}' "
-                        f"will start at {meeting.start_time}."
-                    ),
-                    type_name="Meeting Reminder",
-                )
+        # ==============================================
+        # SAFETY CHECK
+        # ==============================================
 
-                logger.info(
-                    "Reminder notification created: reminder_id=%s user_id=%s",
-                    reminder.reminder_id,
-                    getattr(
-                        reminder.reminder_for,
-                        "pk",
-                        None,
-                    ),
-                )
+        approval_status = getattr(
+            meeting,
+            "approval_status",
+            None,
+        )
 
-            # --------------------------------------------------
-            # EMAIL TO HOST
-            # --------------------------------------------------
-            if reminder.reminder_for and getattr(
-                reminder.reminder_for,
-                "email",
-                None,
-            ):
-                send_mail(
-                    subject=(
-                        f"Meeting Starting in 15 Minutes - {meeting.meeting_title}"
-                    ),
-                    message=(
-                        f"Hello,\n\n"
-                        f"Your meeting '{meeting.meeting_title}' "
-                        f"will start in 15 minutes at {meeting.start_time}."
-                    ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[reminder.reminder_for.email],
-                    fail_silently=False,
-                )
+        if approval_status != "APPROVED":
 
-                logger.info(
-                    "Due reminder email sent to host: reminder_id=%s recipient=%s",
-                    reminder.reminder_id,
-                    reminder.reminder_for.email,
-                )
+            logger.warning(
+                "Meeting is not approved: "
+                "meeting_id=%s status=%s",
+                getattr(
+                    meeting,
+                    "meeting_id",
+                    None,
+                ),
+                approval_status,
+            )
 
-            # --------------------------------------------------
-            # EMAIL TO LEAD
-            # --------------------------------------------------
-            if meeting.lead and getattr(
-                meeting.lead,
-                "email",
-                None,
-            ):
-                send_mail(
-                    subject=(
-                        f"Meeting Starting in 15 Minutes - {meeting.meeting_title}"
-                    ),
-                    message=(
-                        f"Hello {getattr(meeting.lead, 'name', '')},\n\n"
-                        f"Your meeting '{meeting.meeting_title}' "
-                        f"will start in 15 minutes at {meeting.start_time}."
-                    ),
-                    from_email=settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[meeting.lead.email],
-                    fail_silently=False,
-                )
+            return False
 
-                logger.info(
-                    "Due reminder email sent to lead: reminder_id=%s recipient=%s",
-                    reminder.reminder_id,
-                    meeting.lead.email,
-                )
+        # ==============================================
+        # MEETING LINK
+        # ==============================================
 
-            return True
+        if not getattr(
+            meeting,
+            "meeting_link",
+            None,
+        ):
 
-        else:
-            # Standalone / Task reminder
-            target_user = reminder.reminder_for or reminder.created_by
-            if target_user:
-                title = "Reminder Notification"
-                if reminder.task_id:
-                    title = f"Task Reminder: {reminder.task_id.task_title}"
+            logger.warning(
+                "Approved meeting has no meeting link: "
+                "meeting_id=%s",
+                meeting.meeting_id,
+            )
 
-                create_notification(
-                    user=target_user,
-                    title=title,
-                    message=reminder.message,
-                    type_name="Reminder",
-                )
+            return False
 
-                if getattr(target_user, "email", None):
-                    send_mail(
-                        subject=title,
-                        message=f"Hello,\n\n{reminder.message}",
-                        from_email=settings.DEFAULT_FROM_EMAIL,
-                        recipient_list=[target_user.email],
-                        fail_silently=False,
-                    )
+        # ==============================================
+        # SEND EMAIL TO ALL 3
+        # ==============================================
 
-            return True
+        email_success = (
+            send_meeting_scheduled_emails(
+                meeting
+            )
+        )
+
+        if not email_success:
+
+            logger.warning(
+                "Scheduled meeting email failed: "
+                "meeting_id=%s",
+                meeting.meeting_id,
+            )
+
+        # ==============================================
+        # CREATE EMPLOYEE NOTIFICATION
+        # ==============================================
+
+        employee = getattr(
+            meeting,
+            "created_by",
+            None,
+        )
+
+        if employee:
+
+            create_notification(
+                user=employee,
+
+                title=(
+                    f"Meeting Scheduled: "
+                    f"{meeting.meeting_title}"
+                ),
+
+                message=(
+                    f"Your meeting has been approved "
+                    f"and scheduled for "
+                    f"{meeting.meeting_date} "
+                    f"at {meeting.start_time}."
+                ),
+
+                type_name="Meeting Scheduled",
+            )
+
+        # ==============================================
+        # CREATE MANAGER NOTIFICATION
+        # ==============================================
+
+        manager = getattr(
+            meeting,
+            "manager",
+            None,
+        )
+
+        if manager:
+
+            create_notification(
+                user=manager,
+
+                title=(
+                    f"Meeting Scheduled: "
+                    f"{meeting.meeting_title}"
+                ),
+
+                message=(
+                    f"Meeting is scheduled for "
+                    f"{meeting.meeting_date} "
+                    f"at {meeting.start_time}."
+                ),
+
+                type_name="Meeting Scheduled",
+            )
+
+        logger.info(
+            "Approved meeting workflow completed: "
+            "meeting_id=%s",
+            meeting.meeting_id,
+        )
+
+        return True
 
     except Exception:
+
         logger.exception(
-            "Error sending due reminder: reminder_id=%s",
+            "Approved meeting processing failed: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# REJECTED MEETING WORKFLOW
+# ======================================================
+
+
+def process_rejected_meeting(
+    meeting,
+):
+    """
+    Called after manager rejects meeting.
+
+    Employee receives:
+        - Email
+        - In-app notification
+
+    Customer receives nothing.
+    """
+
+    try:
+
+        email_success = (
+            send_meeting_rejected_email(
+                meeting
+            )
+        )
+
+        notification_success = (
+            create_meeting_rejected_notification(
+                meeting
+            )
+        )
+
+        logger.info(
+            "Rejected meeting workflow completed: "
+            "meeting_id=%s email=%s notification=%s",
+
+            meeting.meeting_id,
+
+            email_success,
+
+            notification_success,
+        )
+
+        return (
+            email_success
+            or notification_success
+        )
+
+    except Exception:
+
+        logger.exception(
+            "Rejected meeting processing failed: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# RESCHEDULED MEETING WORKFLOW
+# ======================================================
+
+
+def process_rescheduled_meeting(
+    meeting,
+):
+    """
+    Called after employee reschedules rejected meeting.
+
+    Meeting status should already be reset to:
+
+        PENDING
+
+    Manager receives approval request again.
+
+    Customer receives nothing.
+    """
+
+    try:
+
+        approval_status = getattr(
+            meeting,
+            "approval_status",
+            None,
+        )
+
+        if approval_status != "PENDING":
+
+            logger.warning(
+                "Rescheduled meeting is not pending: "
+                "meeting_id=%s status=%s",
+
+                meeting.meeting_id,
+
+                approval_status,
+            )
+
+            return False
+
+        email_success = (
+            send_rescheduled_meeting_approval_email(
+                meeting
+            )
+        )
+
+        notification_success = (
+            create_manager_meeting_approval_notification(
+                meeting
+            )
+        )
+
+        logger.info(
+            "Rescheduled meeting workflow completed: "
+            "meeting_id=%s",
+            meeting.meeting_id,
+        )
+
+        return (
+            email_success
+            or notification_success
+        )
+
+    except Exception:
+
+        logger.exception(
+            "Rescheduled meeting processing failed: "
+            "meeting_id=%s",
+            getattr(
+                meeting,
+                "meeting_id",
+                None,
+            ),
+        )
+
+        return False
+
+
+# ======================================================
+# PROCESS DUE MEETING REMINDERS
+#
+# OLD REMINDER TABLE SYSTEM
+#
+# This remains for your existing Reminder APIs.
+# ======================================================
+
+
+def send_due_reminder_notification(
+    reminder,
+):
+    """
+    Send due reminder email + notification.
+
+    For meeting reminders, only APPROVED meetings
+    are allowed.
+    """
+
+    try:
+
+        meeting = getattr(
+            reminder,
+            "meeting_id",
+            None,
+        )
+
+        # ==================================================
+        # MEETING REMINDER
+        # ==================================================
+
+        if meeting:
+
+            approval_status = getattr(
+                meeting,
+                "approval_status",
+                None,
+            )
+
+            # ----------------------------------------------
+            # NEVER SEND REMINDER FOR:
+            #
+            # PENDING
+            # REJECTED
+            # ----------------------------------------------
+
+            if approval_status != "APPROVED":
+
+                logger.info(
+                    "Skipping reminder because meeting "
+                    "is not approved: meeting_id=%s "
+                    "status=%s",
+
+                    getattr(
+                        meeting,
+                        "meeting_id",
+                        None,
+                    ),
+
+                    approval_status,
+                )
+
+                return False
+
+            # ----------------------------------------------
+            # 5 MINUTE REMINDER
+            # ----------------------------------------------
+
+            details = _get_meeting_details(
+                meeting
+            )
+
+            recipients = []
+
+            # Employee
+            if (
+                meeting.created_by
+                and getattr(
+                    meeting.created_by,
+                    "email",
+                    None,
+                )
+            ):
+
+                recipients.append(
+                    meeting.created_by.email
+                )
+
+            # Manager
+            if (
+                getattr(
+                    meeting,
+                    "manager",
+                    None,
+                )
+                and getattr(
+                    meeting.manager,
+                    "email",
+                    None,
+                )
+            ):
+
+                recipients.append(
+                    meeting.manager.email
+                )
+
+            # Customer
+            if details[
+                "customer_email"
+            ]:
+
+                recipients.append(
+                    details[
+                        "customer_email"
+                    ]
+                )
+
+            recipients = _get_unique_emails(
+                recipients
+            )
+
+            # ----------------------------------------------
+            # IN-APP EMPLOYEE + MANAGER
+            # ----------------------------------------------
+
+            create_meeting_5_minute_notifications(
+                meeting
+            )
+
+            # ----------------------------------------------
+            # EMAIL
+            # ----------------------------------------------
+
+            if recipients:
+
+                send_mail(
+                    subject=(
+                        f"Meeting Reminder - "
+                        f"Starts in 5 Minutes: "
+                        f"{details['title']}"
+                    ),
+
+                    message=(
+                        f"Hello,\n\n"
+
+                        f"Your meeting "
+                        f"'{details['title']}' "
+                        f"will start in 5 minutes.\n\n"
+
+                        f"Date: {details['date']}\n"
+                        f"Time: {details['start_time']}\n"
+
+                        f"Meeting Link: "
+                        f"{details['meeting_link']}\n\n"
+
+                        f"Regards,\n"
+                        f"CRM System"
+                    ),
+
+                    from_email=(
+                        settings.DEFAULT_FROM_EMAIL
+                    ),
+
+                    recipient_list=recipients,
+
+                    fail_silently=False,
+                )
+
+            logger.info(
+                "Meeting reminder sent: "
+                "meeting_id=%s recipients=%s",
+
+                meeting.meeting_id,
+
+                recipients,
+            )
+
+            return True
+
+        # ==================================================
+        # NORMAL TASK REMINDER
+        # ==================================================
+
+        target_user = (
+            getattr(
+                reminder,
+                "reminder_for",
+                None,
+            )
+            or getattr(
+                reminder,
+                "created_by",
+                None,
+            )
+        )
+
+        if target_user:
+
+            if getattr(
+                reminder,
+                "task_id",
+                None,
+            ):
+
+                title = (
+                    f"Task Reminder: "
+                    f"{reminder.task_id.task_title}"
+                )
+
+            else:
+
+                title = (
+                    "Reminder Notification"
+                )
+
+            create_notification(
+                user=target_user,
+
+                title=title,
+
+                message=(
+                    reminder.message
+                ),
+
+                type_name="Reminder",
+            )
+
+            if getattr(
+                target_user,
+                "email",
+                None,
+            ):
+
+                send_mail(
+                    subject=title,
+
+                    message=(
+                        f"Hello,\n\n"
+                        f"{reminder.message}"
+                    ),
+
+                    from_email=(
+                        settings.DEFAULT_FROM_EMAIL
+                    ),
+
+                    recipient_list=[
+                        target_user.email
+                    ],
+
+                    fail_silently=False,
+                )
+
+        return True
+
+    except Exception:
+
+        logger.exception(
+            "Error sending due reminder: "
+            "reminder_id=%s",
+
             getattr(
                 reminder,
                 "reminder_id",
                 None,
             ),
         )
+
         return False
 
 
 # ======================================================
-# PROCESS DUE MEETING REMINDERS
+# PROCESS DUE REMINDERS
 # ======================================================
 
 
 def process_due_meeting_reminders():
     """
-    Finds all pending reminders where:
-        reminder_datetime <= now
-        is_sent=False
+    Finds pending Reminder records whose time has arrived.
 
-    Sends notification/email and marks reminder as sent.
+    Only approved meeting reminders are processed.
     """
 
     try:
+
         now = timezone.now()
 
-        due_reminders = Reminder.objects.filter(
-            is_sent=False,
-            reminder_datetime__lte=now,
-        ).select_related(
-            "meeting_id",
-            "meeting_id__lead",
-            "task_id",
-            "reminder_for",
-            "created_by",
+        due_reminders = (
+            Reminder.objects.filter(
+                is_sent=False,
+                reminder_datetime__lte=now,
+            )
+            .select_related(
+                "meeting_id",
+                "meeting_id__lead",
+                "meeting_id__created_by",
+                "meeting_id__manager",
+                "task_id",
+                "reminder_for",
+                "created_by",
+            )
         )
 
         sent_count = 0
 
         for reminder in due_reminders:
+
             try:
-                success = send_due_reminder_notification(reminder)
+
+                success = (
+                    send_due_reminder_notification(
+                        reminder
+                    )
+                )
 
                 if success:
+
                     reminder.is_sent = True
-                    reminder.save(update_fields=["is_sent"])
+
+                    reminder.save(
+                        update_fields=[
+                            "is_sent"
+                        ]
+                    )
+
                     sent_count += 1
+
                     logger.info(
-                        "Due reminder processed successfully: reminder_id=%s",
+                        "Due reminder processed: "
+                        "reminder_id=%s",
                         reminder.reminder_id,
                     )
+
                 else:
+
                     logger.warning(
-                        "Due reminder was not sent: reminder_id=%s",
+                        "Due reminder was not sent: "
+                        "reminder_id=%s",
                         reminder.reminder_id,
                     )
 
             except Exception:
+
                 logger.exception(
-                    "Error processing due reminder: reminder_id=%s",
+                    "Error processing due reminder: "
+                    "reminder_id=%s",
                     reminder.reminder_id,
                 )
 
         logger.info(
-            "Due reminder processing completed: sent_count=%s",
+            "Due meeting reminders completed: "
+            "sent_count=%s",
             sent_count,
         )
 
         return sent_count
 
     except Exception:
-        logger.exception("Unexpected error while processing due reminders.")
+
+        logger.exception(
+            "Unexpected error while processing "
+            "due meeting reminders."
+        )
+
         return 0
 
 
 # ======================================================
-# 🚀 PROCESS DUE TASK REMINDERS (New Function)
+# ======================================================
+# TASK DUE REMINDER
+# ======================================================
 # ======================================================
 
 
 def process_due_task_reminders():
     """
-    Finds all active tasks where status is 'Pending' and due_date <= today.
-    Sends in-app notification and email to assigned employee.
-    """
-    try:
-        now = timezone.now()
-        today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+    Finds active pending tasks where due_date <= today.
 
-        # Pending tasks jinki due_date aaj ya usse pehle ki hai
-        pending_tasks = Task.objects.filter(
-            is_active=True,
-            status__status_name__icontains="Pending",
-            due_date__isnull=False,
-            due_date__lte=today_end,
-        ).select_related("assigned_to", "lead", "customer", "priority")
+    Sends:
+        - In-app notification
+        - Email
+
+    to assigned employee.
+    """
+
+    try:
+
+        now = timezone.now()
+
+        today_end = now.replace(
+            hour=23,
+            minute=59,
+            second=59,
+            microsecond=999999,
+        )
+
+        pending_tasks = (
+            Task.objects.filter(
+
+                is_active=True,
+
+                status__status_name__icontains=(
+                    "Pending"
+                ),
+
+                due_date__isnull=False,
+
+                due_date__lte=today_end,
+
+            )
+            .select_related(
+                "assigned_to",
+                "lead",
+                "customer",
+                "priority",
+            )
+        )
 
         sent_count = 0
 
         for task in pending_tasks:
-            employee = task.assigned_to
+
+            employee = getattr(
+                task,
+                "assigned_to",
+                None,
+            )
+
             if not employee:
                 continue
 
-            target_name = (
-                task.lead.name if task.lead 
-                else (task.customer.name if task.customer else "General")
+            # ==========================================
+            # TARGET / CUSTOMER NAME
+            # ==========================================
+
+            if getattr(
+                task,
+                "lead",
+                None,
+            ):
+
+                target_name = (
+                    task.lead.name
+                )
+
+            elif getattr(
+                task,
+                "customer",
+                None,
+            ):
+
+                target_name = (
+                    task.customer.name
+                )
+
+            else:
+
+                target_name = "General"
+
+            # ==========================================
+            # SUBJECT
+            # ==========================================
+
+            subject = (
+                f"Task Reminder: "
+                f"'{task.task_title}' is due!"
             )
 
-            subject = f"⏰ Task Reminder: '{task.task_title}' is due!"
+            # ==========================================
+            # MESSAGE
+            # ==========================================
+
             message = (
                 f"Hello {employee.username},\n\n"
-                f"Reminder for your pending task:\n"
-                f"• Task: {task.task_title}\n"
-                f"• Client: {target_name}\n"
-                f"• Due Date: {task.due_date.strftime('%d-%b-%Y %I:%M %p')}\n"
-                f"• Description: {task.description or 'No description'}\n\n"
-                f"Best regards,\nCRM System"
+
+                f"Reminder for your pending task:\n\n"
+
+                f"Task: "
+                f"{task.task_title}\n"
+
+                f"Client: "
+                f"{target_name}\n"
+
+                f"Due Date: "
+                f"{task.due_date.strftime('%d-%b-%Y')}\n"
+
+                f"Description: "
+                f"{task.description or 'No description'}\n\n"
+
+                f"Best regards,\n"
+                f"CRM System"
             )
 
-            # In-App Notification create karein
+            # ==========================================
+            # IN-APP NOTIFICATION
+            # ==========================================
+
             create_notification(
                 user=employee,
+
                 title=subject,
-                message=f"Task '{task.task_title}' is due for {target_name}.",
+
+                message=(
+                    f"Task '{task.task_title}' "
+                    f"is due for {target_name}."
+                ),
+
                 type_name="Task Reminder",
             )
 
-            # Email send karein
-            if getattr(employee, "email", None):
+            # ==========================================
+            # EMAIL
+            # ==========================================
+
+            if getattr(
+                employee,
+                "email",
+                None,
+            ):
+
                 try:
+
                     send_mail(
                         subject=subject,
+
                         message=message,
-                        from_email=settings.DEFAULT_FROM_EMAIL,
-                        recipient_list=[employee.email],
+
+                        from_email=(
+                            settings.DEFAULT_FROM_EMAIL
+                        ),
+
+                        recipient_list=[
+                            employee.email
+                        ],
+
                         fail_silently=True,
                     )
+
                 except Exception:
-                    pass
+
+                    logger.exception(
+                        "Task reminder email failed: "
+                        "task_id=%s",
+                        getattr(
+                            task,
+                            "task_id",
+                            None,
+                        ),
+                    )
 
             sent_count += 1
 
-        logger.info("Due task reminders processed: sent_count=%s", sent_count)
+        logger.info(
+            "Due task reminders processed: "
+            "sent_count=%s",
+            sent_count,
+        )
+
         return sent_count
 
     except Exception:
-        logger.exception("Error processing due task reminders.")
+
+        logger.exception(
+            "Error processing due task reminders."
+        )
+
         return 0

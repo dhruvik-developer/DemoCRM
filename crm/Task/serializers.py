@@ -13,7 +13,7 @@ from .models import (
     ReminderStatus,
     Reminder,
 )
-
+from accounts.models import CustomUser
 # ============================================================
 # TASK
 # ============================================================
@@ -156,6 +156,11 @@ class MeetingTypeSerializer(serializers.ModelSerializer):
 
 
 class MeetingSerializer(serializers.ModelSerializer):
+    manager = serializers.PrimaryKeyRelatedField(
+        queryset=CustomUser.objects.all(),
+        required=True
+    )
+
     class Meta:
         model = Meeting
         fields = "__all__"
@@ -164,6 +169,11 @@ class MeetingSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
+            "approval_status",
+            "approved_by",
+            "approved_at",
+            "rejection_reason",
+            "reminder_sent_at",
         )
 
     def validate_meeting_title(self, value):
@@ -194,7 +204,23 @@ class MeetingSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"end_time": "End time must be after start time."}
                 )
-
+        meeting_date = attrs.get(
+            "meeting_date",
+            getattr(
+                self.instance,
+                "meeting_date",
+                None,
+            ),
+        )
+        if (
+            meeting_date
+            and not self.instance
+            and meeting_date < timezone.localdate()
+        ):
+            raise serializers.ValidationError({
+                "meeting_date":
+                "Meeting date cannot be in the past."
+            })
         return attrs
 
 
