@@ -1,5 +1,4 @@
 import uuid
-from decimal import Decimal
 from unittest.mock import patch, MagicMock
 from django.contrib.auth import get_user_model
 from django.core import mail
@@ -9,11 +8,14 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from accounts.models import Role
-from Task.models import Task, TaskCategory, TaskPriority, TaskStatus
-from Task.models import MeetingStatus, MeetingType, ReminderType, ReminderStatus
-from FollowUp.models import Followup, FollowUpStatus, FollowUpTypes
-from customer_management.models import Lead, LeadSource, Pipeline, PipelineStage, Quotation
-from customer_management.services import CRMService, QuotationService
+from Task.models import TaskCategory, TaskPriority, TaskStatus
+from customer_management.models import (
+    Lead,
+    LeadSource,
+    Pipeline,
+    PipelineStage,
+)
+from customer_management.services import QuotationService
 
 from .models import (
     Notification,
@@ -75,7 +77,7 @@ class NotificationTemplateTests(TestCase):
             channel=NotificationChannel.IN_APP,
         )
         url = reverse("Notification:template-detail", kwargs={"pk": template.pk})
-        
+
         # Update template
         update_data = {"message": "New message {{task_title}}"}
         patch_res = self.client.patch(url, update_data, format="json")
@@ -127,7 +129,9 @@ class NotificationTemplateTests(TestCase):
 
 class RenderTemplateTests(TestCase):
     def test_template_rendering_variables(self):
-        template_str = "Hi {{user_name}}, Manager {{manager_name}} assigned task {{task_title}}."
+        template_str = (
+            "Hi {{user_name}}, Manager {{manager_name}} assigned task {{task_title}}."
+        )
         context = {
             "user_name": "John Doe",
             "manager_name": "Jane Smith",
@@ -177,13 +181,17 @@ class NotificationUserAPITests(TestCase):
         self.assertEqual(response.data[0]["id"], self.notif_a.id)
 
         # Accessing detail of User B's notification should be forbidden/404
-        detail_url = reverse("Notification:user-notification-detail", kwargs={"pk": self.notif_b.id})
+        detail_url = reverse(
+            "Notification:user-notification-detail", kwargs={"pk": self.notif_b.id}
+        )
         detail_res = self.client.get(detail_url)
         self.assertEqual(detail_res.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_mark_notification_as_read(self):
         self.client.force_authenticate(user=self.user_a)
-        url = reverse("Notification:user-notification-mark-read", kwargs={"pk": self.notif_a.id})
+        url = reverse(
+            "Notification:user-notification-mark-read", kwargs={"pk": self.notif_a.id}
+        )
         response = self.client.put(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["is_read"])
@@ -318,6 +326,18 @@ class BusinessOperationIntegrationTests(TestCase):
         self.task_category = TaskCategory.objects.create(category_name="General")
 
     def test_task_creation_triggers_notification(self):
+        source = LeadSource.objects.create(name="Web", created_by=self.admin_user)
+        pipeline = Pipeline.objects.create(name="Sales", created_by=self.admin_user)
+        stage = PipelineStage.objects.create(
+            pipeline=pipeline, name="New", display_order=1
+        )
+        lead = Lead.objects.create(
+            name="Test Lead",
+            source=source,
+            assigned_to=self.admin_user,
+            pipeline=pipeline,
+            current_stage=stage,
+        )
         self.client.force_authenticate(user=self.admin_user)
         url = reverse("task-list-create")
         data = {
@@ -326,10 +346,11 @@ class BusinessOperationIntegrationTests(TestCase):
             "priority": self.task_priority.pk,
             "category": self.task_category.pk,
             "assigned_to": str(self.employee_user.pk),
+            "lead": str(lead.pk),
         }
         res = self.client.post(url, data, format="json")
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
-        
+
         # Verify notification created for assignee
         notifs = Notification.objects.filter(
             recipient=self.employee_user,
@@ -373,13 +394,19 @@ class BusinessOperationIntegrationTests(TestCase):
         quotation = QuotationService.create_quotation(
             user=self.employee_user,
             lead=lead,
-            line_items=[{"description": "Item 1", "quantity": 1, "unit_price": "100.00"}],
+            line_items=[
+                {"description": "Item 1", "quantity": 1, "unit_price": "100.00"}
+            ],
         )
         # Submit for approval
-        QuotationService.submit_quotation_for_approval(user=self.employee_user, quotation=quotation)
+        QuotationService.submit_quotation_for_approval(
+            user=self.employee_user, quotation=quotation
+        )
 
         # Approve quotation as manager
-        QuotationService.approve_quotation(reviewer_user=self.admin_user, quotation=quotation)
+        QuotationService.approve_quotation(
+            reviewer_user=self.admin_user, quotation=quotation
+        )
 
         notif = Notification.objects.filter(
             recipient=self.employee_user,
@@ -392,6 +419,7 @@ class BusinessOperationIntegrationTests(TestCase):
 # ==========================================================
 # NOTIFICATION TEMPLATE API TESTS
 # ==========================================================
+
 
 class NotificationTemplateAPITests(TestCase):
     def setUp(self):
@@ -601,6 +629,7 @@ class NotificationTemplateAPITests(TestCase):
 # MANUAL NOTIFICATION API TESTS
 # ==========================================================
 
+
 class ManualNotificationSendAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -665,7 +694,9 @@ class ManualNotificationSendAPITests(TestCase):
             event_type=NotificationEventType.MANUAL,
         ).first()
         self.assertIsNotNone(notif)
-        self.assertIn(self.target.get_full_name() or self.target.username, notif.message)
+        self.assertIn(
+            self.target.get_full_name() or self.target.username, notif.message
+        )
 
     def test_manual_send_no_recipient(self):
         self.client.force_authenticate(user=self.admin_user)
@@ -749,6 +780,7 @@ class ManualNotificationSendAPITests(TestCase):
 # ==========================================================
 # USER NOTIFICATION API TESTS
 # ==========================================================
+
 
 class UserNotificationListAPITests(TestCase):
     def setUp(self):
@@ -837,6 +869,7 @@ class UserNotificationListAPITests(TestCase):
 # USER NOTIFICATION DETAIL API TESTS
 # ==========================================================
 
+
 class UserNotificationDetailAPITests(TestCase):
     def setUp(self):
         self.client = APIClient()
@@ -867,14 +900,18 @@ class UserNotificationDetailAPITests(TestCase):
 
     def test_get_own_notification_detail(self):
         self.client.force_authenticate(user=self.user)
-        url = reverse("Notification:user-notification-detail", kwargs={"pk": self.notif.id})
+        url = reverse(
+            "Notification:user-notification-detail", kwargs={"pk": self.notif.id}
+        )
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["message"], "Your role changed")
 
     def test_cannot_get_other_users_notification(self):
         self.client.force_authenticate(user=self.user)
-        url = reverse("Notification:user-notification-detail", kwargs={"pk": self.notif_other.id})
+        url = reverse(
+            "Notification:user-notification-detail", kwargs={"pk": self.notif_other.id}
+        )
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
@@ -885,7 +922,9 @@ class UserNotificationDetailAPITests(TestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_unauthenticated_denied(self):
-        url = reverse("Notification:user-notification-detail", kwargs={"pk": self.notif.id})
+        url = reverse(
+            "Notification:user-notification-detail", kwargs={"pk": self.notif.id}
+        )
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -893,6 +932,7 @@ class UserNotificationDetailAPITests(TestCase):
 # ==========================================================
 # NOTIFICATION MARK READ API TESTS
 # ==========================================================
+
 
 class NotificationMarkReadAPITests(TestCase):
     def setUp(self):
@@ -932,7 +972,10 @@ class NotificationMarkReadAPITests(TestCase):
 
     def test_mark_unread_as_read_via_put(self):
         self.client.force_authenticate(user=self.user)
-        url = reverse("Notification:user-notification-mark-read", kwargs={"pk": self.unread_notif.id})
+        url = reverse(
+            "Notification:user-notification-mark-read",
+            kwargs={"pk": self.unread_notif.id},
+        )
         response = self.client.put(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["is_read"])
@@ -941,14 +984,20 @@ class NotificationMarkReadAPITests(TestCase):
 
     def test_mark_read_as_read_via_patch(self):
         self.client.force_authenticate(user=self.user)
-        url = reverse("Notification:user-notification-mark-read", kwargs={"pk": self.already_read.id})
+        url = reverse(
+            "Notification:user-notification-mark-read",
+            kwargs={"pk": self.already_read.id},
+        )
         response = self.client.patch(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["is_read"])
 
     def test_mark_read_idempotent(self):
         self.client.force_authenticate(user=self.user)
-        url = reverse("Notification:user-notification-mark-read", kwargs={"pk": self.already_read.id})
+        url = reverse(
+            "Notification:user-notification-mark-read",
+            kwargs={"pk": self.already_read.id},
+        )
         response = self.client.put(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertTrue(response.data["is_read"])
@@ -961,12 +1010,18 @@ class NotificationMarkReadAPITests(TestCase):
 
     def test_mark_read_other_users_notif_denied(self):
         self.client.force_authenticate(user=self.user)
-        url = reverse("Notification:user-notification-mark-read", kwargs={"pk": self.other_notif.id})
+        url = reverse(
+            "Notification:user-notification-mark-read",
+            kwargs={"pk": self.other_notif.id},
+        )
         response = self.client.put(url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_mark_read_unauthenticated(self):
-        url = reverse("Notification:user-notification-mark-read", kwargs={"pk": self.unread_notif.id})
+        url = reverse(
+            "Notification:user-notification-mark-read",
+            kwargs={"pk": self.unread_notif.id},
+        )
         response = self.client.put(url)
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
@@ -974,6 +1029,7 @@ class NotificationMarkReadAPITests(TestCase):
 # ==========================================================
 # RENDER TEMPLATE UTILITY TESTS
 # ==========================================================
+
 
 class RenderTemplateEdgeCaseTests(TestCase):
     def test_empty_string_returns_empty(self):
@@ -989,7 +1045,9 @@ class RenderTemplateEdgeCaseTests(TestCase):
         self.assertEqual(result, "Hello {{user_name}}")
 
     def test_missing_variable_leaves_placeholder(self):
-        result = render_template("Hi {{user_name}}, task {{task_title}}", {"user_name": "Alice"})
+        result = render_template(
+            "Hi {{user_name}}, task {{task_title}}", {"user_name": "Alice"}
+        )
         self.assertEqual(result, "Hi Alice, task {{task_title}}")
 
     def test_no_placeholders_returns_original(self):
@@ -1016,6 +1074,7 @@ class RenderTemplateEdgeCaseTests(TestCase):
 # ==========================================================
 # TRIGGER NOTIFICATION EVENT UTILITY TESTS
 # ==========================================================
+
 
 class TriggerNotificationEventTests(TestCase):
     def setUp(self):
@@ -1057,7 +1116,9 @@ class TriggerNotificationEventTests(TestCase):
         self.assertEqual(result[1].recipient, self.user2)
 
     def test_fallback_message_without_template(self):
-        Notification.objects.filter(event_type=NotificationEventType.TASK_ASSIGNED).delete()
+        Notification.objects.filter(
+            event_type=NotificationEventType.TASK_ASSIGNED
+        ).delete()
         result = trigger_notification_event(
             event_type=NotificationEventType.TASK_ASSIGNED,
             recipient=self.user,
@@ -1067,7 +1128,9 @@ class TriggerNotificationEventTests(TestCase):
         self.assertIn("My Task", result[0].message)
 
     def test_fallback_generic_message_without_template_and_context(self):
-        Notification.objects.filter(event_type=NotificationEventType.USER_ASSIGNED).delete()
+        Notification.objects.filter(
+            event_type=NotificationEventType.USER_ASSIGNED
+        ).delete()
         result = trigger_notification_event(
             event_type=NotificationEventType.USER_ASSIGNED,
             recipient=self.user,
@@ -1148,7 +1211,9 @@ class TriggerNotificationEventTests(TestCase):
             recipient=self.user,
             custom_message="Hi {{user_name}}",
         )
-        self.assertEqual(result[0].message, f"Hi {self.user.get_full_name() or self.user.username}")
+        self.assertEqual(
+            result[0].message, f"Hi {self.user.get_full_name() or self.user.username}"
+        )
 
     def test_employee_name_auto_populated_from_recipient(self):
         result = trigger_notification_event(
@@ -1156,7 +1221,9 @@ class TriggerNotificationEventTests(TestCase):
             recipient=self.user,
             custom_message="By {{employee_name}}",
         )
-        self.assertEqual(result[0].message, f"By {self.user.get_full_name() or self.user.username}")
+        self.assertEqual(
+            result[0].message, f"By {self.user.get_full_name() or self.user.username}"
+        )
 
     def test_notification_not_read_by_default(self):
         result = trigger_notification_event(
@@ -1172,6 +1239,7 @@ class TriggerNotificationEventTests(TestCase):
 # NOTIFICATION EMAIL UTILITY TESTS
 # ==========================================================
 
+
 class SendNotificationEmailTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -1183,6 +1251,7 @@ class SendNotificationEmailTests(TestCase):
 
     def test_email_sent_on_email_channel(self):
         from Notification.notification_utils import send_notification_email
+
         mail.outbox = []
         result = send_notification_email(self.user, "TestSubject", "TestBody")
         self.assertTrue(result)
@@ -1191,6 +1260,7 @@ class SendNotificationEmailTests(TestCase):
 
     def test_email_no_recipient_returns_false(self):
         from Notification.notification_utils import send_notification_email
+
         mail.outbox = []
         result = send_notification_email(None, "Subject", "Body")
         self.assertFalse(result)
@@ -1198,6 +1268,7 @@ class SendNotificationEmailTests(TestCase):
 
     def test_email_user_without_email_returns_false(self):
         from Notification.notification_utils import send_notification_email
+
         self.user.email = ""
         self.user.save()
         mail.outbox = []
@@ -1208,6 +1279,7 @@ class SendNotificationEmailTests(TestCase):
 # ==========================================================
 # NOTIFICATION MODEL TESTS
 # ==========================================================
+
 
 class NotificationModelTests(TestCase):
     def test_notification_str(self):
@@ -1334,6 +1406,7 @@ class NotificationModelTests(TestCase):
 # CREATE_NOTIFICATION BACKWARD COMPAT TESTS
 # ==========================================================
 
+
 class CreateNotificationBackwardCompatTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -1345,6 +1418,7 @@ class CreateNotificationBackwardCompatTests(TestCase):
 
     def test_create_notification_returns_single_notification(self):
         from Notification.notification_utils import create_notification
+
         result = create_notification(
             user=self.user,
             title="Compat Test",
@@ -1357,6 +1431,7 @@ class CreateNotificationBackwardCompatTests(TestCase):
 
     def test_create_notification_with_no_user_returns_none(self):
         from Notification.notification_utils import create_notification
+
         result = create_notification(
             user=None,
             title="No User",
@@ -1368,6 +1443,7 @@ class CreateNotificationBackwardCompatTests(TestCase):
 # ==========================================================
 # NOTIFICATION PERMISSION TESTS
 # ==========================================================
+
 
 class NotificationPermissionTests(TestCase):
     def setUp(self):
@@ -1441,7 +1517,10 @@ class NotificationPermissionTests(TestCase):
 
     def test_employee_can_mark_own_notification_read(self):
         self.client.force_authenticate(user=self.employee_user)
-        url = reverse("Notification:user-notification-mark-read", kwargs={"pk": self.user_notif.id})
+        url = reverse(
+            "Notification:user-notification-mark-read",
+            kwargs={"pk": self.user_notif.id},
+        )
         response = self.client.put(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -1449,7 +1528,12 @@ class NotificationPermissionTests(TestCase):
         self.client.force_authenticate(user=self.employee_user)
         response = self.client.post(
             reverse("Notification:template-list-create"),
-            {"name": "X", "event_type": "TASK_ASSIGNED", "message": "X", "channel": "IN_APP"},
+            {
+                "name": "X",
+                "event_type": "TASK_ASSIGNED",
+                "message": "X",
+                "channel": "IN_APP",
+            },
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
@@ -1485,7 +1569,9 @@ class NotificationPermissionTests(TestCase):
             channel=NotificationChannel.IN_APP,
         )
         self.client.force_authenticate(user=self.no_role_user)
-        url = reverse("Notification:user-notification-mark-read", kwargs={"pk": notif.id})
+        url = reverse(
+            "Notification:user-notification-mark-read", kwargs={"pk": notif.id}
+        )
         response = self.client.put(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -1493,7 +1579,12 @@ class NotificationPermissionTests(TestCase):
         self.client.force_authenticate(user=self.manager_user)
         response = self.client.post(
             reverse("Notification:template-list-create"),
-            {"name": "Mgr Tpl", "event_type": "TASK_ASSIGNED", "message": "Mgr msg", "channel": "IN_APP"},
+            {
+                "name": "Mgr Tpl",
+                "event_type": "TASK_ASSIGNED",
+                "message": "Mgr msg",
+                "channel": "IN_APP",
+            },
             format="json",
         )
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -1524,7 +1615,9 @@ class NotificationPermissionTests(TestCase):
 
     def test_employee_can_access_user_notification_detail(self):
         self.client.force_authenticate(user=self.employee_user)
-        url = reverse("Notification:user-notification-detail", kwargs={"pk": self.user_notif.id})
+        url = reverse(
+            "Notification:user-notification-detail", kwargs={"pk": self.user_notif.id}
+        )
         response = self.client.get(url)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
@@ -1532,6 +1625,7 @@ class NotificationPermissionTests(TestCase):
 # ==========================================================
 # TRY-EXCEPT ERROR PATH TESTS
 # ==========================================================
+
 
 class TriggerNotificationEventErrorPathTests(TestCase):
     def setUp(self):
@@ -1596,7 +1690,9 @@ class TriggerNotificationEventErrorPathTests(TestCase):
         )
         self.assertEqual(len(results), 1)
 
-    @patch("Notification.notification_utils.send_notification_email", return_value=False)
+    @patch(
+        "Notification.notification_utils.send_notification_email", return_value=False
+    )
     def test_email_failure_does_not_crreate(self, mock_email):
         results = trigger_notification_event(
             event_type=NotificationEventType.TASK_ASSIGNED,
@@ -1641,11 +1737,17 @@ class CreateNotificationExceptionPathTests(TestCase):
             password="Password@123",
         )
 
-    @patch("Notification.notification_utils.trigger_notification_event", side_effect=Exception("Boom"))
+    @patch(
+        "Notification.notification_utils.trigger_notification_event",
+        side_effect=Exception("Boom"),
+    )
     def test_create_notification_exception_returns_none(self, mock_trigger):
         from Notification.notification_utils import create_notification
+
         result = create_notification(
-            user=self.user, title="Test", message="Should fail",
+            user=self.user,
+            title="Test",
+            message="Should fail",
         )
         self.assertIsNone(result)
 
@@ -1653,6 +1755,7 @@ class CreateNotificationExceptionPathTests(TestCase):
 # ==========================================================
 # NEW EVENT TYPE TESTS
 # ==========================================================
+
 
 class NewEventTypeTriggerTests(TestCase):
     def setUp(self):
@@ -1699,7 +1802,9 @@ class NewEventTypeTriggerTests(TestCase):
             custom_message="New note added to follow up.",
         )
         self.assertEqual(len(results), 1)
-        self.assertEqual(results[0].event_type, NotificationEventType.FOLLOWUP_NOTE_ADDED)
+        self.assertEqual(
+            results[0].event_type, NotificationEventType.FOLLOWUP_NOTE_ADDED
+        )
 
     def test_lead_created_event(self):
         results = trigger_notification_event(

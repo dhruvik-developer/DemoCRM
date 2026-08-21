@@ -21,6 +21,7 @@ logger = logging.getLogger(__name__)
 # TEMPLATE MANAGEMENT VIEWS (APIView ONLY)
 # ==========================================================
 
+
 class NotificationTemplateListView(APIView):
     """
     GET  /notification-templates/
@@ -64,7 +65,11 @@ class NotificationTemplateListView(APIView):
             serializer = NotificationTemplateSerializer(data=request.data)
             if serializer.is_valid():
                 template = serializer.save()
-                logger.info("NotificationTemplate created: %s (ID: %s)", template.name, template.pk)
+                logger.info(
+                    "NotificationTemplate created: %s (ID: %s)",
+                    template.name,
+                    template.pk,
+                )
                 return Response(
                     NotificationTemplateSerializer(template).data,
                     status=status.HTTP_201_CREATED,
@@ -179,6 +184,7 @@ class NotificationTemplateDetailView(APIView):
 # MANUAL NOTIFICATION SEND VIEW (APIView ONLY)
 # ==========================================================
 
+
 class ManualNotificationSendView(APIView):
     """
     POST /notifications/send/
@@ -229,6 +235,7 @@ class ManualNotificationSendView(APIView):
 # USER NOTIFICATION VIEWS (APIView ONLY)
 # ==========================================================
 
+
 class UserNotificationListView(APIView):
     """
     GET /notifications/
@@ -254,7 +261,9 @@ class UserNotificationListView(APIView):
             serializer = NotificationSerializer(notifications, many=True)
             return Response(serializer.data, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error("Failed to list notifications for user %s: %s", request.user, e)
+            logger.error(
+                "Failed to list notifications for user %s: %s", request.user, e
+            )
             return Response(
                 {"error": "Failed to retrieve notifications."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

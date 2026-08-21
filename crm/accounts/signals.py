@@ -51,10 +51,10 @@ MANAGER_MODEL_PREFIXES = [
     "notificationtype",
 ]
 
-MANAGER_CODENAMES = (
-    _codename_set(MANAGER_MODEL_PREFIXES)
-    | {"assign_task", "send_notification"}
-)
+MANAGER_CODENAMES = _codename_set(MANAGER_MODEL_PREFIXES) | {
+    "assign_task",
+    "send_notification",
+}
 
 # Models the Employee role can read.
 EMPLOYEE_MODEL_PREFIXES = [
@@ -78,22 +78,19 @@ EMPLOYEE_MODEL_PREFIXES = [
     "notificationtype",
 ]
 
-EMPLOYEE_CODENAMES = (
-    {f"view_{prefix}" for prefix in EMPLOYEE_MODEL_PREFIXES}
-    | {
-        # An assignee can act on their own tasks / add their own records.
-        "change_task",
-        "add_meeting",
-        "add_meetingparticipant",
-        "delete_meetingparticipant",
-        "add_reminder",
-        "change_reminder",
-        "delete_reminder",
-        "add_followup",
-        "add_followupnote",
-        "change_notification",
-    }
-)
+EMPLOYEE_CODENAMES = {f"view_{prefix}" for prefix in EMPLOYEE_MODEL_PREFIXES} | {
+    # An assignee can act on their own tasks / add their own records.
+    "change_task",
+    "add_meeting",
+    "add_meetingparticipant",
+    "delete_meetingparticipant",
+    "add_reminder",
+    "change_reminder",
+    "delete_reminder",
+    "add_followup",
+    "add_followupnote",
+    "change_notification",
+}
 
 DEFAULT_ROLE_PERMISSIONS = {
     "Admin": None,  # None means: all permissions.

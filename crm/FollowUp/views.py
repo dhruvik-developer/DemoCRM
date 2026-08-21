@@ -1,6 +1,7 @@
 import logging
 from django.http import Http404
 from django.shortcuts import get_object_or_404
+from django.db import transaction
 from rest_framework import status, serializers
 from rest_framework.exceptions import APIException
 from rest_framework.permissions import IsAuthenticated
@@ -15,6 +16,8 @@ from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from Notification.notification_utils import trigger_notification_event
+from Notification.models import NotificationEventType
 
 logger = logging.getLogger(__name__)
 
@@ -102,12 +105,16 @@ class FollowUpListCreateView(APIView):
     )
     def get(self, request):
         try:
-            followups = Followup.objects.select_related(
-                "task_id",
-                "followup_status",
-                "followup_type",
-                "created_by",
-            ).order_by("-created_at")
+            followups = (
+                Followup.objects.filter(is_active=True)
+                .select_related(
+                    "task_id",
+                    "followup_status",
+                    "followup_type",
+                    "created_by",
+                )
+                .order_by("-created_at")
+            )
             # filter =========================================
             followup_status_id = request.query_params.get("followup_status")
             followup_type_id = request.query_params.get("followup_type")
@@ -191,12 +198,32 @@ class FollowUpListCreateView(APIView):
                     serializer.errors,
                 )
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            followup = serializer.save(created_by=request.user)
+            with transaction.atomic():
+                followup = serializer.save(created_by=request.user)
             logger.info(
                 "FollowUp created successfully: followup_id=%s user_id=%s",
                 followup.followup_id,
                 request.user.pk,
             )
+
+            try:
+                task = followup.task_id
+                if task and task.assigned_to and task.assigned_to != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.FOLLOWUP_CREATED,
+                        recipient=task.assigned_to,
+                        context={
+                            "user_name": task.assigned_to.get_full_name()
+                            or task.assigned_to.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "followup_date": str(followup.followup_date),
+                        },
+                    )
+            except Exception:
+                logger.exception("Failed to send followup creation notification")
+
             return Response(
                 FollowupSerializer(followup, context={"request": request}).data,
                 status=status.HTTP_201_CREATED,
@@ -245,6 +272,7 @@ class FollowUpDetailView(APIView):
                 "created_by",
             ),
             followup_id=followup_id,
+            is_active=True,
         )
 
     # ------------------------------------------------------
@@ -349,7 +377,8 @@ class FollowUpDetailView(APIView):
                 )
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-            followup = serializer.save()
+            with transaction.atomic():
+                followup = serializer.save()
 
             logger.info(
                 "FollowUp updated successfully: followup_id=%s user_id=%s",
@@ -413,7 +442,9 @@ class FollowUpDetailView(APIView):
         try:
             followup = self.get_followup(followup_id)
             self.check_object_permissions(request, followup)
-            followup.delete()
+
+            followup.is_active = False
+            followup.save(update_fields=["is_active"])
 
             logger.info(
                 "FollowUp deleted successfully: followup_id=%s user_id=%s",
@@ -505,7 +536,8 @@ class FollowUpNoteCreateView(APIView):
                     serializer.errors,
                 )
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            note = serializer.save(followup_id=followup, created_by=request.user)
+            with transaction.atomic():
+                note = serializer.save(followup_id=followup, created_by=request.user)
             logger.info(
                 "FollowUp note created successfully: "
                 "note_id=%s followup_id=%s user_id=%s",

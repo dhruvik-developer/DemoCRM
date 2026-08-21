@@ -3,6 +3,7 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MinValueValidator
 from django.db import models
 
 
@@ -242,6 +243,10 @@ class Customer(models.Model):
     class Meta:
         db_table = "customer"
         ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(fields=["email"], name="uq_customer_email"),
+            models.UniqueConstraint(fields=["phone"], name="uq_customer_phone"),
+        ]
 
     def __str__(self):
         return self.name
@@ -419,6 +424,21 @@ class QuotationVersion(models.Model):
     def __str__(self):
         return f"{self.quotation.quotation_number} v{self.version_number}"
 
+    def clean(self):
+        if self.pk:
+            line_items_amount = sum(
+                li.quantity * li.unit_price for li in self.line_items.all()
+            )
+            if self.total_amount != line_items_amount:
+                raise ValidationError(
+                    {
+                        "total_amount": (
+                            f"Total amount {self.total_amount} does not match "
+                            f"calculated sum {line_items_amount} from line items."
+                        )
+                    }
+                )
+
 
 class QuotationLineItem(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
@@ -431,7 +451,11 @@ class QuotationLineItem(models.Model):
 
     description = models.CharField(max_length=255)
     quantity = models.PositiveIntegerField(default=1)
-    unit_price = models.DecimalField(max_digits=18, decimal_places=2)
+    unit_price = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
 
