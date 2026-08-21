@@ -8,4 +8,3 @@ from .models import (
 admin.site.register(FollowUpStatus)
 admin.site.register(FollowUpTypes)
 admin.site.register(Followup)
-

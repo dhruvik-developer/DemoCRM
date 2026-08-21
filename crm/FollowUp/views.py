@@ -1,7 +1,8 @@
 import logging
 from django.http import Http404
 from django.shortcuts import get_object_or_404
-from rest_framework import status
+from django.db import transaction
+from rest_framework import status, serializers
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -14,6 +15,9 @@ from .serializers import (
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from Notification.notification_utils import trigger_notification_event
+from Notification.models import NotificationEventType
 
 logger = logging.getLogger(__name__)
 
@@ -164,15 +168,32 @@ class FollowUpListCreateView(APIView):
 
             if not serializer.is_valid():
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-            followup = serializer.save(created_by=user)
-
+            with transaction.atomic():
+                followup = serializer.save(created_by=request.user)
             logger.info(
                 "FollowUp created successfully: followup_id=%s task_id=%s user_id=%s",
                 followup.followup_id,
                 task.task_id,
                 user.pk,
             )
+
+            try:
+                task = followup.task_id
+                if task and task.assigned_to and task.assigned_to != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.FOLLOWUP_CREATED,
+                        recipient=task.assigned_to,
+                        context={
+                            "user_name": task.assigned_to.get_full_name()
+                            or task.assigned_to.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "followup_date": str(followup.followup_date),
+                        },
+                    )
+            except Exception:
+                logger.exception("Failed to send followup creation notification")
 
             return Response(
                 FollowupSerializer(followup, context={"request": request}).data,
@@ -216,6 +237,7 @@ class FollowUpDetailView(APIView):
                 "created_by",
             ),
             followup_id=followup_id,
+            is_active=True,
         )
     def check_followup_access(self, request, followup):
         user = request.user
@@ -291,7 +313,15 @@ class FollowUpDetailView(APIView):
             if not serializer.is_valid():
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-            followup = serializer.save()
+            with transaction.atomic():
+                followup = serializer.save()
+
+            logger.info(
+                "FollowUp updated successfully: followup_id=%s user_id=%s",
+                followup.followup_id,
+                request.user.pk,
+            )
+
             return Response(
                 FollowupSerializer(followup, context={"request": request}).data,
                 status=status.HTTP_200_OK,

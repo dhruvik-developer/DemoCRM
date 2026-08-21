@@ -1,3 +1,4 @@
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.conf import settings
 
@@ -71,6 +72,11 @@ class Task(models.Model):
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        if self.customer and self.lead:
+            if self.customer.lead_id != self.lead_id:
+                raise ValidationError("Customer must belong to the assigned Lead.")
 
     def __str__(self):
         return self.task_title
@@ -183,6 +189,14 @@ class MeetingParticipant(models.Model):
     participant_role = models.CharField(max_length=100)
     is_required = models.BooleanField(default=True)
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["meeting_id", "user_id"],
+                name="uq_meeting_participant",
+            ),
+        ]
+
 
 # ======================================================
 # REMINDER
@@ -242,6 +256,7 @@ class Reminder(models.Model):
     reminder_datetime = models.DateTimeField()
     message = models.TextField()
     is_sent = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
     # Developer 1 - User
     created_by = models.ForeignKey(
         "accounts.CustomUser",

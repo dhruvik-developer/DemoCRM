@@ -810,6 +810,21 @@ class CustomerListCreateView(generics.ListCreateAPIView):
         return super().post(request, *args, **kwargs)
 
     def perform_create(self, serializer):
+        lead = serializer.validated_data.get("lead")
+        if not lead:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+
+            raise DRFValidationError(
+                {"lead": "A lead is required to create a customer."}
+            )
+
+        if lead.status != Lead.Status.CONVERTED:
+            from rest_framework.exceptions import ValidationError as DRFValidationError
+
+            raise DRFValidationError(
+                {"lead": "Customer can only be created from a CONVERTED Lead."}
+            )
+
         customer = serializer.save()
 
         CRMService.create_audit_log(

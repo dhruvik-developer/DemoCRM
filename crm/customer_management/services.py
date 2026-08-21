@@ -199,6 +199,15 @@ class CRMService:
         if not assigned_to.is_active:
             raise ValidationError("An inactive employee cannot be assigned a Lead.")
 
+        if email and phone:
+            duplicate = Lead.objects.filter(
+                email=email, phone=phone, status=Lead.Status.ACTIVE
+            ).exists()
+            if duplicate:
+                raise ValidationError(
+                    "An active Lead with this email and phone combination already exists."
+                )
+
         first_stage = (
             PipelineStage.objects.filter(
                 pipeline=pipeline,
@@ -266,6 +275,9 @@ class CRMService:
         lead,
         new_assignee,
     ):
+        if lead.status != Lead.Status.ACTIVE:
+            raise ValidationError("Only active Leads can be assigned.")
+
         if not new_assignee.is_active:
             raise ValidationError("An inactive employee cannot be assigned a Lead.")
 
@@ -528,9 +540,15 @@ class CRMService:
                 "Activity cannot belong to both a Lead and a Customer."
             )
 
+        if customer:
+            if not Customer.objects.filter(pk=customer.pk).exists():
+                raise ValidationError("Customer does not exist.")
+
         if lead:
             lead_obj = Lead.objects.filter(pk=lead.pk).values("status").first()
-            if lead_obj and lead_obj["status"] == Lead.Status.CONVERTED:
+            if not lead_obj:
+                raise ValidationError("Lead does not exist.")
+            if lead_obj["status"] == Lead.Status.CONVERTED:
                 raise ValidationError(
                     "Cannot create a new Activity for a converted Lead. Create the Activity against the Customer instead."
                 )
@@ -677,10 +695,22 @@ class CRMService:
                     "This Lead's quotation must be accepted before it can be converted."
                 )
 
-        existing_customer = Customer.objects.filter(email=email).first()
+        # Customer identity is email + phone, not name.
+        # If both match → idempotent (return existing customer).
+        # If only one matches → reject.
+        exact_match = Customer.objects.filter(email=email, phone=phone).first()
+        if exact_match:
+            return exact_match
 
-        if existing_customer:
-            raise ValidationError("A customer with this email address already exists.")
+        email_match = Customer.objects.filter(email=email).exists()
+        phone_match = Customer.objects.filter(phone=phone).exists()
+
+        if email_match or phone_match:
+            raise ValidationError(
+                "A customer with this email or phone number already exists, "
+                "but does not match both email and phone. "
+                "Provide both matching the existing customer."
+            )
 
         customer = Customer.objects.create(
             lead=lead,
@@ -789,7 +819,7 @@ class QuotationService:
         )
 
         total = Decimal("0.00")
-        if line_items:
+        if line_items is not None:
             if isinstance(line_items, str):
                 import json
 
@@ -797,6 +827,10 @@ class QuotationService:
                     line_items = json.loads(line_items)
                 except Exception:
                     line_items = []
+            if not line_items:
+                raise ValidationError("Line items cannot be empty.")
+            if isinstance(line_items, list) and len(line_items) == 0:
+                raise ValidationError("Line items cannot be empty.")
             for item in line_items:
                 if isinstance(item, str):
                     import json
@@ -899,6 +933,10 @@ class QuotationService:
                     line_items = json.loads(line_items)
                 except Exception:
                     line_items = []
+            if not line_items:
+                raise ValidationError("Line items cannot be empty.")
+            if isinstance(line_items, list) and len(line_items) == 0:
+                raise ValidationError("Line items cannot be empty.")
             version.line_items.all().delete()
             total = Decimal("0.00")
             for item in line_items:

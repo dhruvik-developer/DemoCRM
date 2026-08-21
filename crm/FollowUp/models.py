@@ -37,6 +37,7 @@ class Followup(models.Model):
     )
     followup_date = models.DateTimeField()
     decription = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
     # Developer 1 - User
     created_by = models.ForeignKey(
         "accounts.CustomUser",
