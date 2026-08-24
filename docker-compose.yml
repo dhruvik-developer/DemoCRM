@@ -1,0 +1,126 @@
+services:
+
+  # ==========================================================
+  # POSTGRESQL DATABASE
+  # ==========================================================
+  db:
+    image: postgres:15-alpine
+    container_name: crm_db
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    # Host: localhost:5432
+    # Docker network: db:5432
+    ports:
+      - "5432:5432"
+
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - pg_isready -U ${DB_USER} -d ${DB_NAME}
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+  # ==========================================================
+  # REDIS
+  # ==========================================================
+  redis:
+    image: redis:7-alpine
+    container_name: crm_redis
+    restart: unless-stopped
+
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+
+  # ==========================================================
+  # DJANGO WEB APPLICATION
+  # ==========================================================
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: crm_web
+    restart: unless-stopped
+
+    command: >
+      sh -c "
+      python manage.py migrate &&
+      python manage.py runserver 0.0.0.0:8000
+      "
+
+    volumes:
+      - ./crm:/app
+
+    ports:
+      - "8000:8000"
+
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+
+  # ==========================================================
+  # CELERY WORKER
+  # ==========================================================
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: crm_celery
+    restart: unless-stopped
+
+    command:
+      - celery
+      - -A
+      - crm
+      - worker
+      - --loglevel=info
+
+    volumes:
+      - ./crm:/app
+
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+
+# ==========================================================
+# PERSISTENT DATABASE STORAGE
+# ==========================================================
+volumes:
+  postgres_data:
