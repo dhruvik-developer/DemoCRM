@@ -4,6 +4,7 @@ from .views import (
     FollowUpListCreateView,
     FollowUpDetailView,
 )
+
 urlpatterns = [
     # ======================================================
     # FOLLOWUP

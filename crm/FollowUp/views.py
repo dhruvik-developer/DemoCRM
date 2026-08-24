@@ -2,20 +2,15 @@ import logging
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from rest_framework import status, serializers
+from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import Followup
-from .serializers import (
-    FollowupSerializer,
-    FollowUpStatusSerializer,
-    FollowUpTypesSerializer,
-)
+from .serializers import FollowupSerializer
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
-from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from Notification.notification_utils import trigger_notification_event
 from Notification.models import NotificationEventType
 
@@ -40,7 +35,7 @@ class FollowUpListCreateView(APIView):
     }
 
     # ======================================================
-    # 1. LIST FOLLOWUPS 
+    # 1. LIST FOLLOWUPS
     # ======================================================
     def get(self, request):
         try:
@@ -120,7 +115,9 @@ class FollowUpListCreateView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while fetching FollowUps: user_id=%s", request.user.pk)
+            logger.exception(
+                "Error while fetching FollowUps: user_id=%s", request.user.pk
+            )
             return Response(
                 {"error": "Something went wrong while fetching FollowUps."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -158,7 +155,9 @@ class FollowUpListCreateView(APIView):
             if not user.is_superuser and role_name not in ["admin", "manager"]:
                 if task.assigned_to_id != user.pk:
                     return Response(
-                        {"detail": "You can only create FollowUps for tasks assigned to you."},
+                        {
+                            "detail": "You can only create FollowUps for tasks assigned to you."
+                        },
                         status=status.HTTP_403_FORBIDDEN,
                     )
 
@@ -203,7 +202,9 @@ class FollowUpListCreateView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while creating FollowUp: user_id=%s", request.user.pk)
+            logger.exception(
+                "Error while creating FollowUp: user_id=%s", request.user.pk
+            )
             return Response(
                 {"error": "Something went wrong while creating the FollowUp."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -239,6 +240,7 @@ class FollowUpDetailView(APIView):
             followup_id=followup_id,
             is_active=True,
         )
+
     def check_followup_access(self, request, followup):
         user = request.user
 
@@ -268,7 +270,9 @@ class FollowUpDetailView(APIView):
                 followup.task_id.assigned_to_id,
             )
             return Response(
-                {"detail": "You can only access, update, or delete FollowUps for tasks assigned to you."},
+                {
+                    "detail": "You can only access, update, or delete FollowUps for tasks assigned to you."
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -290,7 +294,9 @@ class FollowUpDetailView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while fetching FollowUp: followup_id=%s", followup_id)
+            logger.exception(
+                "Error while fetching FollowUp: followup_id=%s", followup_id
+            )
             return Response(
                 {"error": "Something went wrong while fetching the FollowUp."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -330,7 +336,9 @@ class FollowUpDetailView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while updating FollowUp: followup_id=%s", followup_id)
+            logger.exception(
+                "Error while updating FollowUp: followup_id=%s", followup_id
+            )
             return Response(
                 {"error": "Something went wrong while updating the FollowUp."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -365,7 +373,9 @@ class FollowUpDetailView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while deleting FollowUp: followup_id=%s", followup_id)
+            logger.exception(
+                "Error while deleting FollowUp: followup_id=%s", followup_id
+            )
             return Response(
                 {"error": "Something went wrong while deleting the FollowUp."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
