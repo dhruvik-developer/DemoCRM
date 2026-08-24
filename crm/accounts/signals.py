@@ -49,11 +49,31 @@ MANAGER_MODEL_PREFIXES = [
     "notification",
     "notificationtemplate",
     "notificationtype",
+    "calltemplate",
+    "templateversion",
+    "templatefield",
+    "pipelinestageactivity",
+    "callattempt",
+    "formsubmission",
+    "tasktriggerrule",
+    "customeraccount",
+    "customercontact",
+    "customer",
+    "adhocfieldproposal",
+    "indexedsubmissionvalue",
 ]
 
 MANAGER_CODENAMES = _codename_set(MANAGER_MODEL_PREFIXES) | {
     "assign_task",
     "send_notification",
+    # CallForms / customer-management custom permissions declared in model
+    # Meta.permissions so managers can exercise them without manual grants.
+    "manage_call_template",
+    "manage_template_version",
+    "manage_template_field",
+    "manage_stage_activity",
+    "add_adhoc_field",
+    "manage_adhoc_field",
 }
 
 # Models the Employee role can read.
@@ -76,6 +96,18 @@ EMPLOYEE_MODEL_PREFIXES = [
     "notification",
     "notificationtemplate",
     "notificationtype",
+    "calltemplate",
+    "templateversion",
+    "templatefield",
+    "pipelinestageactivity",
+    "callattempt",
+    "formsubmission",
+    "tasktriggerrule",
+    "customeraccount",
+    "customercontact",
+    "customer",
+    "adhocfieldproposal",
+    "indexedsubmissionvalue",
 ]
 
 EMPLOYEE_CODENAMES = {f"view_{prefix}" for prefix in EMPLOYEE_MODEL_PREFIXES} | {
@@ -90,6 +122,11 @@ EMPLOYEE_CODENAMES = {f"view_{prefix}" for prefix in EMPLOYEE_MODEL_PREFIXES} | 
     "add_followup",
     "add_followupnote",
     "change_notification",
+    "add_callattempt",
+    "change_callattempt",
+    "add_formsubmission",
+    "change_formsubmission",
+    "add_adhoc_field",
 }
 
 DEFAULT_ROLE_PERMISSIONS = {

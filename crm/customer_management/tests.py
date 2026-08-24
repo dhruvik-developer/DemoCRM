@@ -40,7 +40,11 @@ class CRMBaseTestCase(TestCase):
 
     def setUp(self):
         # --- Role & Permissions ---
-        self.role = Role.objects.create(rolename="Manager")
+        # post_migrate seeding (accounts/signals.py) creates this role during
+        # test-DB setup; reuse it instead of colliding on the unique name.
+        self.role, _ = Role.objects.get_or_create(
+            rolename="Manager", defaults={"description": "Manager"}
+        )
         all_perms = Permission.objects.filter(
             codename__in=[
                 "view_leadsource",
@@ -1069,13 +1073,17 @@ class CustomerTests(CRMBaseTestCase):
             pipeline=self.pipeline,
             current_stage=self.stage1,
         )
+        # Direct customer creation requires a CONVERTED Lead with no attached
+        # customer yet (Customer.lead is OneToOne, so the conversion-created
+        # row would collide). Flip status directly to exercise the endpoint.
+        Lead.objects.filter(pk=lead.pk).update(status=Lead.Status.CONVERTED)
         response = self.client.post(
             "/api/crm/customers/",
             {
                 "lead": str(lead.id),
                 "name": "Post Customer",
                 "email": "post@x.com",
-                "phone": "444",
+                "phone": "4440000",
             },
             format="json",
         )
@@ -1141,13 +1149,17 @@ class CustomerTests(CRMBaseTestCase):
             pipeline=self.pipeline,
             current_stage=self.stage1,
         )
+        # Direct customer creation requires a CONVERTED Lead with no attached
+        # customer yet (Customer.lead is OneToOne, so the conversion-created
+        # row would collide). Flip status directly to exercise the endpoint.
+        Lead.objects.filter(pk=lead.pk).update(status=Lead.Status.CONVERTED)
         response = self.client.post(
             "/api/crm/customers/",
             {
                 "lead": str(lead.id),
                 "name": "Audit Cust",
                 "email": "audit@x.com",
-                "phone": "777",
+                "phone": "7770000",
             },
             format="json",
         )
@@ -1534,14 +1546,13 @@ class QuotationCRUDTests(CRMBaseTestCase):
     # --- Edge Cases ---
 
     def test_create_quotation_with_empty_line_items(self):
-        q = QuotationService.create_quotation(
-            user=self.user,
-            lead=self.lead,
-            line_items=[],
-        )
-        q.refresh_from_db()
-        self.assertEqual(q.current_version.total_amount, Decimal("0.00"))
-        self.assertEqual(q.current_version.line_items.count(), 0)
+        """Explicitly empty line_items are rejected (None still means item-less draft)."""
+        with self.assertRaises(ValidationError):
+            QuotationService.create_quotation(
+                user=self.user,
+                lead=self.lead,
+                line_items=[],
+            )
 
     def test_create_quotation_with_no_line_items(self):
         q = QuotationService.create_quotation(user=self.user, lead=self.lead)
@@ -3955,13 +3966,13 @@ class ServiceEdgeCaseTests(CRMBaseTestCase):
         self.assertEqual(q.current_version.total_amount, Decimal("100.00"))
 
     def test_create_quotation_with_invalid_json_string_line_items(self):
-        q = QuotationService.create_quotation(
-            user=self.user,
-            lead=self.lead,
-            line_items="not json at all",
-        )
-        q.refresh_from_db()
-        self.assertEqual(q.current_version.total_amount, Decimal("0.00"))
+        """Unparseable line-item payloads are rejected instead of silently ignored."""
+        with self.assertRaises(ValidationError):
+            QuotationService.create_quotation(
+                user=self.user,
+                lead=self.lead,
+                line_items="not json at all",
+            )
 
     def test_create_quotation_with_string_items_in_list(self):
         q = QuotationService.create_quotation(
@@ -4013,18 +4024,21 @@ class ServiceEdgeCaseTests(CRMBaseTestCase):
         self.assertEqual(q.current_version.total_amount, Decimal("75.00"))
 
     def test_update_draft_with_invalid_json_string(self):
+        """Unparseable line-item payloads are rejected instead of silently clearing items."""
         q = QuotationService.create_quotation(
             user=self.user,
             lead=self.lead,
             line_items=[{"description": "Original", "quantity": 1, "unit_price": 50}],
         )
-        q = QuotationService.update_draft_quotation(
-            user=self.user,
-            quotation=q,
-            line_items="invalid json",
-        )
+        with self.assertRaises(ValidationError):
+            QuotationService.update_draft_quotation(
+                user=self.user,
+                quotation=q,
+                line_items="invalid json",
+            )
+        # Original draft must remain untouched.
         q.refresh_from_db()
-        self.assertEqual(q.current_version.line_items.count(), 0)
+        self.assertEqual(q.current_version.line_items.count(), 1)
 
     def test_update_draft_with_string_items_in_list(self):
         q = QuotationService.create_quotation(
@@ -5174,6 +5188,9 @@ class ViewsEdgeCaseTests(CRMBaseTestCase):
         self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
     def test_customer_create_via_api(self):
+        # Direct customer creation requires a CONVERTED Lead with no attached
+        # customer yet (Customer.lead is OneToOne). Flip status directly.
+        Lead.objects.filter(pk=self.lead.pk).update(status=Lead.Status.CONVERTED)
         resp = self.client.post(
             "/api/crm/customers/",
             {

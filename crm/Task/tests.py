@@ -41,9 +41,9 @@ class TaskAPITestCase(APITestCase):
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role, _ = Role.objects.get_or_create(
+        self.role = Role.objects.create(
             rolename="Employee",
-            defaults={"description": "Employee role"},
+            description="Employee role",
         )
 
         ct = ContentType.objects.get_for_model(Task)
@@ -443,14 +443,9 @@ class MeetingAPITestCase(APITestCase):
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role, _ = Role.objects.get_or_create(
+        self.role = Role.objects.create(
             rolename="Employee",
-            defaults={"description": "Employee role"},
-        )
-
-        self.manager_role, _ = Role.objects.get_or_create(
-            rolename="Manager",
-            defaults={"description": "Manager role"},
+            description="Employee role",
         )
 
         ct = ContentType.objects.get_for_model(Task)
@@ -759,7 +754,10 @@ class MeetingAPITestCase(APITestCase):
                 "end_time": "17:00:00",
                 "location": "Client HQ - Conference Room 3",
                 "description": "Product demo customized session",
-                "extra_fields": {"agenda": "DemoCRM V2 walkthrough", "device": "Laptop + Projector"},
+                "extra_fields": {
+                    "agenda": "DemoCRM V2 walkthrough",
+                    "device": "Laptop + Projector",
+                },
             },
             format="json",
         )
@@ -798,7 +796,9 @@ class MeetingAPITestCase(APITestCase):
         self.assertEqual(reject_resp.status_code, status.HTTP_200_OK)
         meeting.refresh_from_db()
         self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.REJECTED)
-        self.assertEqual(meeting.rejection_reason, "Manager busy with quarterly closing")
+        self.assertEqual(
+            meeting.rejection_reason, "Manager busy with quarterly closing"
+        )
 
         # Employee Reschedules
         self.client.force_authenticate(user=self.user)
@@ -1059,23 +1059,13 @@ class ReminderAPITestCase(APITestCase):
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role, _ = Role.objects.get_or_create(
+        self.role = Role.objects.create(
             rolename="Employee",
-            defaults={"description": "Employee role"},
-        )
-
-        self.manager_role, _ = Role.objects.get_or_create(
-            rolename="Manager",
-            defaults={"description": "Manager role"},
+            description="Employee role",
         )
 
         ct = ContentType.objects.get_for_model(Task)
-        for codename in (
-            "view_reminder",
-            "add_reminder",
-            "change_reminder",
-            "delete_reminder",
-        ):
+        for codename in ("view_reminder", "change_reminder", "delete_reminder"):
             perm, _ = Permission.objects.get_or_create(
                 codename=codename,
                 content_type=ct,
