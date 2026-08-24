@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("FollowUp", "0006_remove_activitylog_activity_action_id_and_more"),
+        ("FollowUp", "0006_merge_20260820_1701"),
     ]
 
     operations = [

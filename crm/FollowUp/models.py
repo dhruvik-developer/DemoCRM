@@ -1,6 +1,5 @@
 from django.db import models
 
-
 # Create your models here.
 # ==============================================================================
 #                                   FOLLOWUPS API
@@ -48,18 +47,3 @@ class Followup(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-
-# follow_up_note
-class FollowUpNote(models.Model):
-    note_id = models.AutoField(primary_key=True)
-    followup_id = models.ForeignKey(
-        Followup, on_delete=models.CASCADE, related_name="notes"
-    )
-    # developer 1
-    created_by = models.ForeignKey(
-        "accounts.CustomUser",
-        on_delete=models.PROTECT,
-        related_name="created_followup_notes",
-    )
-    note = models.TextField()
-    created_at = models.DateTimeField(auto_now_add=True)

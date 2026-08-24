@@ -13,7 +13,7 @@ from .models import (
     ReminderStatus,
     Reminder,
 )
-
+from accounts.models import CustomUser
 # ============================================================
 # TASK
 # ============================================================
@@ -113,21 +113,11 @@ class TaskSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         lead = attrs.get("lead", getattr(self.instance, "lead", None))
-        customer = attrs.get("customer", getattr(self.instance, "customer", None))
 
-        if not lead and not customer:
+        if not lead:
             raise serializers.ValidationError(
-                {"lead": "At least a Lead or Customer is required to create a task."}
+                {"lead": "Lead is required to create a task."}
             )
-
-        if customer and not lead:
-            attrs["lead"] = customer.lead
-
-        if customer and lead:
-            if customer.lead_id != lead.pk:
-                raise serializers.ValidationError(
-                    {"customer": "Customer must belong to the assigned Lead."}
-                )
 
         return attrs
 
@@ -166,6 +156,11 @@ class MeetingTypeSerializer(serializers.ModelSerializer):
 
 
 class MeetingSerializer(serializers.ModelSerializer):
+    manager = serializers.PrimaryKeyRelatedField(
+        queryset=CustomUser.objects.all(),
+        required=True
+    )
+
     class Meta:
         model = Meeting
         fields = "__all__"
@@ -174,6 +169,12 @@ class MeetingSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
+            "approval_status",
+            "approved_by",
+            "approved_at",
+            "rejection_reason",
+            "reminder_sent_at",
+            "meeting_link",
         )
 
     def validate_meeting_title(self, value):
@@ -209,7 +210,23 @@ class MeetingSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"end_time": "End time must be after start time."}
                 )
-
+        meeting_date = attrs.get(
+            "meeting_date",
+            getattr(
+                self.instance,
+                "meeting_date",
+                None,
+            ),
+        )
+        if (
+            meeting_date
+            and not self.instance
+            and meeting_date < timezone.localdate()
+        ):
+            raise serializers.ValidationError({
+                "meeting_date":
+                "Meeting date cannot be in the past."
+            })
         return attrs
 
 
@@ -289,20 +306,3 @@ class ReminderSerializer(serializers.ModelSerializer):
             )
 
         return value
-
-    def validate(self, attrs):
-        task = attrs.get("task_id", getattr(self.instance, "task_id", None))
-        meeting = attrs.get("meeting_id", getattr(self.instance, "meeting_id", None))
-
-        if not task and not meeting:
-            raise serializers.ValidationError(
-                {"task_id": "At least a Task or Meeting is required for a reminder."}
-            )
-
-        if task and meeting:
-            if meeting.task_id_id != task.pk:
-                raise serializers.ValidationError(
-                    {"meeting_id": "Meeting must belong to the specified Task."}
-                )
-
-        return attrs
