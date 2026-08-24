@@ -856,8 +856,6 @@ class TaskAssignView(APIView):
 # ==========================================================
 # CHANGE TASK STATUS
 # ==========================================================
-
-
 class TaskStatusUpdateView(APIView):
     permission_classes = [CanCommunicateWithLead]
 
@@ -1106,8 +1104,6 @@ class TaskStatusUpdateView(APIView):
                 {"error": ("Something went wrong while " "updating the task status.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-
-
 # ==========================================================
 # MEETING
 # ==========================================================
