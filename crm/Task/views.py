@@ -511,30 +511,23 @@ class TaskDetailView(APIView):
 
                 if role is None:
                     return Response(
-                        {"detail": ("No role assigned to user.")},
-                        status=status.HTTP_403_FORBIDDEN,
-                    )
+                            {"detail": "No role assigned to user."},
+                            status=status.HTTP_403_FORBIDDEN,
+                            )
 
                 role_name = getattr(role, "rolename", "").strip().lower()
 
-                # -----------------------------------------
-                # ADMIN / MANAGER
-                # Can update any task
-                # -----------------------------------------
+    # Admin / Manager → can update any task
                 if role_name in ["admin", "manager"]:
                     pass
 
-                # -----------------------------------------
-                # EMPLOYEE
-                # Only assigned task
-                # -----------------------------------------
+    # Employee → only assigned task
                 else:
                     if task.assigned_to_id != user.pk:
                         return Response(
-                            {"detail": ("You can only update tasks assigned to you.")},
+                            {"detail": "You can only update tasks assigned to you."},
                             status=status.HTTP_403_FORBIDDEN,
                         )
-
             # ---------------------------------------------
             # SERIALIZER
             # ---------------------------------------------
