@@ -1,4 +1,7 @@
 import logging
+from pathlib import Path
+
+from django.db import transaction
 
 
 from .models import CustomUser, Role
@@ -37,9 +40,18 @@ from django.utils import timezone
 from .models import PasswordResetOTP
 from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer
 
-OTP_LENGTH = 6
-OTP_EXPIRY_MINUTES = 10
-OTP_MAX_ATTEMPTS = 5
+import os
+from dotenv import load_dotenv
+
+
+# Build paths inside the project like this: BASE_DIR / 'subdir'.
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(BASE_DIR.parent / ".env")
+
+OTP_LENGTH = int(os.getenv("OTP_LENGTH"))
+OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES"))
+OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS"))
 
 
 logger = logging.getLogger(__name__)
@@ -969,7 +981,7 @@ class PermissionDetailAPIView(APIView):
 
 
 # ==========================================================
-# FORGOT / RESET PASSWORD VIEWS (new - existing code untouched)
+# FORGOT / RESET PASSWORD VIEWS
 # ==========================================================
 
 
@@ -1016,51 +1028,68 @@ class ForgotPasswordAPIView(APIView):
         try:
             user = CustomUser.objects.filter(email=email).first()
 
-            if user and user.is_active:
-                otp = "".join(str(secrets.randbelow(10)) for _ in range(OTP_LENGTH))
-
-                PasswordResetOTP.objects.filter(user=user, is_used=False).update(
-                    is_used=True
+            if not user or not user.is_active:
+                logger.warning(
+                    "Password reset requested for unknown/inactive email: %s",
+                    email,
                 )
+
+                return Response(
+                    {"error": "No user is registered with this email."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            otp = "".join(str(secrets.randbelow(10)) for _ in range(OTP_LENGTH))
+
+            with transaction.atomic():
+                PasswordResetOTP.objects.filter(
+                    user=user,
+                    is_used=False,
+                ).update(is_used=True)
+
                 PasswordResetOTP.objects.create(
                     user=user,
                     otp_hash=_hash_otp(otp),
                     expires_at=timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES),
                 )
 
-                send_mail(
-                    subject="CRM Password Reset OTP",
-                    message=(
-                        f"Hello {user.username},\n\n"
-                        "We received a request to reset your CRM account password.\n"
-                        "Use the One-Time Password (OTP) below to reset it:\n\n"
-                        f"OTP: {otp}\n\n"
-                        f"This OTP is valid for {OTP_EXPIRY_MINUTES} minutes and can be used only once.\n"
-                        f"You have {OTP_MAX_ATTEMPTS} attempts to enter it correctly.\n"
-                        "If you did not request this, you can safely ignore this email.\n"
-                    ),
-                    from_email=django_settings.DEFAULT_FROM_EMAIL,
-                    recipient_list=[user.email],
-                    fail_silently=False,
-                )
-                logger.info("Password reset OTP sent to user %s", user.user_id)
-            else:
-                logger.warning(
-                    "Password reset requested for unknown/inactive email: %s", email
-                )
-        except Exception:
-            logger.exception("Failed to process forgot-password request")
-            return Response(
-                {"error": "Failed to send reset OTP. Please try again."},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            send_mail(
+                subject="CRM Password Reset OTP",
+                message=(
+                    f"Hello {user.username},\n\n"
+                    "We received a request to reset your CRM account password.\n"
+                    "Use the One-Time Password (OTP) below "
+                    "to reset it:\n\n"
+                    f"OTP: {otp}\n\n"
+                    f"This OTP is valid for "
+                    f"{OTP_EXPIRY_MINUTES} minutes and can be used only once.\n"
+                    f"You have {OTP_MAX_ATTEMPTS} attempts "
+                    "to enter it correctly.\n"
+                    "If you did not request this, you can safely ignore "
+                    "this email.\n"
+                ),
+                from_email=django_settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[user.email],
+                fail_silently=False,
             )
 
-        return Response(
-            {
-                "message": "If an account with that email exists, a password reset OTP has been sent."
-            },
-            status=status.HTTP_200_OK,
-        )
+            logger.info(
+                "Password reset OTP sent to user %s",
+                user.user_id,
+            )
+
+            return Response(
+                {"message": ("Password reset OTP sent successfully " "to your email.")},
+                status=status.HTTP_200_OK,
+            )
+
+        except Exception:
+            logger.exception("Failed to process forgot-password request")
+
+            return Response(
+                {"error": ("Failed to send reset OTP. " "Please try again.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 class ResetPasswordAPIView(APIView):
@@ -1108,11 +1137,12 @@ class ResetPasswordAPIView(APIView):
                 {"error": "Invalid or expired OTP."}, status=status.HTTP_400_BAD_REQUEST
             )
 
-        otp_record = (
-            PasswordResetOTP.objects.select_for_update()
-            .filter(user=user, is_used=False, expires_at__gt=timezone.now())
-            .first()
-        )
+        with transaction.atomic():
+            otp_record = (
+                PasswordResetOTP.objects.select_for_update()
+                .filter(user=user, is_used=False, expires_at__gt=timezone.now())
+                .first()
+            )
 
         if not otp_record:
             return Response(
