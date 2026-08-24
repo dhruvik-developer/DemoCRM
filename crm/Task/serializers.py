@@ -113,21 +113,11 @@ class TaskSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         lead = attrs.get("lead", getattr(self.instance, "lead", None))
-        customer = attrs.get("customer", getattr(self.instance, "customer", None))
 
-        if not lead and not customer:
+        if not lead:
             raise serializers.ValidationError(
-                {"lead": "At least a Lead or Customer is required to create a task."}
+                {"lead": "Lead is required to create a task."}
             )
-
-        if customer and not lead:
-            attrs["lead"] = customer.lead
-
-        if customer and lead:
-            if customer.lead_id != lead.pk:
-                raise serializers.ValidationError(
-                    {"customer": "Customer must belong to the assigned Lead."}
-                )
 
         return attrs
 
@@ -184,6 +174,7 @@ class MeetingSerializer(serializers.ModelSerializer):
             "approved_at",
             "rejection_reason",
             "reminder_sent_at",
+            "meeting_link",
         )
 
     def validate_meeting_title(self, value):
@@ -315,20 +306,3 @@ class ReminderSerializer(serializers.ModelSerializer):
             )
 
         return value
-
-    def validate(self, attrs):
-        task = attrs.get("task_id", getattr(self.instance, "task_id", None))
-        meeting = attrs.get("meeting_id", getattr(self.instance, "meeting_id", None))
-
-        if not task and not meeting:
-            raise serializers.ValidationError(
-                {"task_id": "At least a Task or Meeting is required for a reminder."}
-            )
-
-        if task and meeting:
-            if meeting.task_id_id != task.pk:
-                raise serializers.ValidationError(
-                    {"meeting_id": "Meeting must belong to the specified Task."}
-                )
-
-        return attrs

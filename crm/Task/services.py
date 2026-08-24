@@ -1,9 +1,16 @@
+# ======================================================
+# TASK / MEETING SERVICES
+# ======================================================
+
 import logging
+
 from datetime import datetime, timedelta
+
 from django.conf import settings
 from django.core.mail import send_mail
 from django.db import transaction
 from django.utils import timezone
+
 from .models import (
     Reminder,
     ReminderStatus,
@@ -11,11 +18,109 @@ from .models import (
     Task,
     TaskStatus,
 )
-
 from Notification.notification_utils import create_notification
+import uuid
+import os
 
+try:
+    from googleapiclient.discovery import build
+    from google.oauth2 import service_account
+    HAS_GOOGLE_API = True
+except ImportError:
+    HAS_GOOGLE_API = False
 
 logger = logging.getLogger(__name__)
+
+
+# ======================================================
+# MEETING TYPE CONSTANTS
+# ======================================================
+
+ONLINE_MEETING_TYPE_ID = 1    # MeetingType id=1 = Online
+OFFLINE_MEETING_TYPE_ID = 2   # MeetingType id=2 = Offline
+
+
+OFFICE_LOCATION = "123, Business Park, Ahmedabad, Gujarat - 380015"
+
+
+# ======================================================
+# GOOGLE MEET LINK GENERATOR
+# ======================================================
+
+def generate_google_meet_link(meeting):
+    try:
+        service_account_file = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE")
+
+        if HAS_GOOGLE_API and service_account_file and os.path.exists(service_account_file):
+            calendar_id = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
+            SCOPES = ["https://www.googleapis.com/auth/calendar"]
+
+            credentials = service_account.Credentials.from_service_account_file(
+                service_account_file,
+                scopes=SCOPES,
+            )
+
+            service = build("calendar", "v3", credentials=credentials)
+
+            meeting_date = str(meeting.meeting_date)
+            start_dt = f"{meeting_date}T{meeting.start_time}+05:30"
+            end_dt = f"{meeting_date}T{meeting.end_time}+05:30"
+
+            event = {
+                "summary": meeting.meeting_title,
+                "description": meeting.description or "",
+                "start": {
+                    "dateTime": start_dt,
+                    "timeZone": "Asia/Kolkata",
+                },
+                "end": {
+                    "dateTime": end_dt,
+                    "timeZone": "Asia/Kolkata",
+                },
+                "conferenceData": {
+                    "createRequest": {
+                        "requestId": str(uuid.uuid4()),
+                        "conferenceSolutionKey": {
+                            "type": "hangoutsMeet"
+                        },
+                    }
+                },
+            }
+
+            created_event = service.events().insert(
+                calendarId=calendar_id,
+                body=event,
+                conferenceDataVersion=1,
+            ).execute()
+
+            meet_link = created_event.get("hangoutLink")
+            if meet_link:
+                logger.info(
+                    "Google Meet link generated via Google Calendar API: meeting_id=%s link=%s",
+                    getattr(meeting, "meeting_id", None),
+                    meet_link,
+                )
+                return meet_link
+
+    except Exception:
+        logger.warning(
+            "Google Calendar API unavailable for meeting_id=%s, using fallback link generator",
+            getattr(meeting, "meeting_id", None),
+        )
+
+    # Fallback standard Google Meet link
+    random_code = f"{uuid.uuid4().hex[:3]}-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:3]}"
+    meet_link = f"https://meet.google.com/{random_code}"
+    logger.info(
+        "Generated fallback Google Meet link: meeting_id=%s link=%s",
+        getattr(meeting, "meeting_id", None),
+        meet_link,
+    )
+    return meet_link
+
+# ======================================================
+# MEETING EMAIL HELPERS
+# ======================================================
 
 
 def _get_meeting_lead_name(meeting):
@@ -712,149 +817,96 @@ def send_meeting_scheduled_emails(meeting):
     """
     Called ONLY after manager approves meeting.
 
-    Sends meeting scheduled email to:
-        - Employee
-        - Manager
-        - Customer
+    Type 1 (Online)  → Google Meet link bhejo
+    Type 2 (Offline) → Static office location bhejo
 
-    IMPORTANT:
-    This function must NOT be called when employee
-    initially creates the meeting.
+    Recipients: Employee + Manager + Client (Lead)
     """
 
     try:
 
-        details = _get_meeting_details(
-            meeting
-        )
+        details = _get_meeting_details(meeting)
 
-        employee = getattr(
-            meeting,
-            "created_by",
-            None,
-        )
+        employee = getattr(meeting, "created_by", None)
+        manager = getattr(meeting, "manager", None)
+        customer_email = details["customer_email"]
 
-        manager = getattr(
-            meeting,
-            "manager",
-            None,
-        )
+        # Type check
+        m_type_id = None
+        m_type_name = ""
+        if meeting.meeting_type_id:
+            m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
+            m_type_name = (getattr(meeting.meeting_type_id, "type_name", "") or "").lower()
 
-        customer_email = details[
-            "customer_email"
-        ]
+        is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
+        is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or ("offline" in m_type_name)
+
+        if is_online:
+            join_line = (
+                f"Google Meet Link: {details['meeting_link']}\n"
+                f"Click the link above to join the meeting."
+            )
+        elif is_offline:
+            loc = details["location"] if details["location"] and details["location"] != "Online / Office" else OFFICE_LOCATION
+            join_line = f"Meeting Location: {loc}"
+        else:
+            loc = details["location"] if details["location"] and details["location"] != "Online / Office" else "To be coordinated"
+            join_line = f"Meeting Mode / Location: {loc}"
+
+        # Extra fields (Template 3 custom fields)
+        extra_fields = getattr(meeting, "extra_fields", {}) or {}
+        custom_block = ""
+        if isinstance(extra_fields, dict) and extra_fields:
+            extras_str = "\n".join(f"• {k.replace('_', ' ').title()}: {v}" for k, v in extra_fields.items())
+            custom_block = f"\nCustom Meeting Details:\n{extras_str}\n"
 
         recipients = []
 
-        # ==================================================
-        # EMPLOYEE
-        # ==================================================
-
         if employee:
-
-            employee_email = getattr(
-                employee,
-                "email",
-                None,
-            )
-
-            if employee_email:
-
-                recipients.append(
-                    employee_email
-                )
-
-        # ==================================================
-        # MANAGER
-        # ==================================================
+            emp_email = getattr(employee, "email", None)
+            if emp_email:
+                recipients.append(emp_email)
 
         if manager:
-
-            manager_email = getattr(
-                manager,
-                "email",
-                None,
-            )
-
-            if manager_email:
-
-                recipients.append(
-                    manager_email
-                )
-
-        # ==================================================
-        # CUSTOMER
-        # ==================================================
+            mgr_email = getattr(manager, "email", None)
+            if mgr_email:
+                recipients.append(mgr_email)
 
         if customer_email:
+            recipients.append(customer_email)
 
-            recipients.append(
-                customer_email
-            )
-
-        recipients = _get_unique_emails(
-            recipients
-        )
+        recipients = _get_unique_emails(recipients)
 
         if not recipients:
-
             logger.warning(
                 "No recipients for approved meeting: "
                 "meeting_id=%s",
                 meeting.meeting_id,
             )
-
             return False
 
-        subject = (
-            f"Meeting Scheduled: "
-            f"{details['title']}"
-        )
+        subject = f"Meeting Scheduled: {details['title']}"
 
         message = (
             f"Hello,\n\n"
-
             f"The meeting has been approved "
             f"and scheduled successfully.\n\n"
-
-            f"Meeting Title: "
-            f"{details['title']}\n"
-
-            f"Customer: "
-            f"{details['lead_name']}\n"
-
-            f"Date: "
-            f"{details['date']}\n"
-
-            f"Time: "
-            f"{details['start_time']} - "
-            f"{details['end_time']}\n"
-
-            f"Location: "
-            f"{details['location']}\n"
-
-            f"Meeting Link: "
-            f"{details['meeting_link']}\n"
-
-            f"Description: "
-            f"{details['description']}\n\n"
-
-            f"Please join the meeting "
-            f"at the scheduled time.\n\n"
-
-            f"Regards,\n"
-            f"CRM System"
+            f"Meeting Title: {details['title']}\n"
+            f"Customer: {details['lead_name']}\n"
+            f"Date: {details['date']}\n"
+            f"Time: {details['start_time']} - {details['end_time']}\n"
+            f"{join_line}\n"
+            f"{custom_block}"
+            f"Description: {details['description']}\n\n"
+            f"Please be ready at the scheduled time.\n\n"
+            f"Regards,\nCRM System"
         )
 
         send_mail(
             subject=subject,
-
             message=message,
-
             from_email=settings.DEFAULT_FROM_EMAIL,
-
             recipient_list=recipients,
-
             fail_silently=False,
         )
 
@@ -872,14 +924,11 @@ def send_meeting_scheduled_emails(meeting):
         logger.exception(
             "Error sending approved meeting emails: "
             "meeting_id=%s",
-            getattr(
-                meeting,
-                "meeting_id",
-                None,
-            ),
+            getattr(meeting, "meeting_id", None),
         )
 
         return False
+
 
 
 # ======================================================
@@ -893,92 +942,72 @@ def send_meeting_5_minute_reminder(
     meeting,
 ):
     """
-    Send reminder 5 minutes before approved meeting.
+    5 min pehle reminder bhejo:
+    Employee + Manager + Client (Lead) teeno ko.
 
-    Recipients:
-        - Employee
-        - Manager
-        - Customer
+    Online  → Meet link include
+    Offline → Office location include
+    Custom  → Custom details include
     """
 
     try:
 
-        details = _get_meeting_details(
-            meeting
-        )
+        details = _get_meeting_details(meeting)
 
-        employee = getattr(
-            meeting,
-            "created_by",
-            None,
-        )
+        employee = getattr(meeting, "created_by", None)
+        manager = getattr(meeting, "manager", None)
 
-        manager = getattr(
-            meeting,
-            "manager",
-            None,
-        )
+        # Type check
+        m_type_id = None
+        m_type_name = ""
+        if meeting.meeting_type_id:
+            m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
+            m_type_name = (getattr(meeting.meeting_type_id, "type_name", "") or "").lower()
+
+        is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
+        is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or ("offline" in m_type_name)
+
+        if is_online:
+            join_line = (
+                f"Google Meet Link: {details['meeting_link']}\n"
+                f"Click the link to join."
+            )
+        elif is_offline:
+            loc = details["location"] if details["location"] and details["location"] != "Online / Office" else OFFICE_LOCATION
+            join_line = f"Meeting Location: {loc}"
+        else:
+            loc = details["location"] if details["location"] and details["location"] != "Online / Office" else "To be coordinated"
+            join_line = f"Meeting Mode / Location: {loc}"
+
+        extra_fields = getattr(meeting, "extra_fields", {}) or {}
+        custom_block = ""
+        if isinstance(extra_fields, dict) and extra_fields:
+            extras_str = "\n".join(f"• {k.replace('_', ' ').title()}: {v}" for k, v in extra_fields.items())
+            custom_block = f"\nCustom Meeting Details:\n{extras_str}\n"
 
         recipients = []
 
-        # ==================================================
-        # EMPLOYEE
-        # ==================================================
-
         if employee:
-
-            employee_email = getattr(
-                employee,
-                "email",
-                None,
-            )
-
-            if employee_email:
-
-                recipients.append(
-                    employee_email
-                )
-
-        # ==================================================
-        # MANAGER
-        # ==================================================
+            emp_email = getattr(employee, "email", None)
+            if emp_email:
+                recipients.append(emp_email)
 
         if manager:
-
-            manager_email = getattr(
-                manager,
-                "email",
-                None,
-            )
-
-            if manager_email:
-
-                recipients.append(
-                    manager_email
-                )
-
-        # ==================================================
-        # CUSTOMER
-        # ==================================================
+            mgr_email = getattr(manager, "email", None)
+            if mgr_email:
+                recipients.append(mgr_email)
 
         if details["customer_email"]:
+            recipients.append(details["customer_email"])
 
-            recipients.append(
-                details["customer_email"]
-            )
-
-        recipients = _get_unique_emails(
-            recipients
-        )
+        recipients = _get_unique_emails(recipients)
 
         if not recipients:
-
             logger.warning(
                 "No recipients for 5-minute reminder: "
                 "meeting_id=%s",
                 meeting.meeting_id,
             )
-
             return False
 
         subject = (
@@ -989,49 +1018,27 @@ def send_meeting_5_minute_reminder(
 
         message = (
             f"Hello,\n\n"
-
-            f"This is a reminder that your meeting "
-            f"will start in approximately 5 minutes.\n\n"
-
-            f"Meeting Title: "
-            f"{details['title']}\n"
-
-            f"Customer: "
-            f"{details['lead_name']}\n"
-
-            f"Date: "
-            f"{details['date']}\n"
-
-            f"Time: "
-            f"{details['start_time']} - "
-            f"{details['end_time']}\n"
-
-            f"Location: "
-            f"{details['location']}\n"
-
-            f"Meeting Link: "
-            f"{details['meeting_link']}\n\n"
-
-            f"Please be ready to join the meeting.\n\n"
-
-            f"Regards,\n"
-            f"CRM System"
+            f"Your meeting starts in 5 minutes!\n\n"
+            f"Meeting Title: {details['title']}\n"
+            f"Customer: {details['lead_name']}\n"
+            f"Date: {details['date']}\n"
+            f"Time: {details['start_time']} - {details['end_time']}\n"
+            f"{join_line}\n"
+            f"{custom_block}\n"
+            f"Please be ready.\n\n"
+            f"Regards,\nCRM System"
         )
 
         send_mail(
             subject=subject,
-
             message=message,
-
             from_email=settings.DEFAULT_FROM_EMAIL,
-
             recipient_list=recipients,
-
             fail_silently=False,
         )
 
         logger.info(
-            "5-minute meeting reminder sent: "
+            "5-minute reminder sent: "
             "meeting_id=%s recipients=%s",
             meeting.meeting_id,
             recipients,
@@ -1042,16 +1049,13 @@ def send_meeting_5_minute_reminder(
     except Exception:
 
         logger.exception(
-            "Error sending 5-minute meeting reminder: "
+            "Error sending 5-minute reminder: "
             "meeting_id=%s",
-            getattr(
-                meeting,
-                "meeting_id",
-                None,
-            ),
+            getattr(meeting, "meeting_id", None),
         )
 
         return False
+
 
 
 # ======================================================

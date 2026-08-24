@@ -167,8 +167,14 @@ class Meeting(models.Model):
         null=True,
         blank=True,
     )
+    is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    extra_fields = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Custom dynamic fields added by employee"
+    )
 
     def __str__(self):
         return self.meeting_title

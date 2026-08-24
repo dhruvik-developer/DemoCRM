@@ -11,7 +11,12 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
 from django.db import transaction
-
+from .services import (
+    generate_google_meet_link,
+    ONLINE_MEETING_TYPE_ID,
+    OFFLINE_MEETING_TYPE_ID,
+    OFFICE_LOCATION,
+)
 from django.db.models import Q
 
 from .permission import HasDynamicPermission, CanCommunicateWithLead
@@ -1132,6 +1137,30 @@ class MeetingCreateView(APIView):
                 reminder_sent_at=None,
             )
 
+            # Auto setup meeting link / office location if needed
+            m_type_id = None
+            m_type_name = ""
+            if meeting.meeting_type_id:
+                m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
+                m_type_name = (getattr(meeting.meeting_type_id, "type_name", "") or "").lower()
+
+            is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
+            is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or ("offline" in m_type_name)
+
+            updated_fields = []
+            if is_online and not meeting.meeting_link:
+                meet_link = generate_google_meet_link(meeting)
+                if meet_link:
+                    meeting.meeting_link = meet_link
+                    updated_fields.append("meeting_link")
+            elif is_offline and not meeting.location:
+                meeting.location = OFFICE_LOCATION
+                updated_fields.append("location")
+
+            if updated_fields:
+                updated_fields.append("updated_at")
+                meeting.save(update_fields=updated_fields)
+
             # ==================================================
             # CELERY
             # MANAGER APPROVAL REQUEST
@@ -1198,6 +1227,9 @@ class MeetingApprovalView(APIView):
         IsAuthenticated,
         CanCommunicateWithLead,
     ]
+    permission_names = {
+        "PATCH": "change_meeting",
+    }
 
     def patch(
         self,
@@ -1212,6 +1244,7 @@ class MeetingApprovalView(APIView):
                     "manager",
                     "created_by",
                     "lead",
+                    "meeting_type_id",
                 ),
                 meeting_id=meeting_id,
             )
@@ -1290,20 +1323,46 @@ class MeetingApprovalView(APIView):
                 == Meeting.ApprovalStatus.APPROVED
             ):
 
-                # Customer ko link bhejni hai
-                if not meeting.meeting_link:
+                update_fields = [
+                    "approval_status",
+                    "approved_by",
+                    "approved_at",
+                    "rejection_reason",
+                    "reminder_sent_at",
+                    "updated_at",
+                ]
 
-                    return Response(
-                        {
-                            "meeting_link":
-                            (
-                                "Meeting link is required "
-                                "before approval."
-                            )
-                        },
+                if "meeting_link" in request.data:
+                    meeting.meeting_link = request.data["meeting_link"]
+                    update_fields.append("meeting_link")
+                if "location" in request.data:
+                    meeting.location = request.data["location"]
+                    update_fields.append("location")
+                if "extra_fields" in request.data:
+                    meeting.extra_fields = request.data["extra_fields"]
+                    update_fields.append("extra_fields")
 
-                        status=status.HTTP_400_BAD_REQUEST,
-                    )
+                m_type_id = None
+                m_type_name = ""
+                if meeting.meeting_type_id:
+                    m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
+                    m_type_name = (getattr(meeting.meeting_type_id, "type_name", "") or "").lower()
+
+                is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
+                is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or ("offline" in m_type_name)
+
+                # For online meeting, ensure meet link is present
+                if is_online and not meeting.meeting_link:
+                    meet_link = generate_google_meet_link(meeting)
+                    meeting.meeting_link = meet_link
+                    if "meeting_link" not in update_fields:
+                        update_fields.append("meeting_link")
+
+                # For offline meeting, ensure location is present
+                if is_offline and not meeting.location:
+                    meeting.location = OFFICE_LOCATION
+                    if "location" not in update_fields:
+                        update_fields.append("location")
 
                 meeting.approval_status = (
                     Meeting.ApprovalStatus.APPROVED
@@ -1322,14 +1381,7 @@ class MeetingApprovalView(APIView):
                 meeting.reminder_sent_at = None
 
                 meeting.save(
-                    update_fields=[
-                        "approval_status",
-                        "approved_by",
-                        "approved_at",
-                        "rejection_reason",
-                        "reminder_sent_at",
-                        "updated_at",
-                    ]
+                    update_fields=list(set(update_fields))
                 )
 
                 # ==================================================
@@ -1488,6 +1540,9 @@ class MeetingDetailView(APIView):
     """
 
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "GET": "view_meeting",
+    }
 
     def get(self, request, meeting_id):
         try:
@@ -1547,6 +1602,9 @@ class MeetingRescheduleView(APIView):
         IsAuthenticated,
         CanCommunicateWithLead,
     ]
+    permission_names = {
+        "PATCH": "change_meeting",
+    }
 
     def patch(
         self,
@@ -1739,6 +1797,9 @@ class MeetingStatusUpdateView(APIView):
     """
 
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "PATCH": "change_meeting",
+    }
 
     @extend_schema(
         tags=["Meetings"],
@@ -1870,13 +1931,13 @@ class MeetingParticipantAddView(APIView):
 
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
     permission_names = {
-        "POST": "add_meeting_participant",
+        "POST": "add_meetingparticipant",
     }
 
     @extend_schema(
         tags=["Meetings"],
         summary="Add a participant to a meeting",
-        description="Add a participant to a meeting. Permission: add_meeting_participant.",
+        description="Add a participant to a meeting. Permission: add_meetingparticipant.",
         operation_id="meeting_participant_add",
         parameters=[
             OpenApiParameter(
@@ -2054,6 +2115,9 @@ class MeetingParticipantRemoveView(APIView):
     """
 
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_names = {
+        "DELETE": "delete_meetingparticipant",
+    }
 
     @extend_schema(
         tags=["Meetings"],

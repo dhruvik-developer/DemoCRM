@@ -41,13 +41,20 @@ class TaskAPITestCase(APITestCase):
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role = Role.objects.create(
+        self.role, _ = Role.objects.get_or_create(
             rolename="Employee",
-            description="Employee role",
+            defaults={"description": "Employee role"},
         )
 
         ct = ContentType.objects.get_for_model(Task)
-        for codename in ("add_task", "task_assign", "task_update"):
+        for codename in (
+            "add_task",
+            "task_assign",
+            "task_update",
+            "view_task",
+            "change_task",
+            "delete_task",
+        ):
             perm, _ = Permission.objects.get_or_create(
                 codename=codename,
                 content_type=ct,
@@ -436,17 +443,26 @@ class MeetingAPITestCase(APITestCase):
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role = Role.objects.create(
+        self.role, _ = Role.objects.get_or_create(
             rolename="Employee",
-            description="Employee role",
+            defaults={"description": "Employee role"},
+        )
+
+        self.manager_role, _ = Role.objects.get_or_create(
+            rolename="Manager",
+            defaults={"description": "Manager role"},
         )
 
         ct = ContentType.objects.get_for_model(Task)
         for codename in (
             "view_meeting",
+            "add_meeting",
             "change_meeting",
-            "add_meeting_participant",
-            "delete_meeting_participant",
+            "delete_meeting",
+            "view_meetingparticipant",
+            "add_meetingparticipant",
+            "change_meetingparticipant",
+            "delete_meetingparticipant",
         ):
             perm, _ = Permission.objects.get_or_create(
                 codename=codename,
@@ -454,6 +470,7 @@ class MeetingAPITestCase(APITestCase):
                 defaults={"name": f"Can {codename}"},
             )
             self.role.permissions.add(perm)
+            self.manager_role.permissions.add(perm)
 
         self.user = CustomUser.objects.create_user(
             email="meetinguser@example.com",
@@ -461,6 +478,14 @@ class MeetingAPITestCase(APITestCase):
             password="Test@123",
             phone_number="9876543211",
             role=self.role,
+        )
+
+        self.manager = CustomUser.objects.create_user(
+            email="manageruser@example.com",
+            username="manageruser",
+            password="Test@123",
+            phone_number="9876543299",
+            role=self.manager_role,
         )
 
         self.client.force_authenticate(user=self.user)
@@ -546,10 +571,25 @@ class MeetingAPITestCase(APITestCase):
             is_active=True,
         )
 
-        self.meeting_type = MeetingType.objects.create(
+        self.online_meeting_type = MeetingType.objects.create(
+            meeting_type_id=1,
             type_name="Online",
             is_active=True,
         )
+
+        self.offline_meeting_type = MeetingType.objects.create(
+            meeting_type_id=2,
+            type_name="Offline",
+            is_active=True,
+        )
+
+        self.custom_meeting_type = MeetingType.objects.create(
+            meeting_type_id=3,
+            type_name="Custom",
+            is_active=True,
+        )
+
+        self.meeting_type = self.online_meeting_type
 
     # ======================================================
     # CREATE MEETING
@@ -561,8 +601,9 @@ class MeetingAPITestCase(APITestCase):
             {
                 "task_id": self.task.task_id,
                 "lead": str(self.lead.id),
+                "manager": str(self.manager.user_id),
                 "meeting_status_id": (self.meeting_status.meeting_status_id),
-                "meeting_type_id": (self.meeting_type.meeting_type_id),
+                "meeting_type_id": (self.online_meeting_type.meeting_type_id),
                 "meeting_title": "Client Meeting",
                 "meeting_date": (timezone.now() + timedelta(days=1)).date().isoformat(),
                 "start_time": "10:00:00",
@@ -579,6 +620,9 @@ class MeetingAPITestCase(APITestCase):
         )
 
         self.assertTrue(Meeting.objects.filter(meeting_title="Client Meeting").exists())
+        meeting = Meeting.objects.get(meeting_title="Client Meeting")
+        self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.PENDING)
+        self.assertTrue(bool(meeting.meeting_link))
 
     # ======================================================
     # MEETING - INVALID TIME
@@ -590,6 +634,7 @@ class MeetingAPITestCase(APITestCase):
             {
                 "task_id": self.task.task_id,
                 "lead": str(self.lead.id),
+                "manager": str(self.manager.user_id),
                 "meeting_status_id": (self.meeting_status.meeting_status_id),
                 "meeting_type_id": (self.meeting_type.meeting_type_id),
                 "meeting_title": "Invalid Meeting",
@@ -610,19 +655,7 @@ class MeetingAPITestCase(APITestCase):
     # ======================================================
 
     def test_meeting_detail(self):
-        meeting = Meeting.objects.create(
-            task_id=self.task,
-            lead=self.lead,
-            meeting_status_id=self.meeting_status,
-            meeting_type_id=self.meeting_type,
-            meeting_title="Existing Meeting",
-            meeting_date=self.future_date(),
-            start_time="10:00:00",
-            end_time="11:00:00",
-            location="Office",
-            description="Test meeting",
-            created_by=self.user,
-        )
+        meeting = self.create_meeting(meeting_title="Existing Meeting")
 
         response = self.client.get(f"/api/tasks/meetings/{meeting.meeting_id}/")
 
@@ -632,11 +665,186 @@ class MeetingAPITestCase(APITestCase):
         )
 
     # ======================================================
+    # TEMPLATE 1: ONLINE MEETING WORKFLOW
+    # ======================================================
+
+    def test_create_and_approve_online_meeting_template_1(self):
+        # 1. Employee creates Online meeting
+        response = self.client.post(
+            "/api/tasks/meetings/",
+            {
+                "task_id": self.task.task_id,
+                "lead": str(self.lead.id),
+                "manager": str(self.manager.user_id),
+                "meeting_status_id": self.meeting_status.meeting_status_id,
+                "meeting_type_id": self.online_meeting_type.meeting_type_id,
+                "meeting_title": "Online Client Review",
+                "meeting_date": (timezone.now() + timedelta(days=1)).date().isoformat(),
+                "start_time": "14:00:00",
+                "end_time": "15:00:00",
+                "description": "Quarterly review with client",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        meeting = Meeting.objects.get(meeting_title="Online Client Review")
+        self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.PENDING)
+        self.assertTrue(meeting.meeting_link.startswith("https://meet.google.com/"))
+
+        # 2. Manager Approves
+        self.client.force_authenticate(user=self.manager)
+        approval_resp = self.client.patch(
+            f"/api/tasks/meetings/{meeting.meeting_id}/approval/",
+            {"approval_status": "APPROVED"},
+            format="json",
+        )
+        self.assertEqual(approval_resp.status_code, status.HTTP_200_OK)
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.APPROVED)
+        self.assertEqual(meeting.approved_by, self.manager)
+
+    # ======================================================
+    # TEMPLATE 2: OFFLINE MEETING WORKFLOW
+    # ======================================================
+
+    def test_create_and_approve_offline_meeting_template_2(self):
+        # 1. Employee creates Offline meeting
+        response = self.client.post(
+            "/api/tasks/meetings/",
+            {
+                "task_id": self.task.task_id,
+                "lead": str(self.lead.id),
+                "manager": str(self.manager.user_id),
+                "meeting_status_id": self.meeting_status.meeting_status_id,
+                "meeting_type_id": self.offline_meeting_type.meeting_type_id,
+                "meeting_title": "In-Office Discussion",
+                "meeting_date": (timezone.now() + timedelta(days=1)).date().isoformat(),
+                "start_time": "11:00:00",
+                "end_time": "12:00:00",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        meeting = Meeting.objects.get(meeting_title="In-Office Discussion")
+        self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.PENDING)
+        self.assertTrue(bool(meeting.location))
+
+        # 2. Manager Approves (offline meeting must succeed without meet link error)
+        self.client.force_authenticate(user=self.manager)
+        approval_resp = self.client.patch(
+            f"/api/tasks/meetings/{meeting.meeting_id}/approval/",
+            {"approval_status": "APPROVED"},
+            format="json",
+        )
+        self.assertEqual(approval_resp.status_code, status.HTTP_200_OK)
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.APPROVED)
+
+    # ======================================================
+    # TEMPLATE 3: CUSTOM MEETING WORKFLOW
+    # ======================================================
+
+    def test_create_and_approve_custom_meeting_template_3(self):
+        response = self.client.post(
+            "/api/tasks/meetings/",
+            {
+                "task_id": self.task.task_id,
+                "lead": str(self.lead.id),
+                "manager": str(self.manager.user_id),
+                "meeting_status_id": self.meeting_status.meeting_status_id,
+                "meeting_type_id": self.custom_meeting_type.meeting_type_id,
+                "meeting_title": "Custom Demo Meeting",
+                "meeting_date": (timezone.now() + timedelta(days=1)).date().isoformat(),
+                "start_time": "16:00:00",
+                "end_time": "17:00:00",
+                "location": "Client HQ - Conference Room 3",
+                "description": "Product demo customized session",
+                "extra_fields": {"agenda": "DemoCRM V2 walkthrough", "device": "Laptop + Projector"},
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        meeting = Meeting.objects.get(meeting_title="Custom Demo Meeting")
+        self.assertEqual(meeting.extra_fields.get("agenda"), "DemoCRM V2 walkthrough")
+
+        # Manager Approves
+        self.client.force_authenticate(user=self.manager)
+        approval_resp = self.client.patch(
+            f"/api/tasks/meetings/{meeting.meeting_id}/approval/",
+            {"approval_status": "APPROVED"},
+            format="json",
+        )
+        self.assertEqual(approval_resp.status_code, status.HTTP_200_OK)
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.APPROVED)
+
+    # ======================================================
+    # REJECTION & RESCHEDULE FLOW
+    # ======================================================
+
+    def test_manager_reject_and_employee_reschedule_flow(self):
+        meeting = self.create_meeting(meeting_title="Rejection Flow Test")
+
+        # Manager Rejects
+        self.client.force_authenticate(user=self.manager)
+        reject_resp = self.client.patch(
+            f"/api/tasks/meetings/{meeting.meeting_id}/approval/",
+            {
+                "approval_status": "REJECTED",
+                "rejection_reason": "Manager busy with quarterly closing",
+            },
+            format="json",
+        )
+        self.assertEqual(reject_resp.status_code, status.HTTP_200_OK)
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.REJECTED)
+        self.assertEqual(meeting.rejection_reason, "Manager busy with quarterly closing")
+
+        # Employee Reschedules
+        self.client.force_authenticate(user=self.user)
+        new_date = (timezone.now() + timedelta(days=3)).date().isoformat()
+        resched_resp = self.client.patch(
+            f"/api/tasks/meetings/{meeting.meeting_id}/reschedule/",
+            {
+                "meeting_date": new_date,
+                "start_time": "15:00:00",
+                "end_time": "16:00:00",
+            },
+            format="json",
+        )
+        self.assertEqual(resched_resp.status_code, status.HTTP_200_OK)
+        meeting.refresh_from_db()
+        self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.PENDING)
+        self.assertIsNone(meeting.rejection_reason)
+        self.assertEqual(str(meeting.start_time), "15:00:00")
+
+    # ======================================================
+    # 5-MINUTE REMINDER CELERY BEAT JOB
+    # ======================================================
+
+    def test_celery_5_minute_meeting_reminder_job(self):
+        from Task.tasks import meeting_reminder_job
+
+        now = timezone.localtime()
+        meeting = self.create_meeting(
+            meeting_title="Upcoming 5-Min Meeting",
+            meeting_date=now.date(),
+            start_time=(now + timedelta(minutes=4, seconds=45)).time(),
+            end_time=(now + timedelta(minutes=35)).time(),
+            approval_status=Meeting.ApprovalStatus.APPROVED,
+        )
+
+        result_msg = meeting_reminder_job()
+        meeting.refresh_from_db()
+        self.assertIsNotNone(meeting.reminder_sent_at)
+        self.assertIn("meeting reminders", result_msg.lower())
+
+    # ======================================================
     # MEETING - RESCHEDULE
     # ======================================================
 
     def test_reschedule_meeting(self):
-        meeting = self.create_meeting()
+        meeting = self.create_meeting(approval_status=Meeting.ApprovalStatus.REJECTED)
 
         response = self.client.patch(
             f"/api/tasks/meetings/{meeting.meeting_id}/reschedule/",
@@ -774,9 +982,9 @@ class MeetingAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_meeting_forbidden_for_other_user(self):
-        basic_role = Role.objects.create(
+        basic_role, _ = Role.objects.get_or_create(
             rolename="Basic",
-            description="No meeting permissions",
+            defaults={"description": "No meeting permissions"},
         )
         other_user = CustomUser.objects.create_user(
             email="meetingother@example.com",
@@ -791,7 +999,7 @@ class MeetingAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_reschedule_meeting_only_time(self):
-        meeting = self.create_meeting()
+        meeting = self.create_meeting(approval_status=Meeting.ApprovalStatus.REJECTED)
         response = self.client.patch(
             f"/api/tasks/meetings/{meeting.meeting_id}/reschedule/",
             {
@@ -806,7 +1014,7 @@ class MeetingAPITestCase(APITestCase):
         self.assertEqual(str(meeting.end_time), "15:00:00")
 
     def test_reschedule_meeting_empty_data(self):
-        meeting = self.create_meeting()
+        meeting = self.create_meeting(approval_status=Meeting.ApprovalStatus.REJECTED)
         response = self.client.patch(
             f"/api/tasks/meetings/{meeting.meeting_id}/reschedule/",
             {},
@@ -821,20 +1029,24 @@ class MeetingAPITestCase(APITestCase):
     def future_date(self):
         return (timezone.now() + timedelta(days=1)).date()
 
-    def create_meeting(self):
-        return Meeting.objects.create(
-            task_id=self.task,
-            lead=self.lead,
-            meeting_status_id=self.meeting_status,
-            meeting_type_id=self.meeting_type,
-            meeting_title="Test Meeting",
-            meeting_date=self.future_date(),
-            start_time="10:00:00",
-            end_time="11:00:00",
-            location="Office",
-            description="Test meeting",
-            created_by=self.user,
-        )
+    def create_meeting(self, **kwargs):
+        defaults = {
+            "task_id": self.task,
+            "lead": self.lead,
+            "meeting_status_id": self.meeting_status,
+            "meeting_type_id": self.meeting_type,
+            "meeting_title": "Test Meeting",
+            "meeting_date": self.future_date(),
+            "start_time": "10:00:00",
+            "end_time": "11:00:00",
+            "location": "Office",
+            "description": "Test meeting",
+            "created_by": self.user,
+            "manager": self.manager,
+            "approval_status": Meeting.ApprovalStatus.PENDING,
+        }
+        defaults.update(kwargs)
+        return Meeting.objects.create(**defaults)
 
 
 class ReminderAPITestCase(APITestCase):
@@ -847,13 +1059,23 @@ class ReminderAPITestCase(APITestCase):
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role = Role.objects.create(
+        self.role, _ = Role.objects.get_or_create(
             rolename="Employee",
-            description="Employee role",
+            defaults={"description": "Employee role"},
+        )
+
+        self.manager_role, _ = Role.objects.get_or_create(
+            rolename="Manager",
+            defaults={"description": "Manager role"},
         )
 
         ct = ContentType.objects.get_for_model(Task)
-        for codename in ("view_reminder", "change_reminder", "delete_reminder"):
+        for codename in (
+            "view_reminder",
+            "add_reminder",
+            "change_reminder",
+            "delete_reminder",
+        ):
             perm, _ = Permission.objects.get_or_create(
                 codename=codename,
                 content_type=ct,
@@ -867,6 +1089,14 @@ class ReminderAPITestCase(APITestCase):
             password="Test@123",
             phone_number="9876543212",
             role=self.role,
+        )
+
+        self.manager = CustomUser.objects.create_user(
+            email="remindermanager@example.com",
+            username="remindermanager",
+            password="Test@123",
+            phone_number="9876543298",
+            role=self.manager_role,
         )
 
         self.client.force_authenticate(user=self.user)
@@ -965,6 +1195,7 @@ class ReminderAPITestCase(APITestCase):
             location="Office",
             description="Reminder meeting",
             created_by=self.user,
+            manager=self.manager,
         )
 
         # --------------------------------------------------
@@ -1140,9 +1371,9 @@ class ReminderAPITestCase(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_reminder_forbidden_for_other_user(self):
-        basic_role = Role.objects.create(
+        basic_role, _ = Role.objects.get_or_create(
             rolename="Basic",
-            description="No reminder permissions",
+            defaults={"description": "No reminder permissions"},
         )
         other_user = CustomUser.objects.create_user(
             email="other@example.com",
