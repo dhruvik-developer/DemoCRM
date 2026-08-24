@@ -321,13 +321,6 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Asia/Kolkata"
 
 
-try:
-    from celery.schedules import crontab
-except ImportError:
-    # Celery not installed on this environment; the beat schedule below is
-    # only consumed by Celery workers, so placeholder values are harmless.
-    crontab = None
-
 # CELERY BEAT PERIODIC SCHEDULES
 CELERY_BEAT_SCHEDULE = {
     "send-task-due-reminders-daily": {

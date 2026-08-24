@@ -31,12 +31,11 @@ logger = logging.getLogger(__name__)
 # EXISTING TASK REMINDER
 # ======================================================
 
+
 @shared_task
 def task_due_reminder_job():
 
-    logger.info(
-        "Celery Job Started: Checking for due tasks..."
-    )
+    logger.info("Celery Job Started: Checking for due tasks...")
 
     count = process_due_task_reminders()
 
@@ -51,6 +50,7 @@ def task_due_reminder_job():
 # ======================================================
 # MEETING REMINDER JOB
 # ======================================================
+
 
 @shared_task
 def meeting_reminder_job():
@@ -82,23 +82,14 @@ def meeting_reminder_job():
         try:
 
             # Safety check
-            if (
-                meeting.approval_status
-                != Meeting.ApprovalStatus.APPROVED
-            ):
+            if meeting.approval_status != Meeting.ApprovalStatus.APPROVED:
                 continue
 
-            success = (
-                send_meeting_5_minute_reminder(
-                    meeting
-                )
-            )
+            success = send_meeting_5_minute_reminder(meeting)
 
             if success:
 
-                meeting.reminder_sent_at = (
-                    timezone.now()
-                )
+                meeting.reminder_sent_at = timezone.now()
 
                 meeting.save(
                     update_fields=[
@@ -115,17 +106,10 @@ def meeting_reminder_job():
 
                     create_notification(
                         user=meeting.created_by,
-
-                        title=(
-                            f"Meeting Reminder: "
-                            f"{meeting.meeting_title}"
-                        ),
-
+                        title=(f"Meeting Reminder: " f"{meeting.meeting_title}"),
                         message=(
-                            f"Meeting starts in 5 minutes "
-                            f"at {meeting.start_time}."
+                            f"Meeting starts in 5 minutes " f"at {meeting.start_time}."
                         ),
-
                         type_name="Meeting Reminder",
                     )
 
@@ -137,25 +121,17 @@ def meeting_reminder_job():
 
                     create_notification(
                         user=meeting.manager,
-
-                        title=(
-                            f"Meeting Reminder: "
-                            f"{meeting.meeting_title}"
-                        ),
-
+                        title=(f"Meeting Reminder: " f"{meeting.meeting_title}"),
                         message=(
-                            f"Meeting starts in 5 minutes "
-                            f"at {meeting.start_time}."
+                            f"Meeting starts in 5 minutes " f"at {meeting.start_time}."
                         ),
-
                         type_name="Meeting Reminder",
                     )
 
                 sent_count += 1
 
                 logger.info(
-                    "5-minute reminder processed: "
-                    "meeting_id=%s",
+                    "5-minute reminder processed: " "meeting_id=%s",
                     meeting.meeting_id,
                 )
 
@@ -166,14 +142,13 @@ def meeting_reminder_job():
                 meeting.meeting_id,
             )
 
-    return (
-        f"Processed {sent_count} meeting reminders."
-    )
+    return f"Processed {sent_count} meeting reminders."
 
 
 # ======================================================
 # MANAGER APPROVAL REQUEST
 # ======================================================
+
 
 @shared_task
 def notify_manager_about_meeting(meeting_id, template_id=None):
@@ -185,15 +160,10 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
             "created_by",
             "lead",
             "meeting_type_id",
-        ).get(
-            meeting_id=meeting_id
-        )
+        ).get(meeting_id=meeting_id)
 
         # Safety
-        if (
-            meeting.approval_status
-            != Meeting.ApprovalStatus.PENDING
-        ):
+        if meeting.approval_status != Meeting.ApprovalStatus.PENDING:
             return False
 
         manager = meeting.manager
@@ -209,10 +179,14 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
         m_type_name = ""
         if meeting.meeting_type_id:
             m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
-            m_type_name = (getattr(meeting.meeting_type_id, "type_name", "") or "").lower()
+            m_type_name = (
+                getattr(meeting.meeting_type_id, "type_name", "") or ""
+            ).lower()
 
         is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
-        is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or ("offline" in m_type_name)
+        is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or (
+            "offline" in m_type_name
+        )
 
         # ==================================================
         # ONLINE: Auto generate Google Meet link
@@ -221,9 +195,7 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
         if is_online:
 
             if not meeting.meeting_link:
-                meet_link = generate_google_meet_link(
-                    meeting
-                )
+                meet_link = generate_google_meet_link(meeting)
                 if meet_link:
                     meeting.meeting_link = meet_link
                     meeting.save(
@@ -256,26 +228,16 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
             event_type = "MEETING_CREATED"
 
         context = {
-            "manager_name": (
-                manager.get_full_name()
-                or manager.username
-            ),
+            "manager_name": (manager.get_full_name() or manager.username),
             "employee_name": (
-                meeting.created_by.get_full_name()
-                or meeting.created_by.username
+                meeting.created_by.get_full_name() or meeting.created_by.username
             ),
             "meeting_title": meeting.meeting_title,
             "meeting_date": str(meeting.meeting_date),
             "start_time": str(meeting.start_time),
             "end_time": str(meeting.end_time),
-            "meeting_link": (
-                meeting.meeting_link
-                or "Will be shared after approval"
-            ),
-            "location": (
-                meeting.location
-                or OFFICE_LOCATION
-            ),
+            "meeting_link": (meeting.meeting_link or "Will be shared after approval"),
+            "location": (meeting.location or OFFICE_LOCATION),
         }
 
         # ==================================================
@@ -290,8 +252,7 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
         )
 
         logger.info(
-            "Manager notified: meeting_id=%s "
-            "event=%s template_id=%s",
+            "Manager notified: meeting_id=%s " "event=%s template_id=%s",
             meeting_id,
             event_type,
             template_id,
@@ -302,8 +263,7 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
     except Exception:
 
         logger.exception(
-            "Manager notification failed: "
-            "meeting_id=%s",
+            "Manager notification failed: " "meeting_id=%s",
             meeting_id,
         )
 
@@ -317,6 +277,7 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
 # EMPLOYEE + MANAGER + CUSTOMER
 # ======================================================
 
+
 @shared_task
 def send_approved_meeting(meeting_id):
 
@@ -327,15 +288,10 @@ def send_approved_meeting(meeting_id):
             "manager",
             "lead",
             "meeting_type_id",
-        ).get(
-            meeting_id=meeting_id
-        )
+        ).get(meeting_id=meeting_id)
 
         # Safety
-        if (
-            meeting.approval_status
-            != Meeting.ApprovalStatus.APPROVED
-        ):
+        if meeting.approval_status != Meeting.ApprovalStatus.APPROVED:
             logger.warning(
                 "Meeting not approved: meeting_id=%s",
                 meeting_id,
@@ -347,15 +303,14 @@ def send_approved_meeting(meeting_id):
         m_type_name = ""
         if meeting.meeting_type_id:
             m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
-            m_type_name = (getattr(meeting.meeting_type_id, "type_name", "") or "").lower()
+            m_type_name = (
+                getattr(meeting.meeting_type_id, "type_name", "") or ""
+            ).lower()
 
         is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
 
         # Online meeting ke liye link auto generate agar na ho
-        if (
-            not meeting.meeting_link
-            and is_online
-        ):
+        if not meeting.meeting_link and is_online:
             meet_link = generate_google_meet_link(meeting)
             if meet_link:
                 meeting.meeting_link = meet_link
@@ -381,12 +336,8 @@ def send_approved_meeting(meeting_id):
             "meeting_date": str(meeting.meeting_date),
             "start_time": str(meeting.start_time),
             "end_time": str(meeting.end_time),
-            "meeting_link": (
-                meeting.meeting_link or "N/A"
-            ),
-            "location": (
-                meeting.location or OFFICE_LOCATION
-            ),
+            "meeting_link": (meeting.meeting_link or "N/A"),
+            "location": (meeting.location or OFFICE_LOCATION),
         }
 
         recipients = []
@@ -405,8 +356,7 @@ def send_approved_meeting(meeting_id):
             )
 
         logger.info(
-            "Approved meeting workflow done: "
-            "meeting_id=%s",
+            "Approved meeting workflow done: " "meeting_id=%s",
             meeting_id,
         )
 
@@ -415,8 +365,7 @@ def send_approved_meeting(meeting_id):
     except Exception:
 
         logger.exception(
-            "Approved meeting task failed: "
-            "meeting_id=%s",
+            "Approved meeting task failed: " "meeting_id=%s",
             meeting_id,
         )
 
@@ -427,19 +376,16 @@ def send_approved_meeting(meeting_id):
 # REJECTED MEETING
 # ======================================================
 
+
 @shared_task
-def notify_employee_meeting_rejected(
-    meeting_id
-):
+def notify_employee_meeting_rejected(meeting_id):
 
     try:
 
         meeting = Meeting.objects.select_related(
             "created_by",
             "manager",
-        ).get(
-            meeting_id=meeting_id
-        )
+        ).get(meeting_id=meeting_id)
 
         employee = meeting.created_by
 
@@ -451,17 +397,11 @@ def notify_employee_meeting_rejected(
         # ==================================================
 
         context = {
-            "employee_name": (
-                employee.get_full_name()
-                or employee.username
-            ),
+            "employee_name": (employee.get_full_name() or employee.username),
             "meeting_title": meeting.meeting_title,
-            "rejection_reason": (
-                meeting.rejection_reason or "No reason provided"
-            ),
+            "rejection_reason": (meeting.rejection_reason or "No reason provided"),
             "manager_name": (
-                meeting.manager.get_full_name()
-                or meeting.manager.username
+                meeting.manager.get_full_name() or meeting.manager.username
                 if meeting.manager
                 else "Manager"
             ),
@@ -480,35 +420,22 @@ def notify_employee_meeting_rejected(
         if employee.email:
 
             send_mail(
-                subject=(
-                    f"Meeting Cancelled: "
-                    f"{meeting.meeting_title}"
-                ),
-
+                subject=(f"Meeting Cancelled: " f"{meeting.meeting_title}"),
                 message=(
                     f"Hello {employee.username},\n\n"
-
                     f"Your meeting "
                     f"'{meeting.meeting_title}' "
                     f"has been cancelled/rejected "
                     f"by manager.\n\n"
-
                     f"Reason:\n"
                     f"{meeting.rejection_reason}\n\n"
-
                     "Please reschedule the meeting "
                     "and submit again.\n\n"
-
                     "Regards,\n"
                     "CRM Team"
                 ),
-
                 from_email=settings.DEFAULT_FROM_EMAIL,
-
-                recipient_list=[
-                    employee.email.strip()
-                ],
-
+                recipient_list=[employee.email.strip()],
                 fail_silently=False,
             )
 
@@ -517,8 +444,7 @@ def notify_employee_meeting_rejected(
     except Exception:
 
         logger.exception(
-            "Rejected meeting notification failed: "
-            "meeting_id=%s",
+            "Rejected meeting notification failed: " "meeting_id=%s",
             meeting_id,
         )
 
@@ -531,19 +457,16 @@ def notify_employee_meeting_rejected(
 # SEND AGAIN TO MANAGER
 # ======================================================
 
+
 @shared_task
-def notify_manager_about_reschedule(
-    meeting_id
-):
+def notify_manager_about_reschedule(meeting_id):
 
     try:
 
         meeting = Meeting.objects.select_related(
             "manager",
             "created_by",
-        ).get(
-            meeting_id=meeting_id
-        )
+        ).get(meeting_id=meeting_id)
 
         manager = meeting.manager
 
@@ -552,9 +475,7 @@ def notify_manager_about_reschedule(
 
         create_notification(
             user=manager,
-
             title="Meeting Rescheduled - Approval Required",
-
             message=(
                 f"{meeting.created_by.username} "
                 f"rescheduled "
@@ -563,7 +484,6 @@ def notify_manager_about_reschedule(
                 f"new time: {meeting.start_time}. "
                 f"Please approve again."
             ),
-
             type_name="Meeting Rescheduled",
         )
 
@@ -575,36 +495,24 @@ def notify_manager_about_reschedule(
                     f"Approval Required: "
                     f"{meeting.meeting_title}"
                 ),
-
                 message=(
                     f"Hello {manager.username},\n\n"
-
                     f"The employee has rescheduled "
                     f"the meeting.\n\n"
-
                     f"Meeting: "
                     f"{meeting.meeting_title}\n"
-
                     f"New Date: "
                     f"{meeting.meeting_date}\n"
-
                     f"New Time: "
                     f"{meeting.start_time} - "
                     f"{meeting.end_time}\n\n"
-
                     "Please approve or reject "
                     "the meeting again.\n\n"
-
                     "Regards,\n"
                     "CRM Team"
                 ),
-
                 from_email=settings.DEFAULT_FROM_EMAIL,
-
-                recipient_list=[
-                    manager.email.strip()
-                ],
-
+                recipient_list=[manager.email.strip()],
                 fail_silently=False,
             )
 
@@ -613,8 +521,7 @@ def notify_manager_about_reschedule(
     except Exception:
 
         logger.exception(
-            "Rescheduled meeting notification failed: "
-            "meeting_id=%s",
+            "Rescheduled meeting notification failed: " "meeting_id=%s",
             meeting_id,
         )
 
