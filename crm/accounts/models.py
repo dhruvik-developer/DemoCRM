@@ -37,3 +37,26 @@ class CustomUser(AbstractUser):
 
     def __str__(self):
         return self.email
+
+
+class PasswordResetOTP(models.Model):
+    """One-time OTP code for password reset. Only the SHA-256 hash is stored."""
+
+    user = models.ForeignKey(
+        CustomUser, on_delete=models.CASCADE, related_name="password_reset_otps"
+    )
+    otp_hash = models.CharField(max_length=64)
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    is_used = models.BooleanField(default=False)
+    attempts = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "password_reset_otp"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "is_used", "expires_at"]),
+        ]
+
+    def __str__(self):
+        return f"OTP for {self.user.email} (used={self.is_used})"
