@@ -56,6 +56,7 @@ class RegisterAPIView(APIView):
     )
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
+        # breakpoint()
 
         if serializer.is_valid():
             try:

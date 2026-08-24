@@ -1,7 +1,6 @@
 from rest_framework import serializers
 from .models import (
     Followup,
-    FollowUpNote,
     FollowUpStatus,
     FollowUpTypes,
 )
@@ -61,30 +60,5 @@ class FollowupSerializer(serializers.ModelSerializer):
     def validate_decription(self, value):
         if value:
             value = value.strip()
-
-        return value
-
-
-class FollowUpNoteSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = FollowUpNote
-        fields = "__all__"
-        read_only_fields = (
-            "note_id",
-            "followup_id",
-            "created_by",
-            "created_at",
-        )
-
-    def validate_note(self, value):
-        value = value.strip()
-
-        if not value:
-            raise serializers.ValidationError("Note cannot be empty.")
-
-        if len(value) < 2:
-            raise serializers.ValidationError(
-                "Note must contain at least 2 characters."
-            )
 
         return value
