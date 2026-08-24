@@ -2654,3 +2654,247 @@ class RegisterViewEdgeCaseTests(AccountTestCase):
     def test_register_missing_fields_returns_400(self):
         response = self.client.post(reverse("register"), {}, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+# ==========================================================
+# FORGOT / RESET PASSWORD TESTS (new - existing code untouched)
+# ==========================================================
+import hashlib
+
+from django.core import mail
+from django.test import override_settings
+from django.utils import timezone
+from datetime import timedelta
+
+from accounts.models import PasswordResetOTP
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class ForgotPasswordTests(APITestCase):
+    def setUp(self):
+        self.forgot_url = reverse("forgot_password")
+        self.reset_url = reverse("reset_password")
+        self.user = CustomUser.objects.create_user(
+            username="resetuser",
+            email="resetuser@example.com",
+            phone_number="9876543210",
+            password="OldPass@123",
+        )
+
+    def _request_otp(self, email="resetuser@example.com"):
+        response = self.client.post(self.forgot_url, {"email": email}, format="json")
+        otp_record = PasswordResetOTP.objects.filter(
+            user__email=email, is_used=False
+        ).latest("created_at")
+        # Recover the plain OTP from the outbox email body
+        otp = None
+        for mail_item in mail.outbox:
+            for line in mail_item.body.splitlines():
+                if line.startswith("OTP: "):
+                    otp = line.split(": ", 1)[1].strip()
+        return response, otp_record, otp
+
+    def test_forgot_password_sends_otp_email_for_existing_user(self):
+        response, otp_record, otp = self._request_otp()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn("resetuser@example.com", mail.outbox[0].to)
+        self.assertIsNotNone(otp)
+        self.assertEqual(len(otp), 6)
+        self.assertTrue(otp.isdigit())
+        self.assertNotEqual(otp, otp_record.otp_hash)
+
+    def test_forgot_password_stores_hashed_otp_with_expiry(self):
+        _, otp_record, otp = self._request_otp()
+
+        self.assertEqual(otp_record.otp_hash, hashlib.sha256(otp.encode()).hexdigest())
+        expected_expiry = timezone.now() + timedelta(minutes=10)
+        self.assertLessEqual(
+            (otp_record.expires_at - expected_expiry).total_seconds(), 5
+        )
+
+    def test_forgot_password_invalidates_previous_otps(self):
+        self._request_otp()
+        self._request_otp()
+        ordered = list(PasswordResetOTP.objects.filter(user=self.user).order_by("pk"))
+        first, second = ordered[0], ordered[-1]
+
+        self.assertTrue(first.is_used)
+        self.assertFalse(second.is_used)
+
+    def test_forgot_password_generic_response_for_unknown_email(self):
+        response = self.client.post(
+            self.forgot_url, {"email": "unknown@example.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(mail.outbox), 0)
+        self.assertNotIn("error", response.data)
+
+    def test_forgot_password_requires_email(self):
+        response = self.client.post(self.forgot_url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_password_success(self):
+        _, _, otp = self._request_otp()
+
+        response = self.client.post(
+            self.reset_url,
+            {
+                "email": "resetuser@example.com",
+                "otp": otp,
+                "new_password": "NewPass@456",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewPass@456"))
+
+    def test_reset_password_otp_single_use(self):
+        _, _, otp = self._request_otp()
+        first = self.client.post(
+            self.reset_url,
+            {
+                "email": "resetuser@example.com",
+                "otp": otp,
+                "new_password": "NewPass@456",
+            },
+            format="json",
+        )
+        second = self.client.post(
+            self.reset_url,
+            {
+                "email": "resetuser@example.com",
+                "otp": otp,
+                "new_password": "AnotherPass@789",
+            },
+            format="json",
+        )
+
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("NewPass@456"))
+
+    def test_reset_password_wrong_otp(self):
+        self._request_otp()
+
+        response = self.client.post(
+            self.reset_url,
+            {
+                "email": "resetuser@example.com",
+                "otp": "000000",
+                "new_password": "NewPass@456",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("OldPass@123"))
+
+    def test_reset_password_expired_otp_rejected(self):
+        _, otp_record, _ = self._request_otp()
+        otp_record.expires_at = timezone.now() - timedelta(minutes=1)
+        otp_record.save(update_fields=["expires_at"])
+
+        response = self.client.post(
+            self.reset_url,
+            {
+                "email": "resetuser@example.com",
+                "otp": "123456",
+                "new_password": "NewPass@456",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_reset_password_locked_after_max_attempts(self):
+        self._request_otp()
+
+        for attempt in range(1, 5):
+            response = self.client.post(
+                self.reset_url,
+                {
+                    "email": "resetuser@example.com",
+                    "otp": "000000",
+                    "new_password": "NewPass@456",
+                },
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertIn("attempt(s) remaining", response.data["error"])
+
+        fifth = self.client.post(
+            self.reset_url,
+            {
+                "email": "resetuser@example.com",
+                "otp": "000000",
+                "new_password": "NewPass@456",
+            },
+            format="json",
+        )
+        self.assertEqual(fifth.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("Too many", fifth.data["error"])
+
+        otp_record = PasswordResetOTP.objects.filter(
+            user=self.user, is_used=True
+        ).latest("created_at")
+        self.assertIsNotNone(otp_record)
+
+        sixth = self.client.post(
+            self.reset_url,
+            {
+                "email": "resetuser@example.com",
+                "otp": "123456",
+                "new_password": "NewPass@456",
+            },
+            format="json",
+        )
+        self.assertEqual(sixth.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("OldPass@123"))
+
+    def test_reset_password_unknown_email_generic_error(self):
+        response = self.client.post(
+            self.reset_url,
+            {
+                "email": "unknown@example.com",
+                "otp": "123456",
+                "new_password": "NewPass@456",
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.data["error"], "Invalid or expired OTP.")
+
+    def test_reset_password_weak_password_rejected(self):
+        _, _, otp = self._request_otp()
+
+        response = self.client.post(
+            self.reset_url,
+            {
+                "email": "resetuser@example.com",
+                "otp": otp,
+                "new_password": "123",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("OldPass@123"))
+
+    def test_reset_password_missing_fields(self):
+        response = self.client.post(self.reset_url, {}, format="json")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch("accounts.views.send_mail", side_effect=Exception("SMTP down"))
+    def test_forgot_password_returns_500_when_email_fails(self, mock_send_mail):
+        response = self.client.post(
+            self.forgot_url, {"email": "resetuser@example.com"}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
