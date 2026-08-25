@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+
+# Git & editor
+.git/
+.gitignore
+.vscode/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Environment & secrets (injected via compose env_file instead)
+.env
+
+# Local artifacts
+db.sqlite3
+warnings.log
+*.log

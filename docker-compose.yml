@@ -119,6 +119,41 @@ services:
         condition: service_healthy
 
 
+  # ==========================================================
+  # CELERY BEAT (SCHEDULED TASKS)
+  # ==========================================================
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: crm_beat
+    restart: unless-stopped
+
+    command:
+      - celery
+      - -A
+      - crm
+      - beat
+      - --loglevel=info
+
+    volumes:
+      - ./crm:/app
+
+    env_file:
+      - .env
+
+    environment:
+      DB_HOST: db
+      DB_PORT: 5432
+
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+
 # ==========================================================
 # PERSISTENT DATABASE STORAGE
 # ==========================================================

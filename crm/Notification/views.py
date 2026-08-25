@@ -3,6 +3,7 @@ from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from rest_framework import serializers, status
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -411,7 +412,9 @@ class UserNotificationListView(APIView):
     Return notifications belonging strictly to the currently authenticated user.
     """
 
-    permission_classes = [NotificationHasPermission]
+    # Ownership is enforced by the recipient filter below; no role codename
+    # is required for a user to read their own notifications.
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Notifications"],
@@ -466,7 +469,8 @@ class UserNotificationDetailView(APIView):
     Return specific notification belonging to the authenticated user.
     """
 
-    permission_classes = [NotificationHasPermission]
+    # Ownership is enforced by the recipient filter in the queryset.
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Notifications"],
@@ -518,7 +522,8 @@ class NotificationMarkReadView(APIView):
     Mark notification as read for the authenticated recipient user.
     """
 
-    permission_classes = [NotificationHasPermission]
+    # Ownership is enforced by the recipient filter in the queryset.
+    permission_classes = [IsAuthenticated]
 
     def _mark_read(self, request, pk):
         try:

@@ -57,6 +57,13 @@ class Task(models.Model):
         blank=True,
         related_name="tasks",
     )
+    form_submission = models.ForeignKey(
+        "CallForms.FormSubmission",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tasks",
+    )
     task_title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
     due_date = models.DateTimeField(blank=True, null=True)
