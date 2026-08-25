@@ -14,6 +14,7 @@ from .models import (
     Reminder,
 )
 from accounts.models import CustomUser
+
 # ============================================================
 # TASK
 # ============================================================
@@ -157,8 +158,7 @@ class MeetingTypeSerializer(serializers.ModelSerializer):
 
 class MeetingSerializer(serializers.ModelSerializer):
     manager = serializers.PrimaryKeyRelatedField(
-        queryset=CustomUser.objects.all(),
-        required=True
+        queryset=CustomUser.objects.all(), required=True
     )
 
     class Meta:
@@ -218,15 +218,10 @@ class MeetingSerializer(serializers.ModelSerializer):
                 None,
             ),
         )
-        if (
-            meeting_date
-            and not self.instance
-            and meeting_date < timezone.localdate()
-        ):
-            raise serializers.ValidationError({
-                "meeting_date":
-                "Meeting date cannot be in the past."
-            })
+        if meeting_date and not self.instance and meeting_date < timezone.localdate():
+            raise serializers.ValidationError(
+                {"meeting_date": "Meeting date cannot be in the past."}
+            )
         return attrs
 
 

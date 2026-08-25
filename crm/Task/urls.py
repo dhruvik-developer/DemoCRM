@@ -33,46 +33,46 @@ urlpatterns = [
     # ======================================================
     # MEETING
     # ======================================================
-    # ======================================================
-# MEETING
-# ======================================================
-
     path(
         "meetings/",
         MeetingCreateView.as_view(),
         name="meeting-create",
     ),
-
     path(
         "meetings/<int:meeting_id>/",
         MeetingDetailView.as_view(),
         name="meeting-detail",
     ),
-
     path(
         "meetings/<int:meeting_id>/approval/",
         MeetingApprovalView.as_view(),
         name="meeting-approval",
     ),
-
+    path(
+        "meetings/<int:meeting_id>/",
+        MeetingDetailView.as_view(),
+        name="meeting-detail",
+    ),
+    path(
+        "meetings/<int:meeting_id>/approval/",
+        MeetingApprovalView.as_view(),
+        name="meeting-approval",
+    ),
     path(
         "meetings/<int:meeting_id>/reschedule/",
         MeetingRescheduleView.as_view(),
         name="meeting-reschedule",
     ),
-
     path(
         "meetings/<int:meeting_id>/status/",
         MeetingStatusUpdateView.as_view(),
         name="meeting-status-update",
     ),
-
     path(
         "meetings/<int:meeting_id>/participants/",
         MeetingParticipantAddView.as_view(),
         name="meeting-participant-add",
     ),
-
     path(
         "meetings/<int:meeting_id>/participants/<str:user_id>/",
         MeetingParticipantRemoveView.as_view(),
