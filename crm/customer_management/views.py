@@ -17,6 +17,8 @@ from audit_log.models import Activity, AuditLog
 
 from .models import (
     Customer,
+    CustomerAccount,
+    CustomerContact,
     Lead,
     LeadSource,
     Pipeline,
@@ -28,6 +30,8 @@ from .permissions import CRMHasPermission
 from .serializers import (
     ActivitySerializer,
     AuditLogSerializer,
+    CustomerAccountSerializer,
+    CustomerContactSerializer,
     CustomerSerializer,
     LeadSerializer,
     LeadSourceSerializer,
@@ -651,6 +655,7 @@ class LeadConvertView(APIView):
             "company_name",
             lead.company_name,
         )
+        gst_number = request.data.get("gst_number")
 
         if not email:
             return Response(
@@ -672,6 +677,7 @@ class LeadConvertView(APIView):
                 email=email,
                 phone=phone,
                 company_name=company_name,
+                gst_number=gst_number,
             )
         except DjangoValidationError as exc:
             return Response(
@@ -996,7 +1002,10 @@ class QuotationListCreateView(APIView):
         notes = request.data.get("notes")
         line_items = request.data.get("line_items")
         if line_items is None:
-            line_items = request.data.get("items", [])
+            # Absent line items stay None: the service deliberately allows
+            # item-less draft quotations. Only an explicitly empty list is
+            # rejected by the service.
+            line_items = request.data.get("items")
 
         try:
             quotation = QuotationService.create_quotation(
@@ -1709,3 +1718,82 @@ class QuotationSendEmailView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+@extend_schema(tags=["Customers"])
+class SmartCustomerLookupView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "view_customer",
+    }
+
+    @extend_schema(
+        summary="Smart Customer Lookup",
+        description="Searches CustomerAccount and CustomerContact using multi-field matching (email, phone, gst_number, company_name) and returns unified multi-pipeline portfolio breakdown.",
+        parameters=[
+            OpenApiParameter(
+                "query",
+                str,
+                description="Search term (name, email, phone, company, or GST)",
+            ),
+            OpenApiParameter("email", str, description="Customer email address"),
+            OpenApiParameter("phone", str, description="Customer phone number"),
+            OpenApiParameter("gst_number", str, description="B2B Company GST Tax ID"),
+            OpenApiParameter("company_name", str, description="B2B Company Name"),
+        ],
+    )
+    def get(self, request):
+        query = request.query_params.get("query")
+        email = request.query_params.get("email")
+        phone = request.query_params.get("phone")
+        gst_number = request.query_params.get("gst_number")
+        company_name = request.query_params.get("company_name")
+
+        res = CRMService.smart_customer_lookup(
+            query=query,
+            email=email,
+            phone=phone,
+            gst_number=gst_number,
+            company_name=company_name,
+        )
+        return Response(res, status=status.HTTP_200_OK)
+
+
+@extend_schema(tags=["Customers"])
+class CustomerAccountListCreateView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "view_customeraccount",
+        "POST": "manage_customer_account",
+    }
+
+    def get(self, request):
+        qs = CustomerAccount.objects.all()
+        serializer = CustomerAccountSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = CustomerAccountSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(created_by=request.user)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+
+@extend_schema(tags=["Customers"])
+class CustomerContactListCreateView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "view_customercontact",
+        "POST": "manage_customer_contact",
+    }
+
+    def get(self, request):
+        qs = CustomerContact.objects.all()
+        serializer = CustomerContactSerializer(qs, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = CustomerContactSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

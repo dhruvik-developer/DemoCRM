@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.http import Http404
-from django.db import transaction
 import logging
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers, status
@@ -280,6 +280,11 @@ class TaskListCreateView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Create task",
+        operation_id="task_create",
+    )
     def post(self, request):
         try:
 
@@ -1268,6 +1273,7 @@ class MeetingCreateView(APIView):
             )
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingApprovalView(APIView):
     """
     PATCH /api/tasks/meetings/<meeting_id>/approval/
@@ -1575,6 +1581,7 @@ class MeetingApprovalView(APIView):
             )
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingDetailView(APIView):
     """
     GET /api/meetings/<meeting_id>/
@@ -1651,6 +1658,7 @@ class MeetingDetailView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingRescheduleView(APIView):
     """
     PATCH /api/tasks/meetings/<meeting_id>/reschedule/
@@ -2399,6 +2407,7 @@ class ReminderCreateView(APIView):
             )
 
 
+@extend_schema(tags=["Reminders"])
 class ReminderDetailView(APIView):
     """
     GET    /api/reminders/<reminder_id>/

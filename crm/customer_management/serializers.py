@@ -5,6 +5,8 @@ from audit_log.models import Activity, AuditLog
 
 from .models import (
     Customer,
+    CustomerAccount,
+    CustomerContact,
     Lead,
     LeadSource,
     Pipeline,
@@ -15,6 +17,45 @@ from .models import (
     QuotationLineItem,
     QuotationVersion,
 )
+
+
+class CustomerAccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CustomerAccount
+        fields = [
+            "id",
+            "company_name",
+            "gst_number",
+            "website",
+            "primary_phone",
+            "billing_address",
+            "is_active",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+
+
+class CustomerContactSerializer(serializers.ModelSerializer):
+    account_detail = CustomerAccountSerializer(source="account", read_only=True)
+
+    class Meta:
+        model = CustomerContact
+        fields = [
+            "id",
+            "account",
+            "account_detail",
+            "name",
+            "email",
+            "phone",
+            "designation",
+            "is_primary",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class LeadSourceSerializer(serializers.ModelSerializer):
@@ -44,6 +85,7 @@ class PipelineSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
+            "entity_label",
             "is_active",
             "created_by",
             "created_at",
@@ -118,11 +160,18 @@ class LeadSerializer(serializers.ModelSerializer):
             "email",
             "phone",
             "company_name",
+            "customer_account",
+            "customer_contact",
             "source",
             "assigned_to",
             "pipeline",
             "current_stage",
             "status",
+            "financial_status",
+            "total_value",
+            "paid_amount",
+            "due_amount",
+            "metadata",
             "lost_reason",
             "lost_at",
             "created_at",
@@ -232,7 +281,6 @@ class CustomerSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
-            "lead",
             "created_at",
             "updated_at",
         ]
