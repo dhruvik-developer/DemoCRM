@@ -258,10 +258,7 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
         if manager.email:
 
             send_mail(
-                subject=(
-                    f"Meeting Approval Required: "
-                    f"{meeting.meeting_title}"
-                ),
+                subject=(f"Meeting Approval Required: " f"{meeting.meeting_title}"),
                 message=(
                     f"Hello {manager.username},\n\n"
                     f"{meeting.created_by.get_full_name() or meeting.created_by.username} "
