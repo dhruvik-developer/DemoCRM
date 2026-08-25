@@ -73,6 +73,24 @@ class Activity(models.Model):
         QUOTATION_PDF_GENERATED = "QUOTATION_PDF_GENERATED", "Quotation PDF Generated"
         QUOTATION_EMAIL_SENT = "QUOTATION_EMAIL_SENT", "Quotation Email Sent"
 
+        # Task Events
+        TASK_CREATED = "TASK_CREATED", "Task Created"
+        TASK_UPDATED = "TASK_UPDATED", "Task Updated"
+        TASK_DELETED = "TASK_DELETED", "Task Deleted"
+        TASK_ASSIGNED = "TASK_ASSIGNED", "Task Assigned"
+        TASK_REASSIGNED = "TASK_REASSIGNED", "Task Reassigned"
+        TASK_STATUS_CHANGED = "TASK_STATUS_CHANGED", "Task Status Changed"
+
+        # FollowUp Events
+        FOLLOWUP_CREATED = "FOLLOWUP_CREATED", "Follow-up Created"
+        FOLLOWUP_UPDATED = "FOLLOWUP_UPDATED", "Follow-up Updated"
+        FOLLOWUP_DELETED = "FOLLOWUP_DELETED", "Follow-up Deleted"
+
+        # Reminder Events
+        REMINDER_CREATED = "REMINDER_CREATED", "Reminder Created"
+        REMINDER_UPDATED = "REMINDER_UPDATED", "Reminder Updated"
+        REMINDER_DELETED = "REMINDER_DELETED", "Reminder Deleted"
+
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
 
     lead = models.ForeignKey(

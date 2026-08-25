@@ -2,22 +2,19 @@ import logging
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.db import transaction
-from rest_framework import status, serializers
+from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import Followup
-from .serializers import (
-    FollowupSerializer,
-    FollowUpStatusSerializer,
-    FollowUpTypesSerializer,
-)
+from .serializers import FollowupSerializer
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
-from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
 from Notification.notification_utils import trigger_notification_event
 from Notification.models import NotificationEventType
+from audit_log.services import log_audit, log_activity
+from audit_log.models import Activity
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +37,7 @@ class FollowUpListCreateView(APIView):
     }
 
     # ======================================================
-    # 1. LIST FOLLOWUPS 
+    # 1. LIST FOLLOWUPS
     # ======================================================
     def get(self, request):
         try:
@@ -120,7 +117,9 @@ class FollowUpListCreateView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while fetching FollowUps: user_id=%s", request.user.pk)
+            logger.exception(
+                "Error while fetching FollowUps: user_id=%s", request.user.pk
+            )
             return Response(
                 {"error": "Something went wrong while fetching FollowUps."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -158,7 +157,9 @@ class FollowUpListCreateView(APIView):
             if not user.is_superuser and role_name not in ["admin", "manager"]:
                 if task.assigned_to_id != user.pk:
                     return Response(
-                        {"detail": "You can only create FollowUps for tasks assigned to you."},
+                        {
+                            "detail": "You can only create FollowUps for tasks assigned to you."
+                        },
                         status=status.HTTP_403_FORBIDDEN,
                     )
 
@@ -170,11 +171,33 @@ class FollowUpListCreateView(APIView):
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
             with transaction.atomic():
                 followup = serializer.save(created_by=request.user)
+
             logger.info(
                 "FollowUp created successfully: followup_id=%s task_id=%s user_id=%s",
                 followup.followup_id,
                 task.task_id,
                 user.pk,
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="FollowUp",
+                entity_id=followup.followup_id,
+                action="FOLLOWUP_CREATED",
+                new_value={
+                    "task_id": task.task_id,
+                    "followup_date": str(followup.followup_date),
+                    "followup_status": str(followup.followup_status),
+                    "followup_type": str(followup.followup_type),
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.FOLLOWUP_CREATED,
+                outcome=f"Follow-up created for task: {task.task_title}",
+                notes=followup.decription,
+                lead=task.lead,
+                customer=task.customer,
             )
 
             try:
@@ -203,7 +226,9 @@ class FollowUpListCreateView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while creating FollowUp: user_id=%s", request.user.pk)
+            logger.exception(
+                "Error while creating FollowUp: user_id=%s", request.user.pk
+            )
             return Response(
                 {"error": "Something went wrong while creating the FollowUp."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -239,6 +264,7 @@ class FollowUpDetailView(APIView):
             followup_id=followup_id,
             is_active=True,
         )
+
     def check_followup_access(self, request, followup):
         user = request.user
 
@@ -268,7 +294,9 @@ class FollowUpDetailView(APIView):
                 followup.task_id.assigned_to_id,
             )
             return Response(
-                {"detail": "You can only access, update, or delete FollowUps for tasks assigned to you."},
+                {
+                    "detail": "You can only access, update, or delete FollowUps for tasks assigned to you."
+                },
                 status=status.HTTP_403_FORBIDDEN,
             )
 
@@ -290,7 +318,9 @@ class FollowUpDetailView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while fetching FollowUp: followup_id=%s", followup_id)
+            logger.exception(
+                "Error while fetching FollowUp: followup_id=%s", followup_id
+            )
             return Response(
                 {"error": "Something went wrong while fetching the FollowUp."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -313,6 +343,12 @@ class FollowUpDetailView(APIView):
             if not serializer.is_valid():
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+            old_value = {
+                "followup_date": str(followup.followup_date),
+                "followup_status": str(followup.followup_status),
+                "followup_type": str(followup.followup_type),
+            }
+
             with transaction.atomic():
                 followup = serializer.save()
 
@@ -322,6 +358,45 @@ class FollowUpDetailView(APIView):
                 request.user.pk,
             )
 
+            log_audit(
+                user=request.user,
+                entity_type="FollowUp",
+                entity_id=followup.followup_id,
+                action="FOLLOWUP_UPDATED",
+                old_value=old_value,
+                new_value={
+                    "followup_date": str(followup.followup_date),
+                    "followup_status": str(followup.followup_status),
+                    "followup_type": str(followup.followup_type),
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.FOLLOWUP_UPDATED,
+                outcome=f"Follow-up updated for task: {followup.task_id.task_title}",
+                notes=followup.decription,
+                lead=followup.task_id.lead,
+                customer=followup.task_id.customer,
+            )
+
+            try:
+                task = followup.task_id
+                if task and task.assigned_to and task.assigned_to != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.FOLLOWUP_UPDATED,
+                        recipient=task.assigned_to,
+                        context={
+                            "user_name": task.assigned_to.get_full_name()
+                            or task.assigned_to.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "followup_date": str(followup.followup_date),
+                        },
+                    )
+            except Exception:
+                logger.exception("Failed to send followup update notification")
+
             return Response(
                 FollowupSerializer(followup, context={"request": request}).data,
                 status=status.HTTP_200_OK,
@@ -330,7 +405,9 @@ class FollowUpDetailView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while updating FollowUp: followup_id=%s", followup_id)
+            logger.exception(
+                "Error while updating FollowUp: followup_id=%s", followup_id
+            )
             return Response(
                 {"error": "Something went wrong while updating the FollowUp."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -346,6 +423,30 @@ class FollowUpDetailView(APIView):
             if access_error:
                 return access_error
 
+            task = followup.task_id
+            assigned_to = task.assigned_to if task else None
+            followup_date = followup.followup_date
+
+            log_audit(
+                user=request.user,
+                entity_type="FollowUp",
+                entity_id=followup.followup_id,
+                action="FOLLOWUP_DELETED",
+                old_value={
+                    "task_id": task.task_id if task else None,
+                    "followup_date": str(followup_date),
+                    "followup_status": str(followup.followup_status),
+                    "followup_type": str(followup.followup_type),
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.FOLLOWUP_DELETED,
+                outcome=f"Follow-up deleted for task: {task.task_title}",
+                lead=task.lead,
+                customer=task.customer,
+            )
+
             followup.delete()
 
             logger.info(
@@ -353,6 +454,23 @@ class FollowUpDetailView(APIView):
                 followup_id,
                 request.user.pk,
             )
+
+            try:
+                if task and assigned_to and assigned_to != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.FOLLOWUP_DELETED,
+                        recipient=assigned_to,
+                        context={
+                            "user_name": assigned_to.get_full_name()
+                            or assigned_to.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "followup_date": str(followup_date),
+                        },
+                    )
+            except Exception:
+                logger.exception("Failed to send followup deletion notification")
 
             return Response(
                 {
@@ -365,7 +483,9 @@ class FollowUpDetailView(APIView):
         except (Http404, APIException):
             raise
         except Exception:
-            logger.exception("Error while deleting FollowUp: followup_id=%s", followup_id)
+            logger.exception(
+                "Error while deleting FollowUp: followup_id=%s", followup_id
+            )
             return Response(
                 {"error": "Something went wrong while deleting the FollowUp."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

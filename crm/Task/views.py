@@ -10,7 +10,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
-from django.db import transaction
 from .services import (
     generate_google_meet_link,
     ONLINE_MEETING_TYPE_ID,
@@ -19,7 +18,7 @@ from .services import (
 )
 from django.db.models import Q
 
-from .permission import HasDynamicPermission, CanCommunicateWithLead
+from .permission import CanCommunicateWithLead
 
 from .models import (
     Task,
@@ -48,6 +47,8 @@ from .tasks import (
 
 from Notification.notification_utils import trigger_notification_event
 from Notification.models import NotificationEventType
+from audit_log.services import log_audit, log_activity
+from audit_log.models import Activity
 
 logger = logging.getLogger(__name__)
 
@@ -68,11 +69,9 @@ class TaskListCreateView(APIView):
     POST /api/tasks/
         Only Admin/Manager can create task
     """
+
     permission_classes = [CanCommunicateWithLead]
-    permission_names = {
-        "POST": "add_task",
-        "GET":"view_task"
-    }
+    permission_names = {"POST": "add_task", "GET": "view_task"}
 
     @extend_schema(
         tags=["Tasks"],
@@ -307,6 +306,28 @@ class TaskListCreateView(APIView):
                 request.user.pk,
             )
 
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action="TASK_CREATED",
+                new_value={
+                    "task_title": task.task_title,
+                    "assigned_to": task.assigned_to_id,
+                    "status": str(task.status),
+                    "priority": str(task.priority),
+                    "due_date": str(task.due_date) if task.due_date else None,
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.TASK_CREATED,
+                outcome=f"Task created: {task.task_title}",
+                notes=task.description,
+                lead=task.lead,
+                customer=task.customer,
+            )
+
             if task.assigned_to and task.assigned_to != request.user:
                 trigger_notification_event(
                     event_type=NotificationEventType.TASK_ASSIGNED,
@@ -349,10 +370,10 @@ class TaskDetailView(APIView):
 
     permission_classes = [CanCommunicateWithLead]
     permission_names = {
-            "GET": "view_task",
-            "PATCH":"change_task",
-            "DELETE":"delete_task"
-        }
+        "GET": "view_task",
+        "PATCH": "change_task",
+        "DELETE": "delete_task",
+    }
 
     def get_task(self, task_id):
         return get_object_or_404(
@@ -511,17 +532,17 @@ class TaskDetailView(APIView):
 
                 if role is None:
                     return Response(
-                            {"detail": "No role assigned to user."},
-                            status=status.HTTP_403_FORBIDDEN,
-                            )
+                        {"detail": "No role assigned to user."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
 
                 role_name = getattr(role, "rolename", "").strip().lower()
 
-    # Admin / Manager → can update any task
+                # Admin / Manager → can update any task
                 if role_name in ["admin", "manager"]:
                     pass
 
-    # Employee → only assigned task
+                # Employee → only assigned task
                 else:
                     if task.assigned_to_id != user.pk:
                         return Response(
@@ -547,6 +568,14 @@ class TaskDetailView(APIView):
 
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+            old_value = {
+                "task_title": task.task_title,
+                "assigned_to": task.assigned_to_id,
+                "status": str(task.status),
+                "priority": str(task.priority),
+                "due_date": str(task.due_date) if task.due_date else None,
+            }
+
             with transaction.atomic():
                 task = serializer.save()
 
@@ -554,6 +583,30 @@ class TaskDetailView(APIView):
                 "Task updated successfully: task_id=%s user_id=%s",
                 task.task_id,
                 request.user.pk,
+            )
+
+            new_value = {
+                "task_title": task.task_title,
+                "assigned_to": task.assigned_to_id,
+                "status": str(task.status),
+                "priority": str(task.priority),
+                "due_date": str(task.due_date) if task.due_date else None,
+            }
+
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action="TASK_UPDATED",
+                old_value=old_value,
+                new_value=new_value,
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.TASK_UPDATED,
+                outcome=f"Task updated: {task.task_title}",
+                lead=task.lead,
+                customer=task.customer,
             )
 
             if task.assigned_to and task.assigned_to != request.user:
@@ -686,6 +739,36 @@ class TaskDetailView(APIView):
                 request.user.pk,
             )
 
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action="TASK_DELETED",
+                old_value={"is_active": True, "task_title": task.task_title},
+                new_value={"is_active": False},
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.TASK_DELETED,
+                outcome=f"Task deleted: {task.task_title}",
+                lead=task.lead,
+                customer=task.customer,
+            )
+
+            if task.assigned_to and task.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_DELETED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name()
+                        or task.assigned_to.username,
+                        "employee_name": request.user.get_full_name()
+                        or request.user.username,
+                        "task_title": task.task_title,
+                        "due_date": str(task.due_date) if task.due_date else "N/A",
+                    },
+                )
+
             return Response(
                 {"message": "Task deleted successfully.", "task_id": task.task_id},
                 status=status.HTTP_200_OK,
@@ -721,9 +804,7 @@ class TaskAssignView(APIView):
     can assign or reassign a task.
     """
 
-    permission_classes = [
-        CanCommunicateWithLead
-    ]
+    permission_classes = [CanCommunicateWithLead]
 
     permission_names = {
         "POST": "task_assign",
@@ -810,6 +891,31 @@ class TaskAssignView(APIView):
                 if old_user
                 else NotificationEventType.TASK_ASSIGNED
             )
+
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action=("TASK_REASSIGNED" if old_user else "TASK_ASSIGNED"),
+                old_value={"assigned_to": old_user.pk if old_user else None},
+                new_value={"assigned_to": new_user.pk},
+            )
+            log_activity(
+                user=request.user,
+                activity_type=(
+                    Activity.ActivityType.TASK_REASSIGNED
+                    if old_user
+                    else Activity.ActivityType.TASK_ASSIGNED
+                ),
+                outcome=(
+                    f"Task reassigned: {task.task_title}"
+                    if old_user
+                    else f"Task assigned: {task.task_title}"
+                ),
+                lead=task.lead,
+                customer=task.customer,
+            )
+
             trigger_notification_event(
                 event_type=event_type,
                 recipient=new_user,
@@ -870,6 +976,7 @@ class TaskStatusUpdateView(APIView):
     Only users with task_update permission
     can change task status.
     """
+
     permission_classes = [CanCommunicateWithLead]
     permission_names = {
         "PATCH": "task_update",
@@ -953,6 +1060,25 @@ class TaskStatusUpdateView(APIView):
                     ]
                 )
 
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action="TASK_STATUS_CHANGED",
+                old_value={"status": old_status.status_name},
+                new_value={"status": new_status.status_name},
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.TASK_STATUS_CHANGED,
+                outcome=(
+                    f"Task status changed: {task.task_title} "
+                    f"({old_status.status_name} -> {new_status.status_name})"
+                ),
+                lead=task.lead,
+                customer=task.customer,
+            )
+
             if task.assigned_to and task.assigned_to != request.user:
                 trigger_notification_event(
                     event_type=NotificationEventType.TASK_STATUS_CHANGED,
@@ -1020,7 +1146,6 @@ class TaskStatusUpdateView(APIView):
 # MEETING
 # ==========================================================
 class MeetingCreateView(APIView):
-
     """
     POST /api/tasks/meetings/
 
@@ -1057,9 +1182,7 @@ class MeetingCreateView(APIView):
 
             serializer = MeetingSerializer(
                 data=request.data,
-                context={
-                    "request": request
-                },
+                context={"request": request},
             )
 
             if not serializer.is_valid():
@@ -1069,17 +1192,12 @@ class MeetingCreateView(APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            manager = serializer.validated_data.get(
-                "manager"
-            )
+            manager = serializer.validated_data.get("manager")
 
             if not manager:
 
                 return Response(
-                    {
-                        "manager":
-                        "Manager is required."
-                    },
+                    {"manager": "Manager is required."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1090,23 +1208,14 @@ class MeetingCreateView(APIView):
             if not manager.role:
 
                 return Response(
-                    {
-                        "manager":
-                        "Selected user does not have a role."
-                    },
+                    {"manager": "Selected user does not have a role."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            if (
-                manager.role.rolename.lower()
-                != "manager"
-            ):
+            if manager.role.rolename.lower() != "manager":
 
                 return Response(
-                    {
-                        "manager":
-                        "Selected user must have Manager role."
-                    },
+                    {"manager": "Selected user must have Manager role."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1116,17 +1225,10 @@ class MeetingCreateView(APIView):
 
             meeting = serializer.save(
                 created_by=request.user,
-
-                approval_status=(
-                    Meeting.ApprovalStatus.PENDING
-                ),
-
+                approval_status=(Meeting.ApprovalStatus.PENDING),
                 approved_by=None,
-
                 approved_at=None,
-
                 rejection_reason=None,
-
                 reminder_sent_at=None,
             )
 
@@ -1135,10 +1237,16 @@ class MeetingCreateView(APIView):
             m_type_name = ""
             if meeting.meeting_type_id:
                 m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
-                m_type_name = (getattr(meeting.meeting_type_id, "type_name", "") or "").lower()
+                m_type_name = (
+                    getattr(meeting.meeting_type_id, "type_name", "") or ""
+                ).lower()
 
-            is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
-            is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or ("offline" in m_type_name)
+            is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or (
+                "online" in m_type_name
+            )
+            is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or (
+                "offline" in m_type_name
+            )
 
             updated_fields = []
             if is_online and not meeting.meeting_link:
@@ -1160,14 +1268,32 @@ class MeetingCreateView(APIView):
             # ==================================================
 
             transaction.on_commit(
-                lambda: notify_manager_about_meeting.delay(
-                    meeting.meeting_id
-                )
+                lambda: notify_manager_about_meeting.delay(meeting.meeting_id)
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="Meeting",
+                entity_id=meeting.meeting_id,
+                action="MEETING_CREATED",
+                new_value={
+                    "meeting_title": meeting.meeting_title,
+                    "meeting_date": str(meeting.meeting_date),
+                    "start_time": str(meeting.start_time),
+                    "end_time": str(meeting.end_time),
+                    "approval_status": meeting.approval_status,
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=f"Meeting requested: {meeting.meeting_title}",
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
             )
 
             logger.info(
-                "Meeting created: meeting_id=%s "
-                "employee=%s manager=%s",
+                "Meeting created: meeting_id=%s " "employee=%s manager=%s",
                 meeting.meeting_id,
                 request.user.pk,
                 manager.pk,
@@ -1176,19 +1302,13 @@ class MeetingCreateView(APIView):
             return Response(
                 {
                     "message": (
-                        "Meeting request created "
-                        "and sent to manager for approval."
+                        "Meeting request created " "and sent to manager for approval."
                     ),
-
-                    "meeting":
-                    MeetingSerializer(
+                    "meeting": MeetingSerializer(
                         meeting,
-                        context={
-                            "request": request
-                        },
+                        context={"request": request},
                     ).data,
                 },
-
                 status=status.HTTP_201_CREATED,
             )
 
@@ -1200,16 +1320,12 @@ class MeetingCreateView(APIView):
             )
 
             return Response(
-                {
-                    "error":
-                    "Something went wrong while "
-                    "creating the meeting."
-                },
-
+                {"error": "Something went wrong while " "creating the meeting."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
-class MeetingApprovalView(APIView):
 
+
+class MeetingApprovalView(APIView):
     """
     PATCH /api/tasks/meetings/<meeting_id>/approval/
 
@@ -1246,18 +1362,13 @@ class MeetingApprovalView(APIView):
             # ONLY MANAGER CAN APPROVE / REJECT
             # ==================================================
 
-            if (
-                meeting.manager_id
-                != request.user.user_id
-            ):
+            if meeting.manager_id != request.user.user_id:
 
                 return Response(
                     {
-                        "error":
-                        "Only the assigned manager "
+                        "error": "Only the assigned manager "
                         "can approve or reject this meeting."
                     },
-
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
@@ -1265,18 +1376,10 @@ class MeetingApprovalView(APIView):
             # MANAGER ROLE CHECK
             # ==================================================
 
-            if (
-                not request.user.role
-                or request.user.role.rolename.lower()
-                != "manager"
-            ):
+            if not request.user.role or request.user.role.rolename.lower() != "manager":
 
                 return Response(
-                    {
-                        "error":
-                        "Only a Manager can approve or reject meetings."
-                    },
-
+                    {"error": "Only a Manager can approve or reject meetings."},
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
@@ -1284,37 +1387,20 @@ class MeetingApprovalView(APIView):
             # MUST BE PENDING
             # ==================================================
 
-            if (
-                meeting.approval_status
-                != Meeting.ApprovalStatus.PENDING
-            ):
+            if meeting.approval_status != Meeting.ApprovalStatus.PENDING:
 
                 return Response(
-                    {
-                        "error":
-                        (
-                            "Meeting is already "
-                            f"{meeting.approval_status}."
-                        )
-                    },
-
+                    {"error": ("Meeting is already " f"{meeting.approval_status}.")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            approval_status = (
-                request.data.get(
-                    "approval_status"
-                )
-            )
+            approval_status = request.data.get("approval_status")
 
             # ==================================================
             # APPROVE
             # ==================================================
 
-            if (
-                approval_status
-                == Meeting.ApprovalStatus.APPROVED
-            ):
+            if approval_status == Meeting.ApprovalStatus.APPROVED:
 
                 update_fields = [
                     "approval_status",
@@ -1338,11 +1424,19 @@ class MeetingApprovalView(APIView):
                 m_type_id = None
                 m_type_name = ""
                 if meeting.meeting_type_id:
-                    m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
-                    m_type_name = (getattr(meeting.meeting_type_id, "type_name", "") or "").lower()
+                    m_type_id = getattr(
+                        meeting.meeting_type_id, "meeting_type_id", None
+                    )
+                    m_type_name = (
+                        getattr(meeting.meeting_type_id, "type_name", "") or ""
+                    ).lower()
 
-                is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
-                is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or ("offline" in m_type_name)
+                is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or (
+                    "online" in m_type_name
+                )
+                is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or (
+                    "offline" in m_type_name
+                )
 
                 # For online meeting, ensure meet link is present
                 if is_online and not meeting.meeting_link:
@@ -1357,25 +1451,17 @@ class MeetingApprovalView(APIView):
                     if "location" not in update_fields:
                         update_fields.append("location")
 
-                meeting.approval_status = (
-                    Meeting.ApprovalStatus.APPROVED
-                )
+                meeting.approval_status = Meeting.ApprovalStatus.APPROVED
 
-                meeting.approved_by = (
-                    request.user
-                )
+                meeting.approved_by = request.user
 
-                meeting.approved_at = (
-                    timezone.now()
-                )
+                meeting.approved_at = timezone.now()
 
                 meeting.rejection_reason = None
 
                 meeting.reminder_sent_at = None
 
-                meeting.save(
-                    update_fields=list(set(update_fields))
-                )
+                meeting.save(update_fields=list(set(update_fields)))
 
                 # ==================================================
                 # CELERY
@@ -1384,26 +1470,37 @@ class MeetingApprovalView(APIView):
                 # ==================================================
 
                 transaction.on_commit(
-                    lambda: send_approved_meeting.delay(
-                        meeting.meeting_id
-                    )
+                    lambda: send_approved_meeting.delay(meeting.meeting_id)
+                )
+
+                log_audit(
+                    user=request.user,
+                    entity_type="Meeting",
+                    entity_id=meeting.meeting_id,
+                    action="MEETING_APPROVED",
+                    old_value={"approval_status": "PENDING"},
+                    new_value={
+                        "approval_status": meeting.approval_status,
+                        "approved_by": request.user.pk,
+                    },
+                )
+                log_activity(
+                    user=request.user,
+                    activity_type=Activity.ActivityType.MEETING,
+                    outcome=f"Meeting approved: {meeting.meeting_title}",
+                    lead=meeting.lead or meeting.task_id.lead,
+                    customer=meeting.task_id.customer,
                 )
 
                 return Response(
                     {
-                        "message":
-                        (
+                        "message": (
                             "Meeting approved successfully. "
                             "Scheduled emails have been queued."
                         ),
-
-                        "meeting_id":
-                        meeting.meeting_id,
-
-                        "approval_status":
-                        meeting.approval_status,
+                        "meeting_id": meeting.meeting_id,
+                        "approval_status": meeting.approval_status,
                     },
-
                     status=status.HTTP_200_OK,
                 )
 
@@ -1411,39 +1508,24 @@ class MeetingApprovalView(APIView):
             # REJECT
             # ==================================================
 
-            if (
-                approval_status
-                == Meeting.ApprovalStatus.REJECTED
-            ):
+            if approval_status == Meeting.ApprovalStatus.REJECTED:
 
-                rejection_reason = (
-                    request.data.get(
-                        "rejection_reason"
-                    )
-                )
+                rejection_reason = request.data.get("rejection_reason")
 
                 if not rejection_reason:
 
                     return Response(
-                        {
-                            "rejection_reason":
-                            "Rejection reason is required."
-                        },
-
+                        {"rejection_reason": "Rejection reason is required."},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
 
-                meeting.approval_status = (
-                    Meeting.ApprovalStatus.REJECTED
-                )
+                meeting.approval_status = Meeting.ApprovalStatus.REJECTED
 
                 meeting.approved_by = None
 
                 meeting.approved_at = None
 
-                meeting.rejection_reason = (
-                    rejection_reason
-                )
+                meeting.rejection_reason = rejection_reason
 
                 meeting.reminder_sent_at = None
 
@@ -1465,31 +1547,36 @@ class MeetingApprovalView(APIView):
                 # ==================================================
 
                 transaction.on_commit(
-                    lambda: (
-                        notify_employee_meeting_rejected.delay(
-                            meeting.meeting_id
-                        )
-                    )
+                    lambda: (notify_employee_meeting_rejected.delay(meeting.meeting_id))
+                )
+
+                log_audit(
+                    user=request.user,
+                    entity_type="Meeting",
+                    entity_id=meeting.meeting_id,
+                    action="MEETING_REJECTED",
+                    old_value={"approval_status": "PENDING"},
+                    new_value={
+                        "approval_status": meeting.approval_status,
+                        "rejection_reason": meeting.rejection_reason,
+                    },
+                )
+                log_activity(
+                    user=request.user,
+                    activity_type=Activity.ActivityType.MEETING,
+                    outcome=f"Meeting rejected: {meeting.meeting_title}",
+                    notes=meeting.rejection_reason,
+                    lead=meeting.lead or meeting.task_id.lead,
+                    customer=meeting.task_id.customer,
                 )
 
                 return Response(
                     {
-                        "message":
-                        (
-                            "Meeting rejected. "
-                            "Employee has been notified."
-                        ),
-
-                        "meeting_id":
-                        meeting.meeting_id,
-
-                        "approval_status":
-                        meeting.approval_status,
-
-                        "rejection_reason":
-                        meeting.rejection_reason,
+                        "message": ("Meeting rejected. " "Employee has been notified."),
+                        "meeting_id": meeting.meeting_id,
+                        "approval_status": meeting.approval_status,
+                        "rejection_reason": meeting.rejection_reason,
                     },
-
                     status=status.HTTP_200_OK,
                 )
 
@@ -1498,34 +1585,24 @@ class MeetingApprovalView(APIView):
             # ==================================================
 
             return Response(
-                {
-                    "approval_status":
-                    (
-                        "Use APPROVED or REJECTED."
-                    )
-                },
-
+                {"approval_status": ("Use APPROVED or REJECTED.")},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
         except Exception:
 
             logger.exception(
-                "Meeting approval failed: "
-                "meeting_id=%s user_id=%s",
+                "Meeting approval failed: " "meeting_id=%s user_id=%s",
                 meeting_id,
                 request.user.pk,
             )
 
             return Response(
-                {
-                    "error":
-                    "Something went wrong while "
-                    "processing meeting approval."
-                },
-
+                {"error": "Something went wrong while " "processing meeting approval."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
 class MeetingDetailView(APIView):
     """
     GET /api/meetings/<meeting_id>/
@@ -1577,7 +1654,6 @@ class MeetingDetailView(APIView):
 
 
 class MeetingRescheduleView(APIView):
-
     """
     PATCH /api/tasks/meetings/<meeting_id>/reschedule/
 
@@ -1619,18 +1695,13 @@ class MeetingRescheduleView(APIView):
             # ONLY CREATOR / EMPLOYEE CAN RESCHEDULE
             # ==================================================
 
-            if (
-                meeting.created_by_id
-                != request.user.user_id
-            ):
+            if meeting.created_by_id != request.user.user_id:
 
                 return Response(
                     {
-                        "error":
-                        "Only the employee who created "
+                        "error": "Only the employee who created "
                         "the meeting can reschedule it."
                     },
-
                     status=status.HTTP_403_FORBIDDEN,
                 )
 
@@ -1638,20 +1709,10 @@ class MeetingRescheduleView(APIView):
             # ONLY REJECTED MEETING
             # ==================================================
 
-            if (
-                meeting.approval_status
-                != Meeting.ApprovalStatus.REJECTED
-            ):
+            if meeting.approval_status != Meeting.ApprovalStatus.REJECTED:
 
                 return Response(
-                    {
-                        "error":
-                        (
-                            "Only a rejected meeting "
-                            "can be rescheduled."
-                        )
-                    },
-
+                    {"error": ("Only a rejected meeting " "can be rescheduled.")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1667,21 +1728,12 @@ class MeetingRescheduleView(APIView):
 
                 if field in request.data:
 
-                    reschedule_data[field] = (
-                        request.data[field]
-                    )
+                    reschedule_data[field] = request.data[field]
 
             if not reschedule_data:
 
                 return Response(
-                    {
-                        "error":
-                        (
-                            "At least one meeting field "
-                            "is required."
-                        )
-                    },
-
+                    {"error": ("At least one meeting field " "is required.")},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
@@ -1689,9 +1741,7 @@ class MeetingRescheduleView(APIView):
                 meeting,
                 data=reschedule_data,
                 partial=True,
-                context={
-                    "request": request
-                },
+                context={"request": request},
             )
 
             if not serializer.is_valid():
@@ -1706,16 +1756,10 @@ class MeetingRescheduleView(APIView):
             # ==================================================
 
             meeting = serializer.save(
-                approval_status=(
-                    Meeting.ApprovalStatus.PENDING
-                ),
-
+                approval_status=(Meeting.ApprovalStatus.PENDING),
                 approved_by=None,
-
                 approved_at=None,
-
                 rejection_reason=None,
-
                 reminder_sent_at=None,
             )
 
@@ -1726,57 +1770,62 @@ class MeetingRescheduleView(APIView):
             # ==================================================
 
             transaction.on_commit(
-                lambda: (
-                    notify_manager_about_reschedule.delay(
-                        meeting.meeting_id
-                    )
-                )
+                lambda: (notify_manager_about_reschedule.delay(meeting.meeting_id))
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="Meeting",
+                entity_id=meeting.meeting_id,
+                action="MEETING_RESCHEDULED",
+                old_value={"approval_status": "REJECTED"},
+                new_value={
+                    "approval_status": meeting.approval_status,
+                    "meeting_date": str(meeting.meeting_date),
+                    "start_time": str(meeting.start_time),
+                    "end_time": str(meeting.end_time),
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=f"Meeting rescheduled: {meeting.meeting_title}",
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
             )
 
             logger.info(
-                "Meeting rescheduled and sent "
-                "for approval again: meeting_id=%s",
+                "Meeting rescheduled and sent " "for approval again: meeting_id=%s",
                 meeting.meeting_id,
             )
 
             return Response(
                 {
-                    "message":
-                    (
-                        "Meeting rescheduled and "
-                        "sent to manager for approval again."
+                    "message": (
+                        "Meeting rescheduled and " "sent to manager for approval again."
                     ),
-
-                    "meeting":
-                    MeetingSerializer(
+                    "meeting": MeetingSerializer(
                         meeting,
-                        context={
-                            "request": request
-                        },
+                        context={"request": request},
                     ).data,
                 },
-
                 status=status.HTTP_200_OK,
             )
 
         except Exception:
 
             logger.exception(
-                "Meeting reschedule failed: "
-                "meeting_id=%s user_id=%s",
+                "Meeting reschedule failed: " "meeting_id=%s user_id=%s",
                 meeting_id,
                 request.user.pk,
             )
 
             return Response(
-                {
-                    "error":
-                    "Something went wrong while "
-                    "rescheduling the meeting."
-                },
-
+                {"error": "Something went wrong while " "rescheduling the meeting."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
 # ==========================================================
 # CHANGE MEETING STATUS
 # ==========================================================
@@ -1878,6 +1927,25 @@ class MeetingStatusUpdateView(APIView):
             meeting.meeting_status_id = new_status
             meeting.save(update_fields=["meeting_status_id", "updated_at"])
 
+            log_audit(
+                user=request.user,
+                entity_type="Meeting",
+                entity_id=meeting.meeting_id,
+                action="MEETING_STATUS_CHANGED",
+                old_value={"status": old_status.status_name},
+                new_value={"status": new_status.status_name},
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=(
+                    f"Meeting status changed: {meeting.meeting_title} "
+                    f"({old_status.status_name} -> {new_status.status_name})"
+                ),
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
+            )
+
             logger.info(
                 "Meeting status updated successfully: "
                 "meeting_id=%s previous_status=%s new_status=%s user_id=%s",
@@ -1886,6 +1954,24 @@ class MeetingStatusUpdateView(APIView):
                 new_status.status_name,
                 request.user.pk,
             )
+
+            try:
+                if meeting.created_by and meeting.created_by != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_STATUS_CHANGED,
+                        recipient=meeting.created_by,
+                        context={
+                            "user_name": meeting.created_by.get_full_name()
+                            or meeting.created_by.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "meeting_title": meeting.meeting_title,
+                            "previous_status": old_status.status_name,
+                            "new_status": new_status.status_name,
+                        },
+                    )
+            except Exception:
+                logger.exception("Failed to send meeting status change notification")
 
             return Response(
                 {
@@ -2068,6 +2154,52 @@ class MeetingParticipantAddView(APIView):
                 request.user.pk,
             )
 
+            log_audit(
+                user=request.user,
+                entity_type="MeetingParticipant",
+                entity_id=participant.pk,
+                action="MEETING_PARTICIPANT_ADDED",
+                new_value={
+                    "meeting_id": meeting.meeting_id,
+                    "user_id": user.pk,
+                    "participant_role": participant.participant_role,
+                    "is_required": participant.is_required,
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=(
+                    f"Participant added to meeting "
+                    f"{meeting.meeting_title}: {user.username}"
+                ),
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
+            )
+
+            try:
+                if user != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_PARTICIPANT_ADDED,
+                        recipient=user,
+                        context={
+                            "user_name": user.get_full_name() or user.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "meeting_title": meeting.meeting_title,
+                            "meeting_date": str(meeting.meeting_date),
+                            "start_time": str(meeting.start_time),
+                            "end_time": str(meeting.end_time),
+                            "participant_role": participant_role.strip(),
+                            "meeting_link": meeting.meeting_link or "N/A",
+                            "location": meeting.location or "N/A",
+                        },
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to send meeting participant added notification"
+                )
+
             # --------------------------------------------------
             # SERIALIZE RESPONSE
             # --------------------------------------------------
@@ -2164,7 +2296,30 @@ class MeetingParticipantRemoveView(APIView):
                 MeetingParticipant, meeting_id=meeting, user_id_id=user_id
             )
 
+            removed_user = participant.user_id
             participant.delete()
+
+            log_audit(
+                user=request.user,
+                entity_type="MeetingParticipant",
+                entity_id=participant.participant_id,
+                action="MEETING_PARTICIPANT_REMOVED",
+                old_value={
+                    "meeting_id": meeting.meeting_id,
+                    "user_id": user_id,
+                    "participant_role": participant.participant_role,
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=(
+                    f"Participant removed from meeting "
+                    f"{meeting.meeting_title}: {removed_user.username if removed_user else user_id}"
+                ),
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
+            )
 
             logger.info(
                 "Meeting participant removed successfully: "
@@ -2173,6 +2328,26 @@ class MeetingParticipantRemoveView(APIView):
                 user_id,
                 request.user.pk,
             )
+
+            try:
+                if removed_user and removed_user != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_PARTICIPANT_REMOVED,
+                        recipient=removed_user,
+                        context={
+                            "user_name": removed_user.get_full_name()
+                            or removed_user.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "meeting_title": meeting.meeting_title,
+                            "meeting_date": str(meeting.meeting_date),
+                            "start_time": str(meeting.start_time),
+                        },
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to send meeting participant removed notification"
+                )
 
             return Response(
                 {
@@ -2254,6 +2429,19 @@ class ReminderCreateView(APIView):
                 "Reminder created successfully: reminder_id=%s user_id=%s",
                 reminder.reminder_id,
                 request.user.pk,
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="Reminder",
+                entity_id=reminder.reminder_id,
+                action="REMINDER_CREATED",
+                new_value={
+                    "reminder_datetime": str(reminder.reminder_datetime),
+                    "message": reminder.message[:100],
+                    "reminder_for": reminder.reminder_for_id,
+                    "status": str(reminder.reminder_status_id),
+                },
             )
 
             try:
@@ -2383,12 +2571,33 @@ class ReminderDetailView(APIView):
                 )
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+            old_value = {
+                "reminder_datetime": str(reminder.reminder_datetime),
+                "message": reminder.message[:100],
+                "reminder_for": reminder.reminder_for_id,
+                "status": str(reminder.reminder_status_id),
+            }
+
             reminder = serializer.save()
 
             logger.info(
                 "Reminder updated successfully: " "reminder_id=%s user_id=%s",
                 reminder.reminder_id,
                 request.user.pk,
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="Reminder",
+                entity_id=reminder.reminder_id,
+                action="REMINDER_UPDATED",
+                old_value=old_value,
+                new_value={
+                    "reminder_datetime": str(reminder.reminder_datetime),
+                    "message": reminder.message[:100],
+                    "reminder_for": reminder.reminder_for_id,
+                    "status": str(reminder.reminder_status_id),
+                },
             )
 
             return Response(
@@ -2422,6 +2631,18 @@ class ReminderDetailView(APIView):
                 "Reminder deleted successfully: " "reminder_id=%s user_id=%s",
                 reminder_id,
                 request.user.pk,
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="Reminder",
+                entity_id=reminder.reminder_id,
+                action="REMINDER_DELETED",
+                old_value={
+                    "reminder_datetime": str(reminder.reminder_datetime),
+                    "message": reminder.message[:100],
+                    "is_active": True,
+                },
             )
 
             return Response(
@@ -2545,6 +2766,15 @@ class ReminderStatusUpdateView(APIView):
             old_status = reminder.reminder_status_id
             reminder.reminder_status_id = new_status
             reminder.save(update_fields=["reminder_status_id", "updated_at"])
+
+            log_audit(
+                user=request.user,
+                entity_type="Reminder",
+                entity_id=reminder.reminder_id,
+                action="REMINDER_STATUS_CHANGED",
+                old_value={"status": old_status.status_name},
+                new_value={"status": new_status.status_name},
+            )
 
             logger.info(
                 "Reminder status updated successfully: "
