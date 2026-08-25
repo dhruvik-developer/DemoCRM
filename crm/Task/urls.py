@@ -33,13 +33,20 @@ urlpatterns = [
     # ======================================================
     # MEETING
     # ======================================================
-    # ======================================================
-    # MEETING
-    # ======================================================
     path(
         "meetings/",
         MeetingCreateView.as_view(),
         name="meeting-create",
+    ),
+    path(
+        "meetings/<int:meeting_id>/",
+        MeetingDetailView.as_view(),
+        name="meeting-detail",
+    ),
+    path(
+        "meetings/<int:meeting_id>/approval/",
+        MeetingApprovalView.as_view(),
+        name="meeting-approval",
     ),
     path(
         "meetings/<int:meeting_id>/",

@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.http import Http404
 import logging
@@ -9,7 +10,6 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.utils import timezone
-from django.db import transaction
 from .services import (
     generate_google_meet_link,
     ONLINE_MEETING_TYPE_ID,
@@ -856,25 +856,21 @@ class TaskAssignView(APIView):
 # ==========================================================
 # CHANGE TASK STATUS
 # ==========================================================
-
-
 class TaskStatusUpdateView(APIView):
-    """
-    PATCH /api/tasks/<task_id>/status/
-
-    Only users with task_update permission
-    can change task status.
-    """
-
     permission_classes = [CanCommunicateWithLead]
+
     permission_names = {
-        "PATCH": "task_update",
+        "PATCH": "change_taskstatus",
     }
 
     @extend_schema(
         tags=["Tasks"],
         summary="Update task status",
-        description="Update the status of a task. Only users with task_update permission can perform this action.",
+        description=(
+            "Update the status of a task. "
+            "Only the assigned employee, manager, admin, "
+            "or superuser can perform this action."
+        ),
         operation_id="task_status_update",
         parameters=[
             OpenApiParameter(
@@ -909,37 +905,124 @@ class TaskStatusUpdateView(APIView):
             ),
             400: inline_serializer(
                 "TaskStatusUpdateErrorResponse",
-                fields={"status_id": serializers.CharField()},
+                fields={
+                    "status_id": serializers.CharField(),
+                },
+            ),
+            403: inline_serializer(
+                "TaskStatusUpdateForbiddenResponse",
+                fields={
+                    "detail": serializers.CharField(),
+                },
             ),
             404: inline_serializer(
                 "TaskStatusUpdateNotFoundResponse",
-                fields={"detail": serializers.CharField()},
+                fields={
+                    "detail": serializers.CharField(),
+                },
             ),
             500: inline_serializer(
                 "TaskStatusUpdateServerErrorResponse",
-                fields={"error": serializers.CharField()},
+                fields={
+                    "error": serializers.CharField(),
+                },
             ),
         },
     )
     def patch(self, request, task_id):
         try:
-            task = get_object_or_404(Task, task_id=task_id, is_active=True)
+            # ==================================================
+            # GET TASK
+            # ==================================================
+
+            task = get_object_or_404(
+                Task,
+                task_id=task_id,
+                is_active=True,
+            )
+
+            user = request.user
+
+            # ==================================================
+            # CHECK WHO CAN UPDATE STATUS
+            # ==================================================
+
+            # Superuser can update any task
+            if not user.is_superuser:
+
+                role = getattr(user, "role", None)
+
+                if role is None:
+                    return Response(
+                        {"detail": "No role assigned to this user."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+                role_name = (
+                    getattr(
+                        role,
+                        "rolename",
+                        "",
+                    )
+                    .strip()
+                    .lower()
+                )
+
+                # ----------------------------------------------
+                # ADMIN / MANAGER
+                # Can update any task status
+                # ----------------------------------------------
+
+                if role_name in ["admin", "manager"]:
+                    pass
+
+                # ----------------------------------------------
+                # EMPLOYEE
+                # Can update only assigned task
+                # ----------------------------------------------
+
+                else:
+                    if task.assigned_to_id != user.pk:
+                        return Response(
+                            {
+                                "detail": (
+                                    "You can only update the status "
+                                    "of tasks assigned to you."
+                                )
+                            },
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+
+            # ==================================================
+            # GET STATUS ID
+            # ==================================================
 
             status_id = request.data.get("status_id")
 
             if not status_id:
                 return Response(
-                    {"status_id": ("This field is required.")},
+                    {"status_id": "This field is required."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # ==================================================
+            # GET NEW STATUS
+            # ==================================================
+
             new_status = get_object_or_404(
-                TaskStatus, status_id=status_id, is_active=True
+                TaskStatus,
+                status_id=status_id,
+                is_active=True,
             )
 
             old_status = task.status
 
+            # ==================================================
+            # UPDATE TASK STATUS
+            # ==================================================
+
             with transaction.atomic():
+
                 task.status = new_status
 
                 task.save(
@@ -949,20 +1032,31 @@ class TaskStatusUpdateView(APIView):
                     ]
                 )
 
+            # ==================================================
+            # SEND NOTIFICATION
+            # ==================================================
+
             if task.assigned_to and task.assigned_to != request.user:
                 trigger_notification_event(
                     event_type=NotificationEventType.TASK_STATUS_CHANGED,
                     recipient=task.assigned_to,
                     context={
-                        "user_name": task.assigned_to.get_full_name()
-                        or task.assigned_to.username,
-                        "employee_name": request.user.get_full_name()
-                        or request.user.username,
+                        "user_name": (
+                            task.assigned_to.get_full_name()
+                            or task.assigned_to.username
+                        ),
+                        "employee_name": (
+                            request.user.get_full_name() or request.user.username
+                        ),
                         "task_title": task.task_title,
-                        "previous_status": old_status.status_name,
-                        "new_status": new_status.status_name,
+                        "previous_status": (old_status.status_name),
+                        "new_status": (new_status.status_name),
                     },
                 )
+
+            # ==================================================
+            # LOG
+            # ==================================================
 
             logger.info(
                 "Task status updated successfully: "
@@ -974,9 +1068,13 @@ class TaskStatusUpdateView(APIView):
                 request.user.pk,
             )
 
+            # ==================================================
+            # RESPONSE
+            # ==================================================
+
             return Response(
                 {
-                    "message": ("Task status updated successfully."),
+                    "message": "Task status updated successfully.",
                     "task_id": task.task_id,
                     "previous_status": (old_status.status_name),
                     "new_status": (new_status.status_name),
@@ -984,20 +1082,16 @@ class TaskStatusUpdateView(APIView):
                 status=status.HTTP_200_OK,
             )
 
+        # ======================================================
+        # HANDLE EXPECTED API ERRORS
+        # ======================================================
+
         except (Http404, APIException):
             raise
 
-        except Exception:
-            logger.exception(
-                "Error while updating task status: task_id=%s user_id=%s",
-                task_id,
-                request.user.pk,
-            )
-
-            return Response(
-                {"error": ("Something went wrong while updating the task status.")},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+        # ======================================================
+        # HANDLE UNEXPECTED ERRORS
+        # ======================================================
 
         except Exception:
             logger.exception(

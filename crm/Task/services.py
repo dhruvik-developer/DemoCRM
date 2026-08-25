@@ -16,72 +16,10 @@ from .models import (
     ReminderStatus,
     ReminderType,
     Task,
-    TaskCategory,
-    TaskPriority,
-    TaskStatus,
 )
 from Notification.notification_utils import create_notification
 import uuid
 import os
-
-
-# ======================================================
-# MASTER DATA SEEDING FOR TASK
-# ======================================================
-
-
-def seed_task_master_data():
-    """
-    Ensure canonical Task master data (statuses, priorities, categories) exists.
-
-    Used by the `seed_task_master_data` management command and by CallForms'
-    auto-task creation as a deterministic fallback.
-    """
-    statuses = ["Pending", "In Progress", "Completed", "Cancelled"]
-    priorities = [
-        ("Low", "Low priority task"),
-        ("Medium", "Medium priority task"),
-        ("High", "High priority task"),
-        ("Urgent", "Urgent priority task"),
-    ]
-    categories = ["Call", "Follow-up", "Meeting", "General"]
-
-    created_statuses = []
-    for name in statuses:
-        status_obj, created = TaskStatus.objects.get_or_create(
-            status_name=name, defaults={"is_active": True}
-        )
-        if created:
-            created_statuses.append(name)
-
-    created_priorities = []
-    for name, desc in priorities:
-        priority_obj, created = TaskPriority.objects.get_or_create(
-            priority_name=name, defaults={"description": desc, "is_active": True}
-        )
-        if created:
-            created_priorities.append(name)
-
-    created_categories = []
-    for name in categories:
-        cat_obj, created = TaskCategory.objects.get_or_create(
-            category_name=name, defaults={"is_active": True}
-        )
-        if created:
-            created_categories.append(name)
-
-    logger.info(
-        "Task master data seeded: statuses=%s, priorities=%s, categories=%s",
-        created_statuses,
-        created_priorities,
-        created_categories,
-    )
-    return {
-        "statuses": created_statuses,
-        "priorities": created_priorities,
-        "categories": created_categories,
-    }
-
 
 try:
     from googleapiclient.discovery import build

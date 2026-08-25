@@ -4,7 +4,7 @@ services:
   # POSTGRESQL DATABASE
   # ==========================================================
   db:
-    image: postgres:15-alpine
+    image: postgres:18-alpine
     container_name: crm_db
     restart: unless-stopped
 
@@ -14,12 +14,12 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
 
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
 
-    # Host: localhost:5432
+    # Host: localhost:5433
     # Docker network: db:5432
     ports:
-      - "5432:5432"
+      - "5433:5432"
 
     healthcheck:
       test:
