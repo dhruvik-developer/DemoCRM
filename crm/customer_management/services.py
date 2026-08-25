@@ -590,25 +590,36 @@ class CRMService:
         # =========================================================================
         if follow_up_required and follow_up_date:
             task_status, _ = TaskStatus.objects.get_or_create(
-                status_name="Pending",
-                defaults={"is_active": True}
+                status_name="Pending", defaults={"is_active": True}
             )
             task_priority, _ = TaskPriority.objects.get_or_create(
-                priority_name="High" if activity_type in ["MEETING", "DEMO"] else "Medium",
-                defaults={"is_active": True}
+                priority_name=(
+                    "High" if activity_type in ["MEETING", "DEMO"] else "Medium"
+                ),
+                defaults={"is_active": True},
             )
             task_category, _ = TaskCategory.objects.get_or_create(
-                category_name="Follow-Up",
-                defaults={"is_active": True}
+                category_name="Follow-Up", defaults={"is_active": True}
             )
             target_lead = lead or getattr(customer, "lead", None)
             assigned_user = (
-                target_lead.assigned_to if (target_lead and getattr(target_lead, "assigned_to", None))
+                target_lead.assigned_to
+                if (target_lead and getattr(target_lead, "assigned_to", None))
                 else user
             )
-            target_name = target_lead.name if target_lead else (customer.name if customer else "Client")
-            task_title = f"Follow-up: {activity.get_activity_type_display()} - {target_name}"
-            task_desc = notes if notes else f"Follow-up required for {activity.get_activity_type_display()} (Outcome: {outcome})"
+            target_name = (
+                target_lead.name
+                if target_lead
+                else (customer.name if customer else "Client")
+            )
+            task_title = (
+                f"Follow-up: {activity.get_activity_type_display()} - {target_name}"
+            )
+            task_desc = (
+                notes
+                if notes
+                else f"Follow-up required for {activity.get_activity_type_display()} (Outcome: {outcome})"
+            )
             if target_lead:
                 auto_task = Task.objects.create(
                     assigned_to=assigned_user,

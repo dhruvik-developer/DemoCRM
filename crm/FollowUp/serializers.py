@@ -62,3 +62,15 @@ class FollowupSerializer(serializers.ModelSerializer):
             value = value.strip()
 
         return value
+
+
+class FollowUpStatusUpdateSerializer(serializers.Serializer):
+    status_id = serializers.IntegerField(required=True)
+
+    def validate_status_id(self, value):
+        if not FollowUpStatus.objects.filter(
+            followup_status_id=value, is_active=True
+        ).exists():
+            raise serializers.ValidationError("Invalid or inactive follow-up status.")
+
+        return value

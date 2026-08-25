@@ -28,14 +28,12 @@ class NotificationEventType(models.TextChoices):
     MEETING_APPROVED = "MEETING_APPROVED", "Meeting Approved"
     MEETING_REJECTED = "MEETING_REJECTED", "Meeting Rejected"
 
-
     # Reminder Events
     REMINDER_CREATED = "REMINDER_CREATED", "Reminder Created"
     REMINDER_UPDATED = "REMINDER_UPDATED", "Reminder Updated"
     REMINDER_DELETED = "REMINDER_DELETED", "Reminder Deleted"
     REMINDER_STATUS_CHANGED = "REMINDER_STATUS_CHANGED", "Reminder Status Changed"
 
-    
     # FollowUp Events
     FOLLOWUP_CREATED = "FOLLOWUP_CREATED", "Follow-up Created"
     FOLLOWUP_UPDATED = "FOLLOWUP_UPDATED", "Follow-up Updated"

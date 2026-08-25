@@ -6,13 +6,17 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('Task', '0014_merge_branches'),
+        ("Task", "0014_merge_branches"),
     ]
 
     operations = [
         migrations.AddField(
-            model_name='meeting',
-            name='extra_fields',
-            field=models.JSONField(blank=True, default=dict, help_text='Custom dynamic fields added by employee'),
+            model_name="meeting",
+            name="extra_fields",
+            field=models.JSONField(
+                blank=True,
+                default=dict,
+                help_text="Custom dynamic fields added by employee",
+            ),
         ),
     ]

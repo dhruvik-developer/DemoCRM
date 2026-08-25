@@ -759,7 +759,10 @@ class MeetingAPITestCase(APITestCase):
                 "end_time": "17:00:00",
                 "location": "Client HQ - Conference Room 3",
                 "description": "Product demo customized session",
-                "extra_fields": {"agenda": "DemoCRM V2 walkthrough", "device": "Laptop + Projector"},
+                "extra_fields": {
+                    "agenda": "DemoCRM V2 walkthrough",
+                    "device": "Laptop + Projector",
+                },
             },
             format="json",
         )
@@ -798,7 +801,9 @@ class MeetingAPITestCase(APITestCase):
         self.assertEqual(reject_resp.status_code, status.HTTP_200_OK)
         meeting.refresh_from_db()
         self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.REJECTED)
-        self.assertEqual(meeting.rejection_reason, "Manager busy with quarterly closing")
+        self.assertEqual(
+            meeting.rejection_reason, "Manager busy with quarterly closing"
+        )
 
         # Employee Reschedules
         self.client.force_authenticate(user=self.user)

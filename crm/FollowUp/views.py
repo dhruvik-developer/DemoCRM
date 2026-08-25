@@ -6,8 +6,8 @@ from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from .models import Followup
-from .serializers import FollowupSerializer
+from .models import FollowUpStatus, Followup
+from .serializers import FollowupSerializer, FollowUpStatusUpdateSerializer
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
@@ -33,7 +33,7 @@ class FollowUpListCreateView(APIView):
     permission_classes = [CanCommunicateWithlead]
     permission_names = {
         "GET": "view_followup",
-        "POST": "add_followup",
+        "POST": "change_followup",
     }
 
     # ======================================================
@@ -488,5 +488,168 @@ class FollowUpDetailView(APIView):
             )
             return Response(
                 {"error": "Something went wrong while deleting the FollowUp."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class FollowUpStatusUpdateView(APIView):
+    """
+    PATCH /api/followups/<followup_id>/status/
+
+    Assigned employee, Manager, Admin and Superuser
+    can update FollowUp status.
+    """
+
+    permission_classes = [CanCommunicateWithlead]
+
+    permission_names = {
+        "PATCH": "change_followupstatus",
+    }
+
+    def patch(self, request, followup_id):
+        try:
+            # ----------------------------------------------
+            # GET FOLLOWUP
+            # ----------------------------------------------
+
+            followup = get_object_or_404(
+                Followup.objects.select_related(
+                    "task_id",
+                    "task_id__assigned_to",
+                    "followup_status",
+                ),
+                followup_id=followup_id,
+                is_active=True,
+            )
+
+            user = request.user
+
+            # ----------------------------------------------
+            # SUPERUSER
+            # ----------------------------------------------
+
+            if user.is_superuser:
+                allowed = True
+
+            else:
+                role = getattr(user, "role", None)
+
+                if role is None:
+                    return Response(
+                        {"detail": "No role assigned to user."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+                role_name = getattr(role, "rolename", "").strip().lower()
+
+                # ------------------------------------------
+                # ADMIN / MANAGER
+                # ------------------------------------------
+
+                if role_name in ["admin", "manager"]:
+                    allowed = True
+
+                # ------------------------------------------
+                # EMPLOYEE
+                # Only assigned employee
+                # ------------------------------------------
+
+                else:
+                    if followup.task_id.assigned_to_id == user.pk:
+                        allowed = True
+                    else:
+                        allowed = False
+
+            # ----------------------------------------------
+            # ACCESS DENIED
+            # ----------------------------------------------
+
+            if not allowed:
+                return Response(
+                    {
+                        "detail": (
+                            "You can only update the status of "
+                            "FollowUps assigned to you."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
+            # ----------------------------------------------
+            # VALIDATE REQUEST
+            # ----------------------------------------------
+
+            serializer = FollowUpStatusUpdateSerializer(data=request.data)
+
+            serializer.is_valid(raise_exception=True)
+
+            status_id = serializer.validated_data["status_id"]
+
+            # ----------------------------------------------
+            # GET NEW STATUS
+            # ----------------------------------------------
+
+            new_status = get_object_or_404(
+                FollowUpStatus,
+                followup_status_id=status_id,
+                is_active=True,
+            )
+
+            old_status = followup.followup_status
+
+            # ----------------------------------------------
+            # UPDATE
+            # ----------------------------------------------
+
+            with transaction.atomic():
+
+                followup.followup_status = new_status
+
+                followup.save(
+                    update_fields=[
+                        "followup_status",
+                    ]
+                )
+
+            # ----------------------------------------------
+            # LOG
+            # ----------------------------------------------
+
+            logger.info(
+                "FollowUp status updated successfully: "
+                "followup_id=%s old_status=%s "
+                "new_status=%s user_id=%s",
+                followup.followup_id,
+                old_status.status_name if old_status else None,
+                new_status.status_name,
+                user.pk,
+            )
+
+            # ----------------------------------------------
+            # RESPONSE
+            # ----------------------------------------------
+
+            return Response(
+                {
+                    "message": ("FollowUp status updated successfully."),
+                    "followup_id": followup.followup_id,
+                    "previous_status": (old_status.status_name if old_status else None),
+                    "new_status": new_status.status_name,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except (Http404, APIException):
+            raise
+
+        except Exception:
+            logger.exception(
+                "Error while updating FollowUp status: " "followup_id=%s user_id=%s",
+                followup_id,
+                request.user.pk,
+            )
+
+            return Response(
+                {"error": ("Something went wrong while " "updating FollowUp status.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

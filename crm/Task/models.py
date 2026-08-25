@@ -110,6 +110,7 @@ class Meeting(models.Model):
         PENDING = "PENDING", "Pending Manager Approval"
         APPROVED = "APPROVED", "Approved"
         REJECTED = "REJECTED", "Rejected"
+
     meeting_id = models.AutoField(primary_key=True)
 
     # Task relationship
@@ -146,21 +147,32 @@ class Meeting(models.Model):
     end_time = models.TimeField()
     location = models.CharField(max_length=100, blank=True, null=True)
     description = models.TextField(blank=True, null=True)
-    #meeting link when meeting is a online : manager approve then send the customer
+    # meeting link when meeting is a online : manager approve then send the customer
     meeting_link = models.URLField(blank=True, null=True)
     # Developer 1 - User
     created_by = models.ForeignKey(
         "accounts.CustomUser", on_delete=models.PROTECT, related_name="created_meetings"
     )
-    #manager
+    # manager
     manager = models.ForeignKey(
-    settings.AUTH_USER_MODEL,
-    on_delete=models.PROTECT,
-    related_name="managed_meetings",
-)
-    #manager approval
-    approval_status = models.CharField(max_length=20,choices=ApprovalStatus.choices, default=ApprovalStatus.PENDING, db_index=True)
-    approved_by = models.ForeignKey("accounts.CustomUser",on_delete=models.PROTECT,null=True, blank=True, related_name="approved_meeting")
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="managed_meetings",
+    )
+    # manager approval
+    approval_status = models.CharField(
+        max_length=20,
+        choices=ApprovalStatus.choices,
+        default=ApprovalStatus.PENDING,
+        db_index=True,
+    )
+    approved_by = models.ForeignKey(
+        "accounts.CustomUser",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="approved_meeting",
+    )
     approved_at = models.DateTimeField(null=True, blank=True)
     rejection_reason = models.TextField(null=True, blank=True)
     reminder_sent_at = models.DateTimeField(
@@ -171,9 +183,7 @@ class Meeting(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     extra_fields = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text="Custom dynamic fields added by employee"
+        default=dict, blank=True, help_text="Custom dynamic fields added by employee"
     )
 
     def __str__(self):
