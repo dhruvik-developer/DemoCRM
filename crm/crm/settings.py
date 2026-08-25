@@ -14,12 +14,13 @@ from datetime import timedelta
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+from celery.schedules import crontab
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-load_dotenv(BASE_DIR.parent / ".env")
+load_dotenv(BASE_DIR.parent / ".env", override=True)
 
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
@@ -301,7 +302,6 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Asia/Kolkata"
 
-from celery.schedules import crontab
 
 # CELERY BEAT PERIODIC SCHEDULES
 CELERY_BEAT_SCHEDULE = {

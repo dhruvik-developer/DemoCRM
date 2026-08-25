@@ -87,3 +87,20 @@ class PermissionSerializer(serializers.ModelSerializer):
         model = Permission
         fields = ["id", "name", "codename", "content_type"]
         read_only_fields = ["id"]
+
+
+# ==========================================================
+# FORGOT / RESET PASSWORD SERIALIZERS (new - existing code untouched)
+# ==========================================================
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    otp = serializers.CharField(min_length=6, max_length=6)
+    new_password = serializers.CharField(
+        write_only=True, validators=[validate_password]
+    )

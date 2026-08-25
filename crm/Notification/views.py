@@ -1,7 +1,8 @@
 import logging
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from rest_framework import status
+from drf_spectacular.utils import extend_schema, OpenApiParameter, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -38,6 +39,33 @@ class NotificationTemplateListView(APIView):
         "POST": "add_notification_template",
     }
 
+    @extend_schema(
+        tags=["Notification Templates"],
+        summary="List notification templates",
+        description="GET: List all notification templates with optional filtering by event_type and is_active. Requires view_notification_template permission.",
+        operation_id="notification_template_list",
+        parameters=[
+            OpenApiParameter(
+                name="event_type",
+                type=str,
+                description="Filter templates by event type (e.g. TASK_ASSIGNED, LEAD_CREATED)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="is_active",
+                type=bool,
+                description="Filter templates by active status",
+                required=False,
+            ),
+        ],
+        responses={
+            200: NotificationTemplateSerializer(many=True),
+            500: inline_serializer(
+                "NotificationTemplateListServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def get(self, request):
         try:
             templates = NotificationTemplate.objects.all()
@@ -60,6 +88,21 @@ class NotificationTemplateListView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        tags=["Notification Templates"],
+        summary="Create a notification template",
+        description="POST: Create a new notification template. Requires add_notification_template permission.",
+        operation_id="notification_template_create",
+        request=NotificationTemplateSerializer,
+        responses={
+            201: NotificationTemplateSerializer,
+            400: NotificationTemplateSerializer,
+            500: inline_serializer(
+                "NotificationTemplateCreateServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def post(self, request):
         try:
             serializer = NotificationTemplateSerializer(data=request.data)
@@ -110,6 +153,31 @@ class NotificationTemplateDetailView(APIView):
     def get_template(self, pk):
         return get_object_or_404(NotificationTemplate, pk=pk)
 
+    @extend_schema(
+        tags=["Notification Templates"],
+        summary="Retrieve a notification template",
+        description="GET: Retrieve details of a specific notification template. Requires view_notification_template permission.",
+        operation_id="notification_template_retrieve",
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Template ID",
+            ),
+        ],
+        responses={
+            200: NotificationTemplateSerializer,
+            404: inline_serializer(
+                "NotificationTemplateNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "NotificationTemplateRetrieveServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def get(self, request, pk):
         try:
             template = self.get_template(pk)
@@ -122,6 +190,33 @@ class NotificationTemplateDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        tags=["Notification Templates"],
+        summary="Update a notification template",
+        description="PUT: Fully update a notification template. Requires change_notification_template permission.",
+        operation_id="notification_template_update",
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Template ID",
+            ),
+        ],
+        request=NotificationTemplateSerializer,
+        responses={
+            200: NotificationTemplateSerializer,
+            400: NotificationTemplateSerializer,
+            404: inline_serializer(
+                "NotificationTemplateUpdateNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "NotificationTemplateUpdateServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def put(self, request, pk):
         try:
             template = self.get_template(pk)
@@ -140,6 +235,33 @@ class NotificationTemplateDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        tags=["Notification Templates"],
+        summary="Partially update a notification template",
+        description="PATCH: Partially update a notification template. Requires change_notification_template permission.",
+        operation_id="notification_template_partial_update",
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Template ID",
+            ),
+        ],
+        request=NotificationTemplateSerializer,
+        responses={
+            200: NotificationTemplateSerializer,
+            400: NotificationTemplateSerializer,
+            404: inline_serializer(
+                "NotificationTemplatePartialUpdateNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "NotificationTemplatePartialUpdateServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def patch(self, request, pk):
         try:
             template = self.get_template(pk)
@@ -160,6 +282,37 @@ class NotificationTemplateDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        tags=["Notification Templates"],
+        summary="Deactivate a notification template",
+        description="DELETE: Soft-delete a notification template by setting is_active=False. Requires delete_notification_template permission.",
+        operation_id="notification_template_delete",
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Template ID",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                "NotificationTemplateDeleteSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "template_id": serializers.IntegerField(),
+                },
+            ),
+            404: inline_serializer(
+                "NotificationTemplateDeleteNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "NotificationTemplateDeleteServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def delete(self, request, pk):
         try:
             template = self.get_template(pk)
@@ -198,6 +351,21 @@ class ManualNotificationSendView(APIView):
         "POST": "send_manual_notification",
     }
 
+    @extend_schema(
+        tags=["Notifications"],
+        summary="Send a manual notification",
+        description="POST: Send a manual notification to one or more recipients, optionally using a template or custom message. Requires send_manual_notification permission.",
+        operation_id="notification_send_manual",
+        request=ManualNotificationSerializer,
+        responses={
+            201: NotificationSerializer(many=True),
+            400: ManualNotificationSerializer,
+            500: inline_serializer(
+                "NotificationSendServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def post(self, request):
         try:
             serializer = ManualNotificationSerializer(data=request.data)
@@ -245,6 +413,27 @@ class UserNotificationListView(APIView):
 
     permission_classes = [NotificationHasPermission]
 
+    @extend_schema(
+        tags=["Notifications"],
+        summary="List my notifications",
+        description="GET: List notifications belonging strictly to the currently authenticated user, with optional is_read filter. Requires view_notification permission.",
+        operation_id="user_notification_list",
+        parameters=[
+            OpenApiParameter(
+                name="is_read",
+                type=bool,
+                description="Filter notifications by read status",
+                required=False,
+            ),
+        ],
+        responses={
+            200: NotificationSerializer(many=True),
+            500: inline_serializer(
+                "UserNotificationListServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def get(self, request):
         try:
             notifications = (
@@ -279,6 +468,31 @@ class UserNotificationDetailView(APIView):
 
     permission_classes = [NotificationHasPermission]
 
+    @extend_schema(
+        tags=["Notifications"],
+        summary="Retrieve my notification",
+        description="GET: Retrieve a specific notification belonging to the authenticated user. Requires view_notification permission.",
+        operation_id="user_notification_retrieve",
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Notification ID",
+            ),
+        ],
+        responses={
+            200: NotificationSerializer,
+            404: inline_serializer(
+                "UserNotificationNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "UserNotificationRetrieveServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def get(self, request, pk):
         try:
             notification = get_object_or_404(
@@ -327,8 +541,60 @@ class NotificationMarkReadView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        tags=["Notifications"],
+        summary="Mark notification as read",
+        description="PUT: Mark a notification as read for the authenticated recipient user. Requires change_notification permission.",
+        operation_id="user_notification_mark_read",
+        request=None,
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Notification ID",
+            ),
+        ],
+        responses={
+            200: NotificationSerializer,
+            404: inline_serializer(
+                "UserNotificationMarkReadNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "UserNotificationMarkReadServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def put(self, request, pk):
         return self._mark_read(request, pk)
 
+    @extend_schema(
+        tags=["Notifications"],
+        summary="Mark notification as read (partial)",
+        description="PATCH: Mark a notification as read for the authenticated recipient user. Requires change_notification permission.",
+        operation_id="user_notification_mark_read_partial",
+        request=None,
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=int,
+                location=OpenApiParameter.PATH,
+                description="Notification ID",
+            ),
+        ],
+        responses={
+            200: NotificationSerializer,
+            404: inline_serializer(
+                "UserNotificationMarkReadPartialNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "UserNotificationMarkReadPartialServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def patch(self, request, pk):
         return self._mark_read(request, pk)

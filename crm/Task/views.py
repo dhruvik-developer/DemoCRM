@@ -1104,6 +1104,8 @@ class TaskStatusUpdateView(APIView):
                 {"error": ("Something went wrong while " "updating the task status.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
 # ==========================================================
 # MEETING
 # ==========================================================

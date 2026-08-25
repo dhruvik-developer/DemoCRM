@@ -7,7 +7,7 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from .models import FollowUpStatus, Followup
-from .serializers import FollowupSerializer,FollowUpStatusUpdateSerializer
+from .serializers import FollowupSerializer, FollowUpStatusUpdateSerializer
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
@@ -381,6 +381,7 @@ class FollowUpDetailView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+
 class FollowUpStatusUpdateView(APIView):
     """
     PATCH /api/followups/<followup_id>/status/
@@ -425,17 +426,11 @@ class FollowUpStatusUpdateView(APIView):
 
                 if role is None:
                     return Response(
-                        {
-                            "detail": "No role assigned to user."
-                        },
+                        {"detail": "No role assigned to user."},
                         status=status.HTTP_403_FORBIDDEN,
                     )
 
-                role_name = getattr(
-                    role,
-                    "rolename",
-                    ""
-                ).strip().lower()
+                role_name = getattr(role, "rolename", "").strip().lower()
 
                 # ------------------------------------------
                 # ADMIN / MANAGER
@@ -474,9 +469,7 @@ class FollowUpStatusUpdateView(APIView):
             # VALIDATE REQUEST
             # ----------------------------------------------
 
-            serializer = FollowUpStatusUpdateSerializer(
-                data=request.data
-            )
+            serializer = FollowUpStatusUpdateSerializer(data=request.data)
 
             serializer.is_valid(raise_exception=True)
 
@@ -517,9 +510,7 @@ class FollowUpStatusUpdateView(APIView):
                 "followup_id=%s old_status=%s "
                 "new_status=%s user_id=%s",
                 followup.followup_id,
-                old_status.status_name
-                if old_status
-                else None,
+                old_status.status_name if old_status else None,
                 new_status.status_name,
                 user.pk,
             )
@@ -530,15 +521,9 @@ class FollowUpStatusUpdateView(APIView):
 
             return Response(
                 {
-                    "message": (
-                        "FollowUp status updated successfully."
-                    ),
+                    "message": ("FollowUp status updated successfully."),
                     "followup_id": followup.followup_id,
-                    "previous_status": (
-                        old_status.status_name
-                        if old_status
-                        else None
-                    ),
+                    "previous_status": (old_status.status_name if old_status else None),
                     "new_status": new_status.status_name,
                 },
                 status=status.HTTP_200_OK,
@@ -549,18 +534,12 @@ class FollowUpStatusUpdateView(APIView):
 
         except Exception:
             logger.exception(
-                "Error while updating FollowUp status: "
-                "followup_id=%s user_id=%s",
+                "Error while updating FollowUp status: " "followup_id=%s user_id=%s",
                 followup_id,
                 request.user.pk,
             )
 
             return Response(
-                {
-                    "error": (
-                        "Something went wrong while "
-                        "updating FollowUp status."
-                    )
-                },
+                {"error": ("Something went wrong while " "updating FollowUp status.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
