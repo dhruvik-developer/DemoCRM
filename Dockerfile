@@ -39,7 +39,7 @@ RUN apt-get update && apt-get install -y \
 # ==========================================================
 # PYTHON DEPENDENCIES
 # ==========================================================
-COPY requirements.txt /app/requirements.txt
+COPY backend_new/requirements.txt /app/requirements.txt
 
 RUN pip install --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
@@ -48,7 +48,7 @@ RUN pip install --upgrade pip && \
 # ==========================================================
 # COPY DJANGO PROJECT
 # ==========================================================
-COPY crm/ /app/
+COPY backend_new/crm/ /app/
 
 
 # ==========================================================

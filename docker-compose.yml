@@ -65,13 +65,13 @@ services:
       "
 
     volumes:
-      - ./crm:/app
+      - ./backend_new/crm:/app
 
     ports:
       - "8000:8000"
 
     env_file:
-      - .env
+      - backend_new/.env
 
     environment:
       DB_HOST: db
@@ -103,10 +103,10 @@ services:
       - --loglevel=info
 
     volumes:
-      - ./crm:/app
+      - ./backend_new/crm:/app
 
     env_file:
-      - .env
+      - backend_new/.env
 
     environment:
       DB_HOST: db
@@ -138,10 +138,10 @@ services:
       - --loglevel=info
 
     volumes:
-      - ./crm:/app
+      - ./backend_new/crm:/app
 
     env_file:
-      - .env
+      - backend_new/.env
 
     environment:
       DB_HOST: db
