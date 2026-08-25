@@ -83,22 +83,6 @@ def log_audit(
         return None
 
 
-def _is_employee(user):
-    """
-    True when the user is a normal Employee
-    (i.e. NOT superuser / admin / manager).
-    """
-    if user is None or getattr(user, "is_superuser", False):
-        return False
-
-    role = getattr(user, "role", None)
-    if role is None:
-        return True
-
-    role_name = getattr(role, "rolename", "").strip().lower()
-    return role_name not in ["admin", "manager"]
-
-
 def log_activity(
     *,
     user,
@@ -127,6 +111,13 @@ def log_activity(
                 "Activity skipped (no lead/customer): type=%s outcome=%s",
                 activity_type,
                 outcome,
+            )
+            return None
+
+        if lead is not None and customer is not None:
+            logger.error(
+                "Activity cannot belong to both lead and customer: type=%s",
+                activity_type,
             )
             return None
 
