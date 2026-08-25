@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from django.http import Http404
-from django.db import transaction
 import logging
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
 from rest_framework import serializers, status
@@ -282,6 +282,11 @@ class TaskListCreateView(APIView):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Create task",
+        operation_id="task_create",
+    )
     def post(self, request):
         try:
 
@@ -1249,7 +1254,7 @@ class MeetingCreateView(APIView):
     It goes to manager for approval.
     """
 
-    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
+    permission_classes = [CanCommunicateWithLead]
     permission_names = {
         "POST": "add_meeting",
     }
@@ -1418,6 +1423,7 @@ class MeetingCreateView(APIView):
             )
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingApprovalView(APIView):
     """
     PATCH /api/tasks/meetings/<meeting_id>/approval/
@@ -1426,13 +1432,81 @@ class MeetingApprovalView(APIView):
     """
 
     permission_classes = [
-        IsAuthenticated,
         CanCommunicateWithLead,
     ]
     permission_names = {
         "PATCH": "change_meeting",
     }
 
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Approve or reject a meeting",
+        description=(
+            "Only the assigned manager can approve or reject a pending meeting. "
+            "Permission: change_meeting."
+        ),
+        operation_id="meeting_approval",
+        parameters=[
+            OpenApiParameter(
+                name="meeting_id",
+                type=int,
+                description="Meeting ID",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "approval_status": {
+                        "type": "string",
+                        "enum": ["APPROVED", "REJECTED"],
+                        "description": "Approval status",
+                    },
+                    "rejection_reason": {
+                        "type": "string",
+                        "description": "Rejection reason (required if rejecting)",
+                    },
+                    "meeting_link": {
+                        "type": "string",
+                        "description": "Meeting link (optional, for online meetings)",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Location (optional, for offline meetings)",
+                    },
+                },
+                "required": ["approval_status"],
+            }
+        },
+        responses={
+            200: inline_serializer(
+                "MeetingApprovalSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "meeting_id": serializers.IntegerField(),
+                    "approval_status": serializers.CharField(),
+                },
+            ),
+            400: inline_serializer(
+                "MeetingApprovalErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            403: inline_serializer(
+                "MeetingApprovalForbiddenResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            404: inline_serializer(
+                "MeetingApprovalNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "MeetingApprovalServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def patch(
         self,
         request,
@@ -1696,6 +1770,7 @@ class MeetingApprovalView(APIView):
             )
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingDetailView(APIView):
     """
     GET /api/meetings/<meeting_id>/
@@ -1707,6 +1782,32 @@ class MeetingDetailView(APIView):
         "GET": "view_meeting",
     }
 
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Get meeting details",
+        description="Retrieve details of a meeting by its ID. Permission: view_meeting.",
+        operation_id="meeting_detail",
+        parameters=[
+            OpenApiParameter(
+                name="meeting_id",
+                type=int,
+                description="Meeting ID",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        responses={
+            200: MeetingSerializer,
+            404: inline_serializer(
+                "MeetingDetailNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "MeetingDetailServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def get(self, request, meeting_id):
         try:
             meeting = get_object_or_404(
@@ -1746,6 +1847,7 @@ class MeetingDetailView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingRescheduleView(APIView):
     """
     PATCH /api/tasks/meetings/<meeting_id>/reschedule/
@@ -1768,6 +1870,80 @@ class MeetingRescheduleView(APIView):
         "PATCH": "change_meeting",
     }
 
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Reschedule a rejected meeting",
+        description=(
+            "Employee can reschedule a rejected meeting. "
+            "After reschedule, the meeting goes back to PENDING "
+            "for manager approval. Permission: change_meeting."
+        ),
+        operation_id="meeting_reschedule",
+        parameters=[
+            OpenApiParameter(
+                name="meeting_id",
+                type=int,
+                description="Meeting ID",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        request={
+            "application/json": {
+                "type": "object",
+                "properties": {
+                    "meeting_date": {
+                        "type": "string",
+                        "format": "date",
+                        "description": "New meeting date (YYYY-MM-DD)",
+                    },
+                    "start_time": {
+                        "type": "string",
+                        "format": "time",
+                        "description": "New start time (HH:MM:SS)",
+                    },
+                    "end_time": {
+                        "type": "string",
+                        "format": "time",
+                        "description": "New end time (HH:MM:SS)",
+                    },
+                    "meeting_link": {
+                        "type": "string",
+                        "description": "New meeting link",
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "New location",
+                    },
+                },
+            }
+        },
+        responses={
+            200: inline_serializer(
+                "MeetingRescheduleSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "meeting": MeetingSerializer(),
+                },
+            ),
+            400: inline_serializer(
+                "MeetingRescheduleErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            403: inline_serializer(
+                "MeetingRescheduleForbiddenResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            404: inline_serializer(
+                "MeetingRescheduleNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "MeetingRescheduleServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def patch(
         self,
         request,
@@ -2580,6 +2756,7 @@ class ReminderCreateView(APIView):
             )
 
 
+@extend_schema(tags=["Reminders"])
 class ReminderDetailView(APIView):
     """
     GET    /api/reminders/<reminder_id>/
@@ -2615,6 +2792,32 @@ class ReminderDetailView(APIView):
     # ------------------------------------------------------
     # REMINDER DETAIL
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Reminders"],
+        summary="Get reminder details",
+        description="Retrieve details of a reminder by its ID. Permission: view_reminder.",
+        operation_id="reminder_detail",
+        parameters=[
+            OpenApiParameter(
+                name="reminder_id",
+                type=int,
+                description="Reminder ID",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        responses={
+            200: ReminderSerializer,
+            404: inline_serializer(
+                "ReminderDetailNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "ReminderDetailServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def get(self, request, reminder_id):
         try:
             reminder = self.get_reminder(reminder_id)
@@ -2645,6 +2848,34 @@ class ReminderDetailView(APIView):
     # ------------------------------------------------------
     # UPDATE REMINDER
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Reminders"],
+        summary="Update a reminder",
+        description="Update a reminder partially. Permission: change_reminder.",
+        operation_id="reminder_update",
+        parameters=[
+            OpenApiParameter(
+                name="reminder_id",
+                type=int,
+                description="Reminder ID",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        request=ReminderSerializer,
+        responses={
+            200: ReminderSerializer,
+            400: ReminderSerializer,
+            404: inline_serializer(
+                "ReminderUpdateNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "ReminderUpdateServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def patch(self, request, reminder_id):
         try:
             reminder = self.get_reminder(reminder_id)
@@ -2713,6 +2944,38 @@ class ReminderDetailView(APIView):
     # ------------------------------------------------------
     # DELETE REMINDER
     # ------------------------------------------------------
+    @extend_schema(
+        tags=["Reminders"],
+        summary="Delete a reminder",
+        description="Delete a reminder by its ID. Permission: delete_reminder.",
+        operation_id="reminder_delete",
+        parameters=[
+            OpenApiParameter(
+                name="reminder_id",
+                type=int,
+                description="Reminder ID",
+                required=True,
+                location=OpenApiParameter.PATH,
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                "ReminderDeleteSuccessResponse",
+                fields={
+                    "message": serializers.CharField(),
+                    "reminder_id": serializers.IntegerField(),
+                },
+            ),
+            404: inline_serializer(
+                "ReminderDeleteNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "ReminderDeleteServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
     def delete(self, request, reminder_id):
         try:
             reminder = self.get_reminder(reminder_id)

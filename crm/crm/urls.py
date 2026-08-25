@@ -32,6 +32,7 @@ urlpatterns = [
     path(
         "api/crm/", include("customer_management.urls")
     ),  # Include the customer management urls
+    path("api/callforms/", include("CallForms.urls")),
     # OpenAPI / Swagger documentation
     path("schema/", SpectacularAPIView.as_view(), name="schema"),
     path("docs/", SpectacularSwaggerView.as_view(url_name="schema"), name="swagger-ui"),

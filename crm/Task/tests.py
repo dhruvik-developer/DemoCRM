@@ -41,9 +41,9 @@ class TaskAPITestCase(APITestCase):
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role, _ = Role.objects.get_or_create(
+        self.role = Role.objects.create(
             rolename="Employee",
-            defaults={"description": "Employee role"},
+            description="Employee role",
         )
 
         ct = ContentType.objects.get_for_model(Task)
@@ -443,14 +443,9 @@ class MeetingAPITestCase(APITestCase):
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role, _ = Role.objects.get_or_create(
+        self.role = Role.objects.create(
             rolename="Employee",
-            defaults={"description": "Employee role"},
-        )
-
-        self.manager_role, _ = Role.objects.get_or_create(
-            rolename="Manager",
-            defaults={"description": "Manager role"},
+            description="Employee role",
         )
 
         ct = ContentType.objects.get_for_model(Task)
@@ -1064,23 +1059,13 @@ class ReminderAPITestCase(APITestCase):
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role, _ = Role.objects.get_or_create(
+        self.role = Role.objects.create(
             rolename="Employee",
-            defaults={"description": "Employee role"},
-        )
-
-        self.manager_role, _ = Role.objects.get_or_create(
-            rolename="Manager",
-            defaults={"description": "Manager role"},
+            description="Employee role",
         )
 
         ct = ContentType.objects.get_for_model(Task)
-        for codename in (
-            "view_reminder",
-            "add_reminder",
-            "change_reminder",
-            "delete_reminder",
-        ):
+        for codename in ("view_reminder", "change_reminder", "delete_reminder"):
             perm, _ = Permission.objects.get_or_create(
                 codename=codename,
                 content_type=ct,

@@ -1,3 +1,4 @@
+import unittest
 from datetime import timedelta
 
 from django.utils import timezone
@@ -17,7 +18,6 @@ from .models import (
     Followup,
     FollowUpStatus,
     FollowUpTypes,
-    FollowUpNote,
 )
 
 
@@ -33,7 +33,7 @@ class FollowUpAPITestCase(APITestCase):
         # ==================================================
 
         self.role = Role.objects.create(
-            rolename="Employee",
+            rolename="FUEmployee",
             description="Employee role",
         )
 
@@ -379,14 +379,22 @@ class FollowUpAPITestCase(APITestCase):
             status.HTTP_200_OK,
         )
 
+        # DELETE is a soft delete (is_active=False), consistent with the
+        # Task app's soft-delete behaviour.
         self.assertFalse(
-            Followup.objects.filter(followup_id=self.followup.followup_id).exists()
+            Followup.objects.filter(
+                followup_id=self.followup.followup_id, is_active=True
+            ).exists()
         )
 
     # ======================================================
     # CREATE FOLLOWUP NOTE
     # ======================================================
 
+    @unittest.skip(
+        "FollowUpNote model and the /notes/ endpoint were removed in the "
+        "FollowUp refactor (merge 7a9fe08). Restore this test if notes return."
+    )
     def test_create_followup_note(self):
 
         response = self.client.post(
@@ -402,7 +410,8 @@ class FollowUpAPITestCase(APITestCase):
             status.HTTP_201_CREATED,
         )
 
-        self.assertTrue(FollowUpNote.objects.filter(followup_id=self.followup).exists())
+        # NOTE: assertion intentionally omitted - the FollowUpNote model was
+        # removed in merge 7a9fe08 (see @unittest.skip above).
 
     # ======================================================
     # OBJECT PERMISSION - OWNER
@@ -437,6 +446,11 @@ class FollowUpAPITestCase(APITestCase):
         response = self.client.get(f"/api/followups/{self.followup.followup_id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
+    @unittest.skip(
+        "Legacy FollowUp notification endpoints/models were moved to the "
+        "dedicated Notification app (/api/notifications/). This test targets "
+        "URLs that no longer exist in FollowUp."
+    )
     def test_notification_list_and_patch(self):
         from FollowUp.models import Notification, NotificationType, NotificationTemplate
 

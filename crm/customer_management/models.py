@@ -49,6 +49,14 @@ class Pipeline(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
     name = models.CharField(max_length=100, unique=True)
     description = models.TextField(blank=True, null=True)
+    # The funnel shape is defined dynamically by its PipelineStages; this
+    # free-text label lets managers name the engagement type ("Project",
+    # "Product Order", "Ticket", ...) without a fixed taxonomy.
+    entity_label = models.CharField(
+        max_length=100,
+        default="Deal",
+        help_text="Custom label for engagement items in this pipeline (e.g. 'Project', 'Product Order', 'Ticket').",
+    )
     is_active = models.BooleanField(default=True)
 
     created_by = models.ForeignKey(
@@ -70,6 +78,72 @@ class Pipeline(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class CustomerAccount(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    company_name = models.CharField(max_length=255, db_index=True)
+    gst_number = models.CharField(
+        max_length=50, blank=True, null=True, unique=True, db_index=True
+    )
+    website = models.URLField(blank=True, null=True)
+    primary_phone = models.CharField(max_length=20, blank=True, null=True)
+    billing_address = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(default=True)
+
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="created_customer_accounts",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "customer_account"
+        ordering = ["company_name"]
+        permissions = [
+            ("manage_customer_account", "Can manage customer account"),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.company_name} ({self.gst_number})"
+            if self.gst_number
+            else self.company_name
+        )
+
+
+class CustomerContact(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    account = models.ForeignKey(
+        CustomerAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="contacts",
+    )
+    name = models.CharField(max_length=255)
+    email = models.EmailField(blank=True, null=True, db_index=True)
+    phone = models.CharField(max_length=20, blank=True, null=True, db_index=True)
+    designation = models.CharField(max_length=100, blank=True, null=True)
+    is_primary = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "customer_contact"
+        ordering = ["name"]
+        permissions = [
+            ("manage_customer_contact", "Can manage customer contact"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} - {self.email or self.phone}"
 
 
 class PipelineStage(models.Model):
@@ -157,6 +231,42 @@ class Lead(models.Model):
         related_name="leads",
     )
 
+    class FinancialStatus(models.TextChoices):
+        NO_DUES = "NO_DUES", "No Outstanding Dues"
+        PARTIALLY_PAID = "PARTIALLY_PAID", "Partially Paid"
+        PAYMENT_OVERDUE = "PAYMENT_OVERDUE", "Payment Overdue"
+
+    customer_account = models.ForeignKey(
+        CustomerAccount,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="leads",
+    )
+    customer_contact = models.ForeignKey(
+        CustomerContact,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="leads",
+    )
+
+    financial_status = models.CharField(
+        max_length=20,
+        choices=FinancialStatus.choices,
+        default=FinancialStatus.NO_DUES,
+    )
+    total_value = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    paid_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    due_amount = models.DecimalField(
+        max_digits=12, decimal_places=2, default=Decimal("0.00")
+    )
+    metadata = models.JSONField(default=dict, blank=True)
+
     status = models.CharField(
         max_length=20,
         choices=Status.choices,
@@ -228,8 +338,10 @@ class Customer(models.Model):
 
     lead = models.OneToOneField(
         Lead,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         related_name="customer",
+        null=True,
+        blank=True,
     )
 
     name = models.CharField(max_length=255)

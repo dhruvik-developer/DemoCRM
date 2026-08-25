@@ -251,6 +251,42 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
             template_id=template_id,
         )
 
+        # ==================================================
+        # DIRECT EMAIL TO MANAGER
+        # ==================================================
+
+        if manager.email:
+
+            send_mail(
+                subject=(
+                    f"Meeting Approval Required: "
+                    f"{meeting.meeting_title}"
+                ),
+                message=(
+                    f"Hello {manager.username},\n\n"
+                    f"{meeting.created_by.get_full_name() or meeting.created_by.username} "
+                    f"has requested a meeting.\n\n"
+                    f"Meeting: "
+                    f"{meeting.meeting_title}\n"
+                    f"Date: "
+                    f"{meeting.meeting_date}\n"
+                    f"Time: "
+                    f"{meeting.start_time} - "
+                    f"{meeting.end_time}\n"
+                    f"Link: "
+                    f"{meeting.meeting_link or 'Will be shared after approval'}\n"
+                    f"Location: "
+                    f"{meeting.location or OFFICE_LOCATION}\n\n"
+                    "Please approve or reject "
+                    "this meeting.\n\n"
+                    "Regards,\n"
+                    "CRM Team"
+                ),
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[manager.email.strip()],
+                fail_silently=False,
+            )
+
         logger.info(
             "Manager notified: meeting_id=%s " "event=%s template_id=%s",
             meeting_id,

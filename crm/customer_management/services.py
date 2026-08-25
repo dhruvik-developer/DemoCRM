@@ -17,6 +17,8 @@ from audit_log.models import Activity, AuditLog
 
 from .models import (
     Customer,
+    CustomerAccount,
+    CustomerContact,
     Lead,
     LeadSource,
     Pipeline,
@@ -47,15 +49,20 @@ class CRMService:
         new_value=None,
         metadata=None,
     ):
-        return AuditLog.objects.create(
-            user=user,
-            entity_type=entity_type,
-            entity_id=entity_id,
-            action=action,
-            old_value=old_value,
-            new_value=new_value,
-            metadata=metadata,
-        )
+        try:
+            with transaction.atomic():
+                return AuditLog.objects.create(
+                    user=user,
+                    entity_type=entity_type,
+                    entity_id=entity_id,
+                    action=action,
+                    old_value=old_value,
+                    new_value=new_value,
+                    metadata=metadata,
+                )
+        except Exception as e:
+            logger.warning("AuditLog creation skipped: %s", e)
+            return None
 
     # ---------------------------------------------------------
     # LEAD SOURCE
@@ -561,17 +568,22 @@ class CRMService:
                 "Follow-up date cannot be provided when follow-up is not required."
             )
 
-        activity = Activity.objects.create(
-            lead=lead,
-            customer=customer,
-            quotation=quotation,
-            created_by=user,
-            activity_type=activity_type,
-            outcome=outcome,
-            notes=notes,
-            follow_up_required=follow_up_required,
-            follow_up_date=follow_up_date,
-        )
+        activity = None
+        try:
+            with transaction.atomic():
+                activity = Activity.objects.create(
+                    lead=lead,
+                    customer=customer,
+                    quotation=quotation,
+                    created_by=user,
+                    activity_type=activity_type,
+                    outcome=outcome,
+                    notes=notes,
+                    follow_up_required=follow_up_required,
+                    follow_up_date=follow_up_date,
+                )
+        except Exception as e:
+            logger.warning("Activity creation skipped: %s", e)
 
         CRMService.create_audit_log(
             user=user,
@@ -651,7 +663,6 @@ class CRMService:
         if lead and lead.assigned_to and lead.assigned_to != user:
             notify_recipients.add(lead.assigned_to)
         if customer:
-
             assigned = getattr(customer, "assigned_to", None)
             if assigned and assigned != user:
                 notify_recipients.add(assigned)
@@ -663,7 +674,7 @@ class CRMService:
                 context={
                     "user_name": recipient.get_full_name() or recipient.username,
                     "employee_name": user.get_full_name() or user.username,
-                    "activity_type": activity.activity_type,
+                    "activity_type": activity_type,
                     "lead_name": lead.name if lead else "",
                     "customer_name": customer.name if customer else "",
                 },
@@ -685,6 +696,7 @@ class CRMService:
         email,
         phone,
         company_name=None,
+        gst_number=None,
     ):
         lead = Lead.objects.select_for_update().get(pk=lead.pk)
 
@@ -723,6 +735,61 @@ class CRMService:
                 "Provide both matching the existing customer."
             )
 
+        # ---- Multi-project identity linkage --------------------------------
+        # Account: strongest signal first - GST number > previously linked
+        # account > company name (case-insensitive) > create new.
+        account = None
+        if gst_number:
+            account = CustomerAccount.objects.filter(
+                gst_number__iexact=gst_number.strip()
+            ).first()
+        if account is None and lead.customer_account_id:
+            account = lead.customer_account
+        if account is None and company_name:
+            account = CustomerAccount.objects.filter(
+                company_name__iexact=company_name.strip()
+            ).first()
+            if account is None:
+                account = CustomerAccount.objects.create(
+                    company_name=company_name.strip(),
+                    primary_phone=phone,
+                )
+        if account:
+            lead.customer_account = account
+
+        # Contact: email + phone together first, then email, then phone -
+        # phone-only matches prefer the same account's primary contact so a
+        # shared office landline does not link the wrong person.
+        contact = None
+        if email or phone:
+            if email and phone:
+                contact = CustomerContact.objects.filter(
+                    email__iexact=email, phone=phone
+                ).first()
+            if contact is None and email:
+                contact = CustomerContact.objects.filter(email__iexact=email).first()
+            if contact is None and phone:
+                by_phone = CustomerContact.objects.filter(phone=phone)
+                contact = (
+                    (by_phone.filter(account=account).first() if account else None)
+                    or by_phone.filter(is_primary=True).first()
+                    or by_phone.first()
+                )
+
+            if contact is None:
+                contact = CustomerContact.objects.create(
+                    name=name,
+                    email=email or None,
+                    phone=phone or None,
+                    account=account,
+                )
+            elif account and contact.account_id is None:
+                # Gradually enrich: attach a matching contact to its company.
+                contact.account = account
+                contact.save(update_fields=["account"])
+
+            lead.customer_contact = contact
+
         customer = Customer.objects.create(
             lead=lead,
             name=name,
@@ -734,7 +801,14 @@ class CRMService:
         old_status = lead.status
 
         lead.status = Lead.Status.CONVERTED
-        lead.save(update_fields=["status", "updated_at"])
+        lead.save(
+            update_fields=[
+                "status",
+                "customer_account",
+                "customer_contact",
+                "updated_at",
+            ]
+        )
 
         CRMService.create_audit_log(
             user=user,
@@ -775,6 +849,157 @@ class CRMService:
         )
 
         return customer
+
+    @staticmethod
+    def smart_customer_lookup(
+        *, query=None, email=None, phone=None, gst_number=None, company_name=None
+    ):
+        from django.db import models
+
+        account = None
+        contact = None
+        match_type = None
+
+        if gst_number:
+            account = CustomerAccount.objects.filter(
+                gst_number__iexact=gst_number.strip()
+            ).first()
+            if account:
+                match_type = "COMPANY_GST_MATCH"
+
+        if not account and company_name:
+            account = CustomerAccount.objects.filter(
+                company_name__iexact=company_name.strip()
+            ).first()
+            if account:
+                match_type = "COMPANY_NAME_MATCH"
+
+        if email:
+            contact = CustomerContact.objects.filter(
+                email__iexact=email.strip()
+            ).first()
+        if not contact and phone:
+            contact = CustomerContact.objects.filter(phone=phone.strip()).first()
+
+        if contact and not account:
+            account = contact.account
+            match_type = match_type or "EXACT_CONTACT_MATCH"
+        elif contact and account:
+            match_type = match_type or "EXACT_CONTACT_MATCH"
+
+        if not account and not contact and query:
+            q_str = query.strip()
+            account = CustomerAccount.objects.filter(
+                models.Q(company_name__icontains=q_str)
+                | models.Q(gst_number__icontains=q_str)
+            ).first()
+            if account:
+                match_type = "SEARCH_MATCH"
+            else:
+                contact = CustomerContact.objects.filter(
+                    models.Q(name__icontains=q_str)
+                    | models.Q(email__icontains=q_str)
+                    | models.Q(phone__icontains=q_str)
+                ).first()
+                if contact:
+                    account = contact.account
+                    match_type = "SEARCH_MATCH"
+
+        if not account and not contact:
+            return {
+                "match_found": False,
+                "match_type": None,
+                "account": None,
+                "contacts": [],
+                "portfolio": {
+                    "total_engagements": 0,
+                    "active_engagements": 0,
+                    "completed_engagements": 0,
+                    "total_outstanding_dues": 0.0,
+                    "financial_status": "NO_DUES",
+                },
+                "recent_engagements": [],
+            }
+
+        leads_qs = Lead.objects.none()
+        if account:
+            leads_qs = Lead.objects.filter(customer_account=account)
+        elif contact:
+            leads_qs = Lead.objects.filter(customer_contact=contact)
+
+        if email or phone:
+            extra_q = models.Q()
+            if email:
+                extra_q |= models.Q(email__iexact=email)
+            if phone:
+                extra_q |= models.Q(phone=phone)
+            leads_qs = leads_qs | Lead.objects.filter(extra_q)
+
+        leads_qs = leads_qs.distinct().select_related("pipeline", "current_stage")
+
+        total_engagements = leads_qs.count()
+        active_engagements = leads_qs.filter(status=Lead.Status.ACTIVE).count()
+        completed_engagements = leads_qs.filter(status=Lead.Status.CONVERTED).count()
+
+        total_outstanding_dues = float(sum(lead.due_amount for lead in leads_qs))
+
+        recent_engagements = []
+        for lead in leads_qs[:10]:
+            recent_engagements.append(
+                {
+                    "id": str(lead.id),
+                    "title": lead.name,
+                    "pipeline_name": lead.pipeline.name,
+                    "entity_label": lead.pipeline.entity_label,
+                    "current_stage": lead.current_stage.name,
+                    "status": lead.status,
+                    "financial_status": lead.financial_status,
+                    "total_value": float(lead.total_value),
+                    "paid_amount": float(lead.paid_amount),
+                    "due_amount": float(lead.due_amount),
+                    "created_at": lead.created_at.isoformat(),
+                }
+            )
+
+        contacts_data = []
+        if account:
+            contacts_data = [
+                {
+                    "id": str(c.id),
+                    "name": c.name,
+                    "email": c.email,
+                    "phone": c.phone,
+                    "designation": c.designation,
+                }
+                for c in account.contacts.all()
+            ]
+
+        account_data = None
+        if account:
+            account_data = {
+                "id": str(account.id),
+                "company_name": account.company_name,
+                "gst_number": account.gst_number,
+                "website": account.website,
+                "primary_phone": account.primary_phone,
+            }
+
+        return {
+            "match_found": True,
+            "match_type": match_type,
+            "account": account_data,
+            "contacts": contacts_data,
+            "portfolio": {
+                "total_engagements": total_engagements,
+                "active_engagements": active_engagements,
+                "completed_engagements": completed_engagements,
+                "total_outstanding_dues": total_outstanding_dues,
+                "financial_status": (
+                    "PAYMENT_OVERDUE" if total_outstanding_dues > 0 else "NO_DUES"
+                ),
+            },
+            "recent_engagements": recent_engagements,
+        }
 
 
 class QuotationService:

@@ -49,9 +49,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 load_dotenv(BASE_DIR.parent / ".env")
 
-OTP_LENGTH = int(os.getenv("OTP_LENGTH"))
-OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES"))
-OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS"))
+OTP_LENGTH = int(os.getenv("OTP_LENGTH", "6"))
+OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "5"))
+OTP_MAX_ATTEMPTS = int(os.getenv("OTP_MAX_ATTEMPTS", "3"))
 
 
 logger = logging.getLogger(__name__)

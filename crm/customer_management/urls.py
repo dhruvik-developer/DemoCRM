@@ -4,6 +4,8 @@ from .views import (
     ActivityListCreateView,
     AuditLogListView,
     CustomerActivityListView,
+    CustomerAccountListCreateView,
+    CustomerContactListCreateView,
     CustomerDetailView,
     CustomerListCreateView,
     LeadAssignView,
@@ -29,9 +31,26 @@ from .views import (
     QuotationSendView,
     QuotationSubmitView,
     QuotationUpdateDraftView,
+    SmartCustomerLookupView,
 )
 
 urlpatterns = [
+    # Customer Smart Lookup & Accounts
+    path(
+        "customers/smart-lookup/",
+        SmartCustomerLookupView.as_view(),
+        name="customer-smart-lookup",
+    ),
+    path(
+        "accounts/",
+        CustomerAccountListCreateView.as_view(),
+        name="customer-account-list-create",
+    ),
+    path(
+        "contacts/",
+        CustomerContactListCreateView.as_view(),
+        name="customer-contact-list-create",
+    ),
     # Lead Sources
     path(
         "lead-sources/",

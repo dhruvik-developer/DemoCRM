@@ -6,6 +6,7 @@ from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from drf_spectacular.utils import extend_schema
 from .models import FollowUpStatus, Followup
 from .serializers import FollowupSerializer, FollowUpStatusUpdateSerializer
 from django.db.models import Q
@@ -24,6 +25,7 @@ from Task.models import Task
 # ==========================================================
 # FOLLOWUP LIST / CREATE
 # ==========================================================
+@extend_schema(tags=["Follow Ups"])
 class FollowUpListCreateView(APIView):
     """
     GET  /api/followups/   -> List FollowUps (Role-based visibility)
@@ -238,6 +240,7 @@ class FollowUpListCreateView(APIView):
 # ==========================================================
 # FOLLOWUP DETAIL / UPDATE / DELETE
 # ==========================================================
+@extend_schema(tags=["Follow Ups"])
 class FollowUpDetailView(APIView):
     """
     GET    /api/followups/<followup_id>/ -> Fetch Single FollowUp
@@ -492,6 +495,7 @@ class FollowUpDetailView(APIView):
             )
 
 
+@extend_schema(tags=["Follow Ups"])
 class FollowUpStatusUpdateView(APIView):
     """
     PATCH /api/followups/<followup_id>/status/
