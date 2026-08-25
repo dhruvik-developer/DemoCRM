@@ -161,27 +161,6 @@ REST_FRAMEWORK = {
 
 SPECTACULAR_SETTINGS = {
     "TITLE": "DemoCRM API",
-    "DESCRIPTION": (
-        "REST API for the DemoCRM customer relationship management system.\n\n"
-        "## Authentication\n"
-        "This API uses **JWT (JSON Web Tokens)** for authentication. "
-        "Obtain an access token via the `/api/login/` endpoint and include it "
-        "in the `Authorization` header as `Bearer <access_token>`.\n\n"
-        "## API Modules\n"
-        "- **Accounts** - User registration, login, logout, profiles, roles, and permissions.\n"
-        "- **Customer Management** - Leads, customers, pipelines, quotation workflows, activities, and audit logs.\n"
-        "- **Tasks** - Task management with assignments and status tracking.\n"
-        "- **Meetings** - Meeting scheduling, rescheduling, participants.\n"
-        "- **Reminders** - Reminder creation and management.\n"
-        "- **Follow-ups** - Follow-up tracking with notes.\n"
-        "- **Notifications** - User notifications.\n\n"
-        "## Pagination\n"
-        "List endpoints that support pagination return results in a paginated format "
-        "with `page` and `page_size` query parameters.\n\n"
-        "## Permissions\n"
-        "Most endpoints require authentication. Some endpoints have role-based access "
-        "control (Admin, Manager, Employee)."
-    ),
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
     "COMPONENT_SPLIT_REQUEST": True,
@@ -215,6 +194,14 @@ SPECTACULAR_SETTINGS = {
         {
             "name": "CallForms Workflow",
             "description": "Call attempts, submissions, triggers, and timelines",
+        },
+        {
+            "name": "CallForms Adhoc Proposals",
+            "description": "Proposals for ad-hoc fields on call form templates",
+        },
+        {
+            "name": "CallForms Indexed Values",
+            "description": "Indexed submission values for fast lookup",
         },
     ],
 }

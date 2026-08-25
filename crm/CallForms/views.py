@@ -58,6 +58,7 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
+@extend_schema(tags=["CallForms Templates"])
 class CallTemplateViewSet(viewsets.ModelViewSet):
     queryset = CallTemplate.objects.all().prefetch_related("versions")
     permission_classes = [IsAuthenticated, CallFormsHasPermission]
@@ -152,6 +153,7 @@ class CallTemplateViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["CallForms Templates"])
 class TemplateVersionViewSet(viewsets.ModelViewSet):
     queryset = TemplateVersion.objects.all().prefetch_related("fields")
     permission_classes = [IsAuthenticated, CallFormsHasPermission]
@@ -204,6 +206,7 @@ class TemplateVersionViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["CallForms Templates"])
 class TemplateFieldViewSet(viewsets.ModelViewSet):
     queryset = TemplateField.objects.all()
     serializer_class = TemplateFieldSerializer
@@ -267,6 +270,7 @@ class TemplateFieldViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["CallForms Templates"])
 class PipelineStageActivityViewSet(viewsets.ModelViewSet):
     queryset = PipelineStageActivity.objects.all().select_related(
         "stage", "call_template"
@@ -338,6 +342,7 @@ class PipelineStageActivityViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["CallForms Workflow"])
 class CallAttemptViewSet(viewsets.ModelViewSet):
     queryset = CallAttempt.objects.all().select_related(
         "lead", "stage", "activity", "template_version", "agent"
@@ -402,6 +407,7 @@ class CallAttemptViewSet(viewsets.ModelViewSet):
         return Response(CallAttemptSerializer(attempts, many=True).data)
 
 
+@extend_schema(tags=["CallForms Workflow"])
 class FormSubmissionViewSet(viewsets.ModelViewSet):
     queryset = FormSubmission.objects.all().select_related(
         "lead", "call_attempt", "template_version", "submitted_by"
@@ -500,6 +506,7 @@ class FormSubmissionViewSet(viewsets.ModelViewSet):
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 
+@extend_schema(tags=["CallForms Workflow"])
 class TaskTriggerRuleViewSet(viewsets.ModelViewSet):
     queryset = TaskTriggerRule.objects.all().select_related(
         "template_version", "task_category", "task_priority", "specific_assignee"
