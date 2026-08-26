@@ -1,9 +1,11 @@
 import logging
 
+import pytz
 from celery import shared_task
 
 from django.core.mail import send_mail
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 from .models import Meeting
@@ -13,6 +15,7 @@ from .services import (
     send_meeting_scheduled_emails,
     send_meeting_5_minute_reminder,
     generate_google_meet_link,
+    _get_meeting_type_info,
     ONLINE_MEETING_TYPE_ID,
     OFFLINE_MEETING_TYPE_ID,
     OFFICE_LOCATION,
@@ -55,35 +58,42 @@ def task_due_reminder_job():
 @shared_task
 def meeting_reminder_job():
 
-    now = timezone.localtime()
+    tz = pytz.timezone(settings.CELERY_TIMEZONE)
+    now = timezone.now().astimezone(tz)
     today = now.date()
 
     # Query meetings starting within the next ~5-6 minutes
     window_start = now
     window_end = now + timezone.timedelta(minutes=5, seconds=59)
 
-    meetings = Meeting.objects.filter(
-        approval_status=Meeting.ApprovalStatus.APPROVED,
-        reminder_sent_at__isnull=True,
-        meeting_date=today,
-        start_time__gte=window_start.time(),
-        start_time__lte=window_end.time(),
-    ).select_related(
+    sent_count = 0
+
+    with transaction.atomic():
+        meeting_ids = list(
+            Meeting.objects.select_for_update(skip_locked=True)
+            .filter(
+                approval_status=Meeting.ApprovalStatus.APPROVED,
+                reminder_sent_at__isnull=True,
+                meeting_date=today,
+                start_time__gte=window_start.time(),
+                start_time__lte=window_end.time(),
+            )
+            .values_list("meeting_id", flat=True)
+        )
+
+    if not meeting_ids:
+        return f"Processed 0 meeting reminders."
+
+    meetings = Meeting.objects.filter(meeting_id__in=meeting_ids).select_related(
         "created_by",
         "manager",
         "lead",
         "meeting_type_id",
     )
 
-    sent_count = 0
-
     for meeting in meetings:
 
         try:
-
-            # Safety check
-            if meeting.approval_status != Meeting.ApprovalStatus.APPROVED:
-                continue
 
             success = send_meeting_5_minute_reminder(meeting)
 
@@ -94,46 +104,45 @@ def meeting_reminder_job():
                 meeting.save(
                     update_fields=[
                         "reminder_sent_at",
-                        "updated_at",
                     ]
                 )
 
-                # ==========================================
-                # EMPLOYEE IN-APP NOTIFICATION
-                # ==========================================
+            # ==========================================
+            # EMPLOYEE IN-APP NOTIFICATION
+            # ==========================================
 
-                if meeting.created_by:
+            if meeting.created_by:
 
-                    create_notification(
-                        user=meeting.created_by,
-                        title=(f"Meeting Reminder: " f"{meeting.meeting_title}"),
-                        message=(
-                            f"Meeting starts in 5 minutes " f"at {meeting.start_time}."
-                        ),
-                        type_name="Meeting Reminder",
-                    )
-
-                # ==========================================
-                # MANAGER IN-APP NOTIFICATION
-                # ==========================================
-
-                if meeting.manager:
-
-                    create_notification(
-                        user=meeting.manager,
-                        title=(f"Meeting Reminder: " f"{meeting.meeting_title}"),
-                        message=(
-                            f"Meeting starts in 5 minutes " f"at {meeting.start_time}."
-                        ),
-                        type_name="Meeting Reminder",
-                    )
-
-                sent_count += 1
-
-                logger.info(
-                    "5-minute reminder processed: " "meeting_id=%s",
-                    meeting.meeting_id,
+                create_notification(
+                    user=meeting.created_by,
+                    title=f"Meeting Reminder: {meeting.meeting_title}",
+                    message=(
+                        f"Meeting starts in 5 minutes at {meeting.start_time}."
+                    ),
+                    type_name="Meeting Reminder",
                 )
+
+            # ==========================================
+            # MANAGER IN-APP NOTIFICATION
+            # ==========================================
+
+            if meeting.manager:
+
+                create_notification(
+                    user=meeting.manager,
+                    title=f"Meeting Reminder: {meeting.meeting_title}",
+                    message=(
+                        f"Meeting starts in 5 minutes at {meeting.start_time}."
+                    ),
+                    type_name="Meeting Reminder",
+                )
+
+            sent_count += 1
+
+            logger.info(
+                "5-minute reminder processed: meeting_id=%s",
+                meeting.meeting_id,
+            )
 
         except Exception:
 
@@ -175,18 +184,7 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
         # MEETING TYPE CHECK
         # ==================================================
 
-        m_type_id = None
-        m_type_name = ""
-        if meeting.meeting_type_id:
-            m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
-            m_type_name = (
-                getattr(meeting.meeting_type_id, "type_name", "") or ""
-            ).lower()
-
-        is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
-        is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or (
-            "offline" in m_type_name
-        )
+        is_online, is_offline = _get_meeting_type_info(meeting)
 
         # ==================================================
         # ONLINE: Auto generate Google Meet link
@@ -332,15 +330,7 @@ def send_approved_meeting(meeting_id):
             return False
 
         # Type check
-        m_type_id = None
-        m_type_name = ""
-        if meeting.meeting_type_id:
-            m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
-            m_type_name = (
-                getattr(meeting.meeting_type_id, "type_name", "") or ""
-            ).lower()
-
-        is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
+        is_online, is_offline = _get_meeting_type_info(meeting)
 
         # Online meeting ke liye link auto generate agar na ho
         if not meeting.meeting_link and is_online:

@@ -1243,6 +1243,7 @@ class TaskStatusUpdateView(APIView):
 # ==========================================================
 # MEETING
 # ==========================================================
+@extend_schema(tags=["Meetings"])
 class MeetingCreateView(APIView):
     """
     POST /api/tasks/meetings/
@@ -1291,7 +1292,30 @@ class MeetingCreateView(APIView):
                 )
 
             manager = serializer.validated_data.get("manager")
+            task_id = serializer.validated_data.get("task_id")
 
+            existing_meeting = Meeting.objects.filter(
+                created_by=request.user,
+                task_id=task_id,
+                is_active=True,
+                approval_status__in=[
+                    Meeting.ApprovalStatus.PENDING,
+                    Meeting.ApprovalStatus.APPROVED,
+                ],
+            ).first()
+
+            if existing_meeting:
+                return Response(
+                    {
+                        "error": (
+                            "A meeting already exists for this task. "
+                            "If it was rejected, use the reschedule API."
+                        ),
+                        "meeting_id": existing_meeting.meeting_id,
+                        "approval_status": existing_meeting.approval_status,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if not manager:
 
                 return Response(
@@ -1435,7 +1459,7 @@ class MeetingApprovalView(APIView):
         CanCommunicateWithLead,
     ]
     permission_names = {
-        "PATCH": "change_meeting",
+        "PATCH": "meeting_approve",
     }
 
     @extend_schema(
@@ -1521,6 +1545,7 @@ class MeetingApprovalView(APIView):
                     "created_by",
                     "lead",
                     "meeting_type_id",
+                    "task_id",
                 ),
                 meeting_id=meeting_id,
             )
@@ -1579,14 +1604,27 @@ class MeetingApprovalView(APIView):
                 ]
 
                 if "meeting_link" in request.data:
-                    meeting.meeting_link = request.data["meeting_link"]
+                    link = str(request.data["meeting_link"]).strip()
+                    if link and not link.startswith(("http://", "https://")):
+                        return Response(
+                            {"meeting_link": "Must be a valid HTTP/HTTPS URL."},
+                            status=status.HTTP_400_BAD_REQUEST,
+                        )
+                    meeting.meeting_link = link or None
                     update_fields.append("meeting_link")
                 if "location" in request.data:
-                    meeting.location = request.data["location"]
+                    meeting.location = str(request.data["location"]).strip() or None
                     update_fields.append("location")
                 if "extra_fields" in request.data:
-                    meeting.extra_fields = request.data["extra_fields"]
-                    update_fields.append("extra_fields")
+                    extra = request.data["extra_fields"]
+                    if isinstance(extra, dict):
+                        if len(str(extra)) > 10000:
+                            return Response(
+                                {"extra_fields": "Data too large (max 10KB)."},
+                                status=status.HTTP_400_BAD_REQUEST,
+                            )
+                        meeting.extra_fields = extra
+                        update_fields.append("extra_fields")
 
                 m_type_id = None
                 m_type_name = ""
@@ -1958,6 +1996,7 @@ class MeetingRescheduleView(APIView):
                     "created_by",
                 ),
                 meeting_id=meeting_id,
+                is_active=True,
             )
 
             # ==================================================
@@ -2100,6 +2139,7 @@ class MeetingRescheduleView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingStatusUpdateView(APIView):
     """
     PATCH /api/meetings/<meeting_id>/status/
@@ -2270,6 +2310,7 @@ class MeetingStatusUpdateView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingParticipantAddView(APIView):
     """
     POST /api/meetings/<meeting_id>/participants/
@@ -2338,7 +2379,11 @@ class MeetingParticipantAddView(APIView):
     )
     def post(self, request, meeting_id):
         try:
-            meeting = get_object_or_404(Meeting, meeting_id=meeting_id)
+            meeting = get_object_or_404(
+                Meeting.objects.select_related("task_id", "lead"),
+                meeting_id=meeting_id,
+                is_active=True,
+            )
             self.check_object_permissions(request, meeting)
             user_id = request.data.get("user_id")
             participant_role = request.data.get("participant_role")
@@ -2501,6 +2546,7 @@ class MeetingParticipantAddView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingParticipantRemoveView(APIView):
     """
     DELETE /api/meetings/<meeting_id>/participants/<user_id>/
@@ -2559,7 +2605,11 @@ class MeetingParticipantRemoveView(APIView):
     )
     def delete(self, request, meeting_id, user_id):
         try:
-            meeting = get_object_or_404(Meeting, meeting_id=meeting_id)
+            meeting = get_object_or_404(
+                Meeting.objects.select_related("task_id", "lead"),
+                meeting_id=meeting_id,
+                is_active=True,
+            )
             self.check_object_permissions(request, meeting)
             participant = get_object_or_404(
                 MeetingParticipant, meeting_id=meeting, user_id_id=user_id
@@ -2652,6 +2702,7 @@ class MeetingParticipantRemoveView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Reminders"])
 class ReminderCreateView(APIView):
     """
     POST /api/reminders/
@@ -2742,16 +2793,6 @@ class ReminderCreateView(APIView):
             )
             return Response(
                 {"error": ("Something went wrong while creating the reminder.")},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
-        except (Http404, APIException):
-            raise
-        except Exception:
-            logger.exception(
-                "Error while creating reminder: user_id=%s", request.user.pk
-            )
-            return Response(
-                {"error": ("Something went wrong while creating " "the reminder.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -3027,6 +3068,7 @@ class ReminderDetailView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Reminders"])
 class ReminderStatusUpdateView(APIView):
     """
     PATCH /api/reminders/<reminder_id>/status/
