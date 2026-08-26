@@ -1243,6 +1243,7 @@ class TaskStatusUpdateView(APIView):
 # ==========================================================
 # MEETING
 # ==========================================================
+@extend_schema(tags=["Meetings"])
 class MeetingCreateView(APIView):
     """
     POST /api/tasks/meetings/
@@ -1291,7 +1292,25 @@ class MeetingCreateView(APIView):
                 )
 
             manager = serializer.validated_data.get("manager")
+            task_id = serializer.validated_data.get("task_id")
 
+            existing_meeting = Meeting.objects.filter(
+                created_by=request.user,
+                task_id=task_id,
+            ).first()
+
+            if existing_meeting:
+                return Response(
+                    {
+                        "error": (
+                            "A meeting already exists for this task. "
+                            "If it was rejected, use the reschedule API."
+                        ),
+                        "meeting_id": existing_meeting.meeting_id,
+                        "approval_status": existing_meeting.approval_status,
+                    },
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
             if not manager:
 
                 return Response(
@@ -1435,7 +1454,7 @@ class MeetingApprovalView(APIView):
         CanCommunicateWithLead,
     ]
     permission_names = {
-        "PATCH": "change_meeting",
+        "PATCH": "meeting_approve",
     }
 
     @extend_schema(
@@ -2100,6 +2119,7 @@ class MeetingRescheduleView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingStatusUpdateView(APIView):
     """
     PATCH /api/meetings/<meeting_id>/status/
@@ -2270,6 +2290,7 @@ class MeetingStatusUpdateView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingParticipantAddView(APIView):
     """
     POST /api/meetings/<meeting_id>/participants/
@@ -2501,6 +2522,7 @@ class MeetingParticipantAddView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Meetings"])
 class MeetingParticipantRemoveView(APIView):
     """
     DELETE /api/meetings/<meeting_id>/participants/<user_id>/
@@ -2652,6 +2674,7 @@ class MeetingParticipantRemoveView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Reminders"])
 class ReminderCreateView(APIView):
     """
     POST /api/reminders/
@@ -3027,6 +3050,7 @@ class ReminderDetailView(APIView):
 # ==========================================================
 
 
+@extend_schema(tags=["Reminders"])
 class ReminderStatusUpdateView(APIView):
     """
     PATCH /api/reminders/<reminder_id>/status/

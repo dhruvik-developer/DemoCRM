@@ -1,5 +1,6 @@
 import logging
 
+import pytz
 from celery import shared_task
 
 from django.core.mail import send_mail
@@ -55,7 +56,8 @@ def task_due_reminder_job():
 @shared_task
 def meeting_reminder_job():
 
-    now = timezone.localtime()
+    tz = pytz.timezone(settings.CELERY_TIMEZONE)
+    now = timezone.now().astimezone(tz)
     today = now.date()
 
     # Query meetings starting within the next ~5-6 minutes
