@@ -91,7 +91,7 @@ class FollowUpListCreateView(APIView):
             search = request.query_params.get("search")
             if search:
                 followups = followups.filter(
-                    Q(notes__icontains=search)
+                    Q(decription__icontains=search)
                     | Q(task_id__task_title__icontains=search)
                 )
 

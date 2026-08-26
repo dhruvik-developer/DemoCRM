@@ -193,6 +193,19 @@ class Meeting(models.Model):
         default=dict, blank=True, help_text="Custom dynamic fields added by employee"
     )
 
+    def clean(self):
+        if self.start_time and self.end_time:
+            if self.end_time <= self.start_time:
+                raise ValidationError("End time must be after start time.")
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["task_id", "meeting_date", "start_time"],
+                name="uq_meeting_task_date_time",
+            ),
+        ]
+
     def __str__(self):
         return self.meeting_title
 
@@ -288,6 +301,10 @@ class Reminder(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        if not self.task_id and not self.meeting_id:
+            raise ValidationError("Reminder must be linked to either a Task or a Meeting.")
 
     def __str__(self):
         return f"Reminder {self.reminder_id}: {self.message[:30]}"

@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.contrib.auth.models import Permission
 from django.contrib.contenttypes.models import ContentType
@@ -37,13 +38,26 @@ class TaskAPITestCase(APITestCase):
     """
 
     def setUp(self):
+        self._patch_audit = patch("Task.views.log_audit", return_value=None)
+        self._patch_audit.start()
+        self._patch_activity = patch("Task.views.log_activity", return_value=None)
+        self._patch_activity.start()
+        self._patch_notify = patch("Task.views.trigger_notification_event")
+        self._patch_notify.start()
+        self._patch_tasks_notify = patch("Task.tasks.trigger_notification_event")
+        self._patch_tasks_notify.start()
+        self.addCleanup(self._patch_audit.stop)
+        self.addCleanup(self._patch_activity.stop)
+        self.addCleanup(self._patch_notify.stop)
+        self.addCleanup(self._patch_tasks_notify.stop)
+
         # --------------------------------------------------
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role = Role.objects.create(
+        self.role, _ = Role.objects.get_or_create(
             rolename="Employee",
-            description="Employee role",
+            defaults={"description": "Employee role"},
         )
 
         ct = ContentType.objects.get_for_model(Task)
@@ -54,6 +68,7 @@ class TaskAPITestCase(APITestCase):
             "view_task",
             "change_task",
             "delete_task",
+            "change_taskstatus",
         ):
             perm, _ = Permission.objects.get_or_create(
                 codename=codename,
@@ -439,13 +454,31 @@ class MeetingAPITestCase(APITestCase):
     """
 
     def setUp(self):
+        self._patch_audit = patch("Task.views.log_audit", return_value=None)
+        self._patch_audit.start()
+        self._patch_activity = patch("Task.views.log_activity", return_value=None)
+        self._patch_activity.start()
+        self._patch_notify = patch("Task.views.trigger_notification_event")
+        self._patch_notify.start()
+        self._patch_tasks_notify = patch("Task.tasks.trigger_notification_event")
+        self._patch_tasks_notify.start()
+        self.addCleanup(self._patch_audit.stop)
+        self.addCleanup(self._patch_activity.stop)
+        self.addCleanup(self._patch_notify.stop)
+        self.addCleanup(self._patch_tasks_notify.stop)
+
         # --------------------------------------------------
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role = Role.objects.create(
+        self.role, _ = Role.objects.get_or_create(
             rolename="Employee",
-            description="Employee role",
+            defaults={"description": "Employee role"},
+        )
+
+        self.manager_role, _ = Role.objects.get_or_create(
+            rolename="Manager",
+            defaults={"description": "Manager role"},
         )
 
         ct = ContentType.objects.get_for_model(Task)
@@ -454,6 +487,7 @@ class MeetingAPITestCase(APITestCase):
             "add_meeting",
             "change_meeting",
             "delete_meeting",
+            "meeting_approve",
             "view_meetingparticipant",
             "add_meetingparticipant",
             "change_meetingparticipant",
@@ -824,8 +858,11 @@ class MeetingAPITestCase(APITestCase):
 
     def test_celery_5_minute_meeting_reminder_job(self):
         from Task.tasks import meeting_reminder_job
+        import pytz
+        from django.conf import settings
 
-        now = timezone.localtime()
+        tz = pytz.timezone(settings.CELERY_TIMEZONE)
+        now = timezone.now().astimezone(tz)
         meeting = self.create_meeting(
             meeting_title="Upcoming 5-Min Meeting",
             meeting_date=now.date(),
@@ -838,6 +875,32 @@ class MeetingAPITestCase(APITestCase):
         meeting.refresh_from_db()
         self.assertIsNotNone(meeting.reminder_sent_at)
         self.assertIn("meeting reminders", result_msg.lower())
+
+    @patch("Task.services.send_mail")
+    def test_5_minute_reminder_isolates_failed_recipient(self, mock_send_mail):
+        from Task.services import send_meeting_5_minute_reminder
+
+        meeting = self.create_meeting(
+            meeting_title="Partial Email Failure",
+            approval_status=Meeting.ApprovalStatus.APPROVED,
+        )
+
+        failed_email = meeting.lead.email
+
+        def send_with_customer_failure(*args, **kwargs):
+            if kwargs["recipient_list"] == [failed_email]:
+                raise RuntimeError("Recipient rejected")
+            return 1
+
+        mock_send_mail.side_effect = send_with_customer_failure
+
+        self.assertTrue(send_meeting_5_minute_reminder(meeting))
+        attempted_recipients = [
+            call.kwargs["recipient_list"] for call in mock_send_mail.call_args_list
+        ]
+        self.assertIn([failed_email], attempted_recipients)
+        self.assertIn([meeting.created_by.email], attempted_recipients)
+        self.assertIn([meeting.manager.email], attempted_recipients)
 
     # ======================================================
     # MEETING - RESCHEDULE
@@ -1055,17 +1118,35 @@ class ReminderAPITestCase(APITestCase):
     """
 
     def setUp(self):
+        self._patch_audit = patch("Task.views.log_audit", return_value=None)
+        self._patch_audit.start()
+        self._patch_activity = patch("Task.views.log_activity", return_value=None)
+        self._patch_activity.start()
+        self._patch_notify = patch("Task.views.trigger_notification_event")
+        self._patch_notify.start()
+        self._patch_tasks_notify = patch("Task.tasks.trigger_notification_event")
+        self._patch_tasks_notify.start()
+        self.addCleanup(self._patch_audit.stop)
+        self.addCleanup(self._patch_activity.stop)
+        self.addCleanup(self._patch_notify.stop)
+        self.addCleanup(self._patch_tasks_notify.stop)
+
         # --------------------------------------------------
         # USER / ROLE
         # --------------------------------------------------
 
-        self.role = Role.objects.create(
+        self.role, _ = Role.objects.get_or_create(
             rolename="Employee",
-            description="Employee role",
+            defaults={"description": "Employee role"},
+        )
+
+        self.manager_role, _ = Role.objects.get_or_create(
+            rolename="Manager",
+            defaults={"description": "Manager role"},
         )
 
         ct = ContentType.objects.get_for_model(Task)
-        for codename in ("view_reminder", "change_reminder", "delete_reminder"):
+        for codename in ("add_reminder", "view_reminder", "change_reminder", "delete_reminder"):
             perm, _ = Permission.objects.get_or_create(
                 codename=codename,
                 content_type=ct,
@@ -1373,7 +1454,7 @@ class ReminderAPITestCase(APITestCase):
             role=basic_role,
         )
         reminder = Reminder.objects.create(
-            task_id=None,
+            task_id=self.task,
             meeting_id=None,
             reminder_for=self.user,
             reminder_type_id=self.reminder_type,
