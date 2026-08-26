@@ -1,0 +1,86 @@
+// Task queries + mutations. Mutations invalidate taskKeys; the activity feed
+// and lead detail also reflect task events server-side.
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+
+import { taskKeys } from "@/api/queryKeys";
+import { getApiErrorMessage } from "@/utils/errors";
+import {
+  assignTask,
+  createTask,
+  deleteTask,
+  getTask,
+  getTasks,
+  updateTaskStatus,
+} from "./api";
+
+export function useTasks(filters) {
+  return useQuery({
+    queryKey: taskKeys.list(filters),
+    queryFn: () => getTasks(filters),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useTask(taskId) {
+  return useQuery({
+    queryKey: taskKeys.detail(taskId),
+    queryFn: () => getTask(taskId),
+    enabled: Boolean(taskId),
+  });
+}
+
+function useInvalidateTasks() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: taskKeys.all });
+}
+
+export function useCreateTask() {
+  const invalidate = useInvalidateTasks();
+  return useMutation({
+    mutationFn: createTask,
+    onSuccess: (task) => {
+      invalidate();
+      toast.success("Task created.");
+      return task;
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useAssignTask(taskId) {
+  const invalidate = useInvalidateTasks();
+  return useMutation({
+    mutationFn: (assignedTo) => assignTask(taskId, assignedTo),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Task reassigned.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useUpdateTaskStatus(taskId) {
+  const invalidate = useInvalidateTasks();
+  return useMutation({
+    mutationFn: (statusId) => updateTaskStatus(taskId, statusId),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Task status updated.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useDeleteTask(taskId) {
+  const invalidate = useInvalidateTasks();
+  return useMutation({
+    mutationFn: () => deleteTask(taskId),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Task deleted.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}

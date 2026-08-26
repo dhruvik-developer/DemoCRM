@@ -418,9 +418,7 @@ class FollowUpAPITestCase(APITestCase):
         response = self.client.delete(f"/api/followups/{self.followup.followup_id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertFalse(
-            Followup.objects.filter(
-                followup_id=self.followup.followup_id
-            ).exists()
+            Followup.objects.filter(followup_id=self.followup.followup_id).exists()
         )
 
     # ======================================================
@@ -510,9 +508,7 @@ class FollowUpAPITestCase(APITestCase):
             role=self.role,
         )
         self.client.force_authenticate(user=other_user)
-        response = self.client.delete(
-            f"/api/followups/{self.followup.followup_id}/"
-        )
+        response = self.client.delete(f"/api/followups/{self.followup.followup_id}/")
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_update_followup_status_forbidden_for_other_user(self):
@@ -604,27 +600,44 @@ class FollowUpManagerAccessTestCase(APITestCase):
 
         # Lead + Task
         self.lead_source = LeadSource.objects.create(
-            name="Referral", description="Ref", created_by=self.employee,
+            name="Referral",
+            description="Ref",
+            created_by=self.employee,
         )
         self.pipeline = Pipeline.objects.create(
-            name="Mgr Pipeline", description="p", created_by=self.employee,
+            name="Mgr Pipeline",
+            description="p",
+            created_by=self.employee,
         )
         self.pipeline_stage = PipelineStage.objects.create(
-            pipeline=self.pipeline, name="New", description="n", display_order=1,
+            pipeline=self.pipeline,
+            name="New",
+            description="n",
+            display_order=1,
         )
         self.lead = Lead.objects.create(
-            name="Amit", email="amit@example.com", phone="8888888888",
-            company_name="Amit Corp", source=self.lead_source,
-            assigned_to=self.employee, pipeline=self.pipeline,
-            current_stage=self.pipeline_stage, status=Lead.Status.ACTIVE,
+            name="Amit",
+            email="amit@example.com",
+            phone="8888888888",
+            company_name="Amit Corp",
+            source=self.lead_source,
+            assigned_to=self.employee,
+            pipeline=self.pipeline,
+            current_stage=self.pipeline_stage,
+            status=Lead.Status.ACTIVE,
         )
 
-        self.task_status = TaskStatus.objects.create(status_name="Pending", is_active=True)
+        self.task_status = TaskStatus.objects.create(
+            status_name="Pending", is_active=True
+        )
         self.task_priority = TaskPriority.objects.create(
-            priority_name="High", description="High", is_active=True,
+            priority_name="High",
+            description="High",
+            is_active=True,
         )
         self.task_category = TaskCategory.objects.create(
-            category_name="General", is_active=True,
+            category_name="General",
+            is_active=True,
         )
 
         self.task = Task.objects.create(
@@ -641,10 +654,12 @@ class FollowUpManagerAccessTestCase(APITestCase):
         )
 
         self.followup_status = FollowUpStatus.objects.create(
-            status_name="Pending", is_active=True,
+            status_name="Pending",
+            is_active=True,
         )
         self.followup_type = FollowUpTypes.objects.create(
-            type_name="Email", is_active=True,
+            type_name="Email",
+            is_active=True,
         )
 
         self.followup = Followup.objects.create(
@@ -677,14 +692,13 @@ class FollowUpManagerAccessTestCase(APITestCase):
         self.assertEqual(self.followup.decription, "Manager updated")
 
     def test_manager_can_delete_any_followup(self):
-        response = self.client.delete(
-            f"/api/followups/{self.followup.followup_id}/"
-        )
+        response = self.client.delete(f"/api/followups/{self.followup.followup_id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_manager_can_update_status(self):
         new_status = FollowUpStatus.objects.create(
-            status_name="Resolved", is_active=True,
+            status_name="Resolved",
+            is_active=True,
         )
         response = self.client.patch(
             f"/api/followups/{self.followup.followup_id}/status/",

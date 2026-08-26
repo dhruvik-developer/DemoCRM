@@ -23,18 +23,29 @@ from .permission import CanCommunicateWithLead
 from .models import (
     Task,
     TaskStatus,
+    TaskPriority,
+    TaskCategory,
     Meeting,
     MeetingStatus,
+    MeetingType,
     MeetingParticipant,
     Reminder,
+    ReminderType,
     ReminderStatus,
 )
 
 from .serializers import (
     TaskSerializer,
+    TaskStatusSerializer,
+    TaskPrioritySerializer,
+    TaskCategorySerializer,
     MeetingSerializer,
+    MeetingStatusSerializer,
+    MeetingTypeSerializer,
     MeetingParticipantSerializer,
     ReminderSerializer,
+    ReminderTypeSerializer,
+    ReminderStatusSerializer,
 )
 
 from .pagination import CRMPageNumberPagination
@@ -53,6 +64,100 @@ from audit_log.models import Activity
 logger = logging.getLogger(__name__)
 
 User = get_user_model()
+
+
+# ==========================================================
+# MASTER DATA (read-only enum lists for form dropdowns)
+# ==========================================================
+
+
+class MasterDataListView(APIView):
+    """
+    Base for read-only master-data (enum) list endpoints.
+    Subclasses set model / serializer_class / response_key /
+    permission_names. Only active rows are returned.
+    """
+
+    permission_classes = [CanCommunicateWithLead]
+    model = None
+    serializer_class = None
+    response_key = None
+
+    @extend_schema(
+        tags=["Master Data"],
+        summary="List active records",
+        responses={200: serializers.ListField()},
+    )
+    def get(self, request):
+        try:
+            queryset = self.model.objects.filter(is_active=True).order_by("pk")
+            serializer = self.serializer_class(queryset, many=True)
+            return Response(
+                {
+                    "message": "Records retrieved successfully.",
+                    self.response_key: serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
+        except Exception:
+            logger.exception(
+                "Error while fetching %s: user_id=%s",
+                self.response_key,
+                request.user.pk,
+            )
+            return Response(
+                {"error": "Something went wrong while fetching records."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class TaskStatusListView(MasterDataListView):
+    model = TaskStatus
+    serializer_class = TaskStatusSerializer
+    response_key = "task_statuses"
+    permission_names = {"GET": "view_taskstatus"}
+
+
+class TaskPriorityListView(MasterDataListView):
+    model = TaskPriority
+    serializer_class = TaskPrioritySerializer
+    response_key = "task_priorities"
+    permission_names = {"GET": "view_taskpriority"}
+
+
+class TaskCategoryListView(MasterDataListView):
+    model = TaskCategory
+    serializer_class = TaskCategorySerializer
+    response_key = "task_categories"
+    permission_names = {"GET": "view_taskcategory"}
+
+
+class MeetingStatusListView(MasterDataListView):
+    model = MeetingStatus
+    serializer_class = MeetingStatusSerializer
+    response_key = "meeting_statuses"
+    permission_names = {"GET": "view_meetingstatus"}
+
+
+class MeetingTypeListView(MasterDataListView):
+    model = MeetingType
+    serializer_class = MeetingTypeSerializer
+    response_key = "meeting_types"
+    permission_names = {"GET": "view_meetingtype"}
+
+
+class ReminderTypeListView(MasterDataListView):
+    model = ReminderType
+    serializer_class = ReminderTypeSerializer
+    response_key = "reminder_types"
+    permission_names = {"GET": "view_remindertype"}
+
+
+class ReminderStatusListView(MasterDataListView):
+    model = ReminderStatus
+    serializer_class = ReminderStatusSerializer
+    response_key = "reminder_statuses"
+    permission_names = {"GET": "view_reminderstatus"}
 
 
 # ==========================================================
@@ -1246,8 +1351,11 @@ class TaskStatusUpdateView(APIView):
 @extend_schema(tags=["Meetings"])
 class MeetingCreateView(APIView):
     """
-    POST /api/tasks/meetings/
+    GET  /api/tasks/meetings/
+        Admin/Manager -> all meetings
+        Employee      -> meetings they created or manage
 
+    POST /api/tasks/meetings/
     Employee creates meeting request.
 
     Meeting is NOT immediately sent to customer.
@@ -1257,8 +1365,152 @@ class MeetingCreateView(APIView):
 
     permission_classes = [CanCommunicateWithLead]
     permission_names = {
+        "GET": "view_meeting",
         "POST": "add_meeting",
     }
+
+    @extend_schema(
+        tags=["Meetings"],
+        summary="List meetings",
+        description=(
+            "GET: List meetings. Admin/Manager see all meetings, "
+            "Employee sees meetings they created or manage. Auth: IsAuthenticated."
+        ),
+        operation_id="meeting_list",
+        parameters=[
+            OpenApiParameter(
+                name="approval_status",
+                type=str,
+                description="Filter by approval status (PENDING/APPROVED/REJECTED)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="meeting_status",
+                type=int,
+                description="Filter by meeting status ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="lead", type=int, description="Filter by lead ID", required=False
+            ),
+            OpenApiParameter(
+                name="search",
+                type=str,
+                description="Search in meeting title",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=str,
+                description="Order by field (created_at, meeting_date, start_time). Prefix with - for descending.",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="page",
+                type=int,
+                description="Page number for pagination",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=int,
+                description="Number of results per page",
+                required=False,
+            ),
+        ],
+        responses={
+            200: MeetingSerializer(many=True),
+            403: inline_serializer(
+                "MeetingListForbiddenResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "MeetingListServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
+    def get(self, request):
+        try:
+            meetings = (
+                Meeting.objects.filter(is_active=True)
+                .select_related(
+                    "task_id",
+                    "lead",
+                    "meeting_status_id",
+                    "meeting_type_id",
+                    "created_by",
+                    "manager",
+                )
+                .order_by("-created_at")
+            )
+
+            user = request.user
+
+            if not user.is_superuser:
+                role = getattr(user, "role", None)
+
+                if role is None:
+                    return Response(
+                        {"detail": "No role assigned to this user."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+                role_name = getattr(role, "rolename", "").strip().lower()
+
+                if role_name not in ["admin", "manager"]:
+                    meetings = meetings.filter(Q(created_by=user) | Q(manager=user))
+
+            approval_status = request.query_params.get("approval_status")
+            meeting_status_id = request.query_params.get("meeting_status")
+            lead_id = request.query_params.get("lead")
+
+            if approval_status:
+                meetings = meetings.filter(approval_status=approval_status.upper())
+
+            if meeting_status_id:
+                meetings = meetings.filter(meeting_status_id=meeting_status_id)
+
+            if lead_id:
+                meetings = meetings.filter(lead_id=lead_id)
+
+            search = request.query_params.get("search")
+            if search:
+                meetings = meetings.filter(meeting_title__icontains=search)
+
+            ordering = request.query_params.get("ordering", "-created_at")
+            allowed_ordering_fields = {"created_at", "meeting_date", "start_time"}
+
+            if ordering.lstrip("-") in allowed_ordering_fields:
+                meetings = meetings.order_by(ordering)
+            else:
+                meetings = meetings.order_by("-created_at")
+
+            paginator = CRMPageNumberPagination()
+            paginated_meetings = paginator.paginate_queryset(
+                meetings, request, view=self
+            )
+
+            serializer = MeetingSerializer(
+                paginated_meetings, many=True, context={"request": request}
+            )
+
+            logger.info("Meetings fetched successfully: user_id=%s", request.user.pk)
+
+            return paginator.get_paginated_response(serializer.data)
+
+        except (Http404, APIException):
+            raise
+
+        except Exception:
+            logger.exception(
+                "Error while fetching meetings: user_id=%s", request.user.pk
+            )
+
+            return Response(
+                {"error": ("Something went wrong while " "fetching meetings.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @extend_schema(
         tags=["Meetings"],
@@ -2705,15 +2957,185 @@ class MeetingParticipantRemoveView(APIView):
 @extend_schema(tags=["Reminders"])
 class ReminderCreateView(APIView):
     """
-    POST /api/reminders/
+    GET  /api/tasks/reminders/
+        Admin/Manager -> all reminders
+        Employee      -> reminders they created or are reminded for
+
+    POST /api/tasks/reminders/
 
     Create a reminder.
     """
 
     permission_classes = [IsAuthenticated, CanCommunicateWithLead]
     permission_names = {
+        "GET": "view_reminder",
         "POST": "add_reminder",
     }
+
+    @extend_schema(
+        tags=["Reminders"],
+        summary="List reminders",
+        description=(
+            "GET: List reminders. Admin/Manager see all reminders, "
+            "Employee sees reminders they created or receive. Auth: IsAuthenticated."
+        ),
+        operation_id="reminder_list",
+        parameters=[
+            OpenApiParameter(
+                name="reminder_status",
+                type=int,
+                description="Filter by reminder status ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="reminder_type",
+                type=int,
+                description="Filter by reminder type ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="task", type=int, description="Filter by task ID", required=False
+            ),
+            OpenApiParameter(
+                name="meeting",
+                type=int,
+                description="Filter by meeting ID",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="is_sent",
+                type=str,
+                description="Filter by sent flag (true/false)",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="search",
+                type=str,
+                description="Search in reminder message",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="ordering",
+                type=str,
+                description="Order by field (created_at, reminder_datetime). Prefix with - for descending.",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="page",
+                type=int,
+                description="Page number for pagination",
+                required=False,
+            ),
+            OpenApiParameter(
+                name="page_size",
+                type=int,
+                description="Number of results per page",
+                required=False,
+            ),
+        ],
+        responses={
+            200: ReminderSerializer(many=True),
+            403: inline_serializer(
+                "ReminderListForbiddenResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            500: inline_serializer(
+                "ReminderListServerErrorResponse",
+                fields={"error": serializers.CharField()},
+            ),
+        },
+    )
+    def get(self, request):
+        try:
+            reminders = (
+                Reminder.objects.filter(is_active=True)
+                .select_related(
+                    "task_id",
+                    "meeting_id",
+                    "reminder_for",
+                    "reminder_type_id",
+                    "reminder_status_id",
+                    "created_by",
+                )
+                .order_by("-created_at")
+            )
+
+            user = request.user
+
+            if not user.is_superuser:
+                role = getattr(user, "role", None)
+
+                if role is None:
+                    return Response(
+                        {"detail": "No role assigned to this user."},
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+
+                role_name = getattr(role, "rolename", "").strip().lower()
+
+                if role_name not in ["admin", "manager"]:
+                    reminders = reminders.filter(
+                        Q(created_by=user) | Q(reminder_for=user)
+                    )
+
+            reminder_status_id = request.query_params.get("reminder_status")
+            reminder_type_id = request.query_params.get("reminder_type")
+            task_id = request.query_params.get("task")
+            meeting_id = request.query_params.get("meeting")
+            is_sent = request.query_params.get("is_sent")
+
+            if reminder_status_id:
+                reminders = reminders.filter(reminder_status_id=reminder_status_id)
+
+            if reminder_type_id:
+                reminders = reminders.filter(reminder_type_id=reminder_type_id)
+
+            if task_id:
+                reminders = reminders.filter(task_id=task_id)
+
+            if meeting_id:
+                reminders = reminders.filter(meeting_id=meeting_id)
+
+            if is_sent is not None and is_sent != "":
+                reminders = reminders.filter(is_sent=is_sent.lower() == "true")
+
+            search = request.query_params.get("search")
+            if search:
+                reminders = reminders.filter(message__icontains=search)
+
+            ordering = request.query_params.get("ordering", "-created_at")
+            allowed_ordering_fields = {"created_at", "reminder_datetime"}
+
+            if ordering.lstrip("-") in allowed_ordering_fields:
+                reminders = reminders.order_by(ordering)
+            else:
+                reminders = reminders.order_by("-created_at")
+
+            paginator = CRMPageNumberPagination()
+            paginated_reminders = paginator.paginate_queryset(
+                reminders, request, view=self
+            )
+
+            serializer = ReminderSerializer(
+                paginated_reminders, many=True, context={"request": request}
+            )
+
+            logger.info("Reminders fetched successfully: user_id=%s", request.user.pk)
+
+            return paginator.get_paginated_response(serializer.data)
+
+        except (Http404, APIException):
+            raise
+
+        except Exception:
+            logger.exception(
+                "Error while fetching reminders: user_id=%s", request.user.pk
+            )
+
+            return Response(
+                {"error": ("Something went wrong while " "fetching reminders.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
     @extend_schema(
         tags=["Reminders"],
