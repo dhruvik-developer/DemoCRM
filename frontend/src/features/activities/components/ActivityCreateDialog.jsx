@@ -3,7 +3,7 @@
 // the dialog receives the fixed id from its page and never asks the user.
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useCreateActivity } from "../hooks";
@@ -45,8 +45,8 @@ export default function ActivityCreateDialog({ leadId, customerId, open, onOpenC
     register,
     handleSubmit,
     setError,
-    watch,
     setValue,
+    control,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(activitySchema),
@@ -59,7 +59,7 @@ export default function ActivityCreateDialog({ leadId, customerId, open, onOpenC
     },
   });
 
-  const followUpRequired = watch("follow_up_required");
+  const followUpRequired = useWatch({ control, name: "follow_up_required" });
 
   const onSubmit = async (values) => {
     try {
@@ -82,7 +82,10 @@ export default function ActivityCreateDialog({ leadId, customerId, open, onOpenC
     }
   };
 
-  const minDate = toLocalInputValue(new Date(Date.now() + 60 * 1000));
+  // Computed once per dialog mount (lazy init keeps Date.now() out of render).
+  const [minDate] = useState(() =>
+    toLocalInputValue(new Date(Date.now() + 60 * 1000)),
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

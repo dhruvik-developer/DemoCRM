@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useForm, FormProvider } from "react-hook-form";
+import { useForm, useWatch, FormProvider } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import LeadSelect from "@/features/leads/components/LeadSelect";
@@ -36,11 +36,12 @@ export default function QuotationCreatePage() {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors },
   } = methods;
 
-  const effectiveLead = leadId || watch("lead_id");
+  const watchedLeadId = useWatch({ control, name: "lead_id" });
+  const effectiveLead = leadId || watchedLeadId;
 
   const onSubmit = async (values) => {
     try {

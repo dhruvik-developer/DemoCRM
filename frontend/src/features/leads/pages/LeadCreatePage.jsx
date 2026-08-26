@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useLeadSources, usePipelines, usePipelineStages } from "@/features/crm/hooks";
@@ -34,7 +34,7 @@ export default function LeadCreatePage() {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     setError,
     formState: { errors },
   } = useForm({
@@ -50,7 +50,8 @@ export default function LeadCreatePage() {
     },
   });
 
-  const pipelineId = watch("pipeline");
+  const pipelineId = useWatch({ control, name: "pipeline" });
+  const source = useWatch({ control, name: "source" });
   const stagesQuery = usePipelineStages(pipelineId);
   const firstStage = useMemo(() => stagesQuery.data?.[0], [stagesQuery.data]);
 
@@ -128,7 +129,7 @@ export default function LeadCreatePage() {
         </FormField>
 
         <FormField id="source" label="Lead source" error={errors.source?.message}>
-          <Select value={watch("source")} onValueChange={(value) => setValue("source", value)}>
+          <Select value={source} onValueChange={(value) => setValue("source", value)}>
             <SelectTrigger>
               <SelectValue placeholder="Select source" />
             </SelectTrigger>

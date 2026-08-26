@@ -4,7 +4,7 @@
 
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "@/hooks/useAuth";
@@ -48,7 +48,7 @@ function CreateDialog({ open, onOpenChange }) {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(followUpSchema),
@@ -60,6 +60,10 @@ function CreateDialog({ open, onOpenChange }) {
       decription: "",
     },
   });
+
+  const taskId = useWatch({ control, name: "task_id" });
+  const followupTypeId = useWatch({ control, name: "followup_type_id" });
+  const followupStatusId = useWatch({ control, name: "followup_status_id" });
 
   const onSubmit = (values) =>
     createFollowUp
@@ -81,12 +85,12 @@ function CreateDialog({ open, onOpenChange }) {
         </DialogHeader>
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
           <FormField id="task_id" label="Task" error={errors.task_id?.message}>
-            <TaskSelect value={watch("task_id")} onChange={(value) => setValue("task_id", value)} />
+            <TaskSelect value={taskId} onChange={(value) => setValue("task_id", value)} />
           </FormField>
 
           <div className="grid gap-3 md:grid-cols-2">
             <FormField id="followup_type" label="Type" error={errors.followup_type_id?.message}>
-              <Select value={watch("followup_type_id")} onValueChange={(value) => setValue("followup_type_id", value)}>
+              <Select value={followupTypeId} onValueChange={(value) => setValue("followup_type_id", value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -101,7 +105,7 @@ function CreateDialog({ open, onOpenChange }) {
             </FormField>
 
             <FormField id="followup_status" label="Status">
-              <Select value={watch("followup_status_id")} onValueChange={(value) => setValue("followup_status_id", value)}>
+              <Select value={followupStatusId} onValueChange={(value) => setValue("followup_status_id", value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
