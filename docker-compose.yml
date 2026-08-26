@@ -50,12 +50,12 @@ services:
   # ==========================================================
   # DJANGO WEB APPLICATION
   # ==========================================================
-  web:
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
 
-    container_name: crm_web
+    container_name: crm_backend
     restart: unless-stopped
 
     command: >
