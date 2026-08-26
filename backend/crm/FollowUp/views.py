@@ -35,7 +35,10 @@ class FollowUpListCreateView(APIView):
     permission_classes = [CanCommunicateWithlead]
     permission_names = {
         "GET": "view_followup",
-        "POST": "change_followup",
+        # add_followup (seeded for Employee) OR change_followup (Manager/Admin).
+        # Employees can only create FollowUps on tasks assigned to them
+        # (enforced in post() below).
+        "POST": ["add_followup", "change_followup"],
     }
 
     # ======================================================
