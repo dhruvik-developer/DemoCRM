@@ -76,7 +76,6 @@ class TaskSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
-            "created_by",
         )
 
     def validate_task_title(self, value):
@@ -158,7 +157,8 @@ class MeetingTypeSerializer(serializers.ModelSerializer):
 
 class MeetingSerializer(serializers.ModelSerializer):
     manager = serializers.PrimaryKeyRelatedField(
-        queryset=CustomUser.objects.all(), required=True
+        queryset=CustomUser.objects.filter(role__rolename__iexact="manager", is_active=True),
+        required=True,
     )
 
     class Meta:

@@ -225,6 +225,26 @@ def _get_meeting_details(meeting):
     }
 
 
+def _get_meeting_type_info(meeting):
+    """
+    DRY: Detect meeting type (online/offline/custom).
+    Returns (is_online, is_offline).
+    """
+    m_type_id = None
+    m_type_name = ""
+    if meeting.meeting_type_id:
+        m_type_id = getattr(meeting.meeting_type_id, "meeting_type_id", None)
+        m_type_name = (
+            getattr(meeting.meeting_type_id, "type_name", "") or ""
+        ).lower()
+
+    is_online = (m_type_id == ONLINE_MEETING_TYPE_ID) or ("online" in m_type_name)
+    is_offline = (m_type_id == OFFLINE_MEETING_TYPE_ID) or (
+        "offline" in m_type_name
+    )
+    return is_online, is_offline
+
+
 def _get_unique_emails(emails):
     """
     Remove empty and duplicate emails.
@@ -246,6 +266,29 @@ def _get_unique_emails(emails):
             cleaned.append(email)
 
     return cleaned
+
+
+def _send_email_to_each_recipient(*, subject, message, recipients):
+    """Send independently so one bad address cannot block other recipients."""
+    sent_recipients = []
+
+    for recipient in _get_unique_emails(recipients):
+        try:
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                recipient_list=[recipient],
+                fail_silently=False,
+            )
+            sent_recipients.append(recipient)
+        except Exception:
+            logger.exception(
+                "Email delivery failed for recipient=%s",
+                recipient,
+            )
+
+    return sent_recipients
 
 
 # ======================================================
@@ -981,26 +1024,24 @@ def send_meeting_5_minute_reminder(
             f"Date: {details['date']}\n"
             f"Time: {details['start_time']} - {details['end_time']}\n"
             f"{join_line}\n"
-            f"{custom_block}\n"
+            f"{custom_block}"
             f"Please be ready.\n\n"
             f"Regards,\nCRM System"
         )
 
-        send_mail(
+        sent_recipients = _send_email_to_each_recipient(
             subject=subject,
             message=message,
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=recipients,
-            fail_silently=False,
+            recipients=recipients,
         )
 
         logger.info(
             "5-minute reminder sent: " "meeting_id=%s recipients=%s",
             meeting.meeting_id,
-            recipients,
+            sent_recipients,
         )
 
-        return True
+        return bool(sent_recipients)
 
     except Exception:
 
@@ -1016,82 +1057,6 @@ def send_meeting_5_minute_reminder(
 # 5-MINUTE MEETING REMINDER
 # IN-APP NOTIFICATIONS
 # ======================================================
-
-
-def create_meeting_5_minute_notifications(
-    meeting,
-):
-    """
-    Create in-app notifications for:
-        - Employee
-        - Manager
-
-    Customer normally receives email only because
-    customer is a Lead, not CustomUser.
-    """
-
-    try:
-
-        details = _get_meeting_details(meeting)
-
-        message = (
-            f"Meeting '{details['title']}' "
-            f"starts in 5 minutes at "
-            f"{details['start_time']}."
-        )
-
-        # ==================================================
-        # EMPLOYEE
-        # ==================================================
-
-        employee = getattr(
-            meeting,
-            "created_by",
-            None,
-        )
-
-        if employee:
-
-            create_notification(
-                user=employee,
-                title=(f"Meeting Reminder: " f"{details['title']}"),
-                message=message,
-                type_name="Meeting Reminder",
-            )
-
-        # ==================================================
-        # MANAGER
-        # ==================================================
-
-        manager = getattr(
-            meeting,
-            "manager",
-            None,
-        )
-
-        if manager:
-
-            create_notification(
-                user=manager,
-                title=(f"Meeting Reminder: " f"{details['title']}"),
-                message=message,
-                type_name="Meeting Reminder",
-            )
-
-        return True
-
-    except Exception:
-
-        logger.exception(
-            "Error creating 5-minute meeting notifications: " "meeting_id=%s",
-            getattr(
-                meeting,
-                "meeting_id",
-                None,
-            ),
-        )
-
-        return False
 
 
 # ======================================================
@@ -1399,17 +1364,15 @@ def process_approved_meeting(
             return False
 
         # ==============================================
-        # MEETING LINK
+        # MEETING LINK (online only)
         # ==============================================
 
-        if not getattr(
-            meeting,
-            "meeting_link",
-            None,
-        ):
+        is_online, is_offline = _get_meeting_type_info(meeting)
+
+        if is_online and not getattr(meeting, "meeting_link", None):
 
             logger.warning(
-                "Approved meeting has no meeting link: " "meeting_id=%s",
+                "Approved online meeting has no meeting link: meeting_id=%s",
                 meeting.meeting_id,
             )
 
@@ -1716,35 +1679,38 @@ def send_due_reminder_notification(
             # EMAIL
             # ----------------------------------------------
 
+            sent_recipients = []
             if recipients:
-
-                send_mail(
-                    subject=(
-                        f"Meeting Reminder - "
-                        f"Starts in 5 Minutes: "
-                        f"{details['title']}"
-                    ),
-                    message=(
-                        f"Hello,\n\n"
-                        f"Your meeting "
-                        f"'{details['title']}' "
-                        f"will start in 5 minutes.\n\n"
-                        f"Date: {details['date']}\n"
-                        f"Time: {details['start_time']}\n"
-                        f"Meeting Link: "
-                        f"{details['meeting_link']}\n\n"
-                        f"Regards,\n"
-                        f"CRM System"
-                    ),
-                    from_email=(settings.DEFAULT_FROM_EMAIL),
-                    recipient_list=recipients,
-                    fail_silently=False,
+                subject = (
+                    f"Meeting Reminder - "
+                    f"Starts in 5 Minutes: "
+                    f"{details['title']}"
                 )
+                message = (
+                    f"Hello,\n\n"
+                    f"Your meeting "
+                    f"'{details['title']}' "
+                    f"will start in 5 minutes.\n\n"
+                    f"Date: {details['date']}\n"
+                    f"Time: {details['start_time']}\n"
+                    f"Meeting Link: "
+                    f"{details['meeting_link']}\n\n"
+                    f"Regards,\n"
+                    f"CRM System"
+                )
+                sent_recipients = _send_email_to_each_recipient(
+                    subject=subject,
+                    message=message,
+                    recipients=recipients,
+                )
+
+                if not sent_recipients:
+                    return False
 
             logger.info(
                 "Meeting reminder sent: " "meeting_id=%s recipients=%s",
                 meeting.meeting_id,
-                recipients,
+                sent_recipients,
             )
 
             return True
@@ -1841,7 +1807,7 @@ def process_due_meeting_reminders():
             "task_id",
             "reminder_for",
             "created_by",
-        )
+        )[:100]
 
         sent_count = 0
 
@@ -1923,7 +1889,7 @@ def process_due_task_reminders():
 
         pending_tasks = Task.objects.filter(
             is_active=True,
-            status__status_name__icontains=("Pending"),
+            status__status_name__iexact="Pending",
             due_date__isnull=False,
             due_date__lte=today_end,
         ).select_related(
@@ -1931,7 +1897,7 @@ def process_due_task_reminders():
             "lead",
             "customer",
             "priority",
-        )
+        )[:100]
 
         sent_count = 0
 
