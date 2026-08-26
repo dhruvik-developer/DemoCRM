@@ -1,24 +1,67 @@
 from django.urls import path
 
 from .views import (
-    MeetingApprovalView,
     TaskListCreateView,
     TaskDetailView,
     TaskAssignView,
     TaskStatusUpdateView,
-    MeetingCreateView,
-    MeetingDetailView,
+    MeetingListCreateView,
     MeetingRescheduleView,
     MeetingStatusUpdateView,
     MeetingParticipantAddView,
     MeetingParticipantRemoveView,
-    ReminderCreateView,
+    ReminderListCreateView,
     ReminderDetailView,
     ReminderStatusUpdateView,
+    TaskStatusListView,
+    TaskPriorityListView,
+    TaskCategoryListView,
+    MeetingStatusListView,
+    MeetingTypeListView,
+    ReminderTypeListView,
+    ReminderStatusListView,
 )
 
 
 urlpatterns = [
+    # ======================================================
+    # MASTER DATA (enum dropdowns)
+    # ======================================================
+    path(
+        "master/task-statuses/",
+        TaskStatusListView.as_view(),
+        name="task-status-list",
+    ),
+    path(
+        "master/task-priorities/",
+        TaskPriorityListView.as_view(),
+        name="task-priority-list",
+    ),
+    path(
+        "master/task-categories/",
+        TaskCategoryListView.as_view(),
+        name="task-category-list",
+    ),
+    path(
+        "master/meeting-statuses/",
+        MeetingStatusListView.as_view(),
+        name="meeting-status-list",
+    ),
+    path(
+        "master/meeting-types/",
+        MeetingTypeListView.as_view(),
+        name="meeting-type-list",
+    ),
+    path(
+        "master/reminder-types/",
+        ReminderTypeListView.as_view(),
+        name="reminder-type-list",
+    ),
+    path(
+        "master/reminder-statuses/",
+        ReminderStatusListView.as_view(),
+        name="reminder-status-list",
+    ),
     # ======================================================
     # TASK
     # ======================================================
@@ -35,18 +78,8 @@ urlpatterns = [
     # ======================================================
     path(
         "meetings/",
-        MeetingCreateView.as_view(),
-        name="meeting-create",
-    ),
-    path(
-        "meetings/<int:meeting_id>/",
-        MeetingDetailView.as_view(),
-        name="meeting-detail",
-    ),
-    path(
-        "meetings/<int:meeting_id>/approval/",
-        MeetingApprovalView.as_view(),
-        name="meeting-approval",
+        MeetingListCreateView.as_view(),
+        name="meeting-list-create",
     ),
     path(
         "meetings/<int:meeting_id>/reschedule/",
@@ -71,7 +104,11 @@ urlpatterns = [
     # ======================================================
     # REMINDER
     # ======================================================
-    path("reminders/", ReminderCreateView.as_view(), name="reminder-create"),
+    path(
+        "reminders/",
+        ReminderListCreateView.as_view(),
+        name="reminder-list-create",
+    ),
     path(
         "reminders/<int:reminder_id>/",
         ReminderDetailView.as_view(),
