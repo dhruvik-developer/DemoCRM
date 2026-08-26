@@ -47,6 +47,8 @@ from .tasks import (
 
 from Notification.notification_utils import trigger_notification_event
 from Notification.models import NotificationEventType
+from audit_log.services import log_audit, log_activity
+from audit_log.models import Activity
 
 logger = logging.getLogger(__name__)
 
@@ -309,6 +311,28 @@ class TaskListCreateView(APIView):
                 request.user.pk,
             )
 
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action="TASK_CREATED",
+                new_value={
+                    "task_title": task.task_title,
+                    "assigned_to": task.assigned_to_id,
+                    "status": str(task.status),
+                    "priority": str(task.priority),
+                    "due_date": str(task.due_date) if task.due_date else None,
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.TASK_CREATED,
+                outcome=f"Task created: {task.task_title}",
+                notes=task.description,
+                lead=task.lead,
+                customer=task.customer,
+            )
+
             if task.assigned_to and task.assigned_to != request.user:
                 trigger_notification_event(
                     event_type=NotificationEventType.TASK_ASSIGNED,
@@ -549,6 +573,14 @@ class TaskDetailView(APIView):
 
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+            old_value = {
+                "task_title": task.task_title,
+                "assigned_to": task.assigned_to_id,
+                "status": str(task.status),
+                "priority": str(task.priority),
+                "due_date": str(task.due_date) if task.due_date else None,
+            }
+
             with transaction.atomic():
                 task = serializer.save()
 
@@ -556,6 +588,30 @@ class TaskDetailView(APIView):
                 "Task updated successfully: task_id=%s user_id=%s",
                 task.task_id,
                 request.user.pk,
+            )
+
+            new_value = {
+                "task_title": task.task_title,
+                "assigned_to": task.assigned_to_id,
+                "status": str(task.status),
+                "priority": str(task.priority),
+                "due_date": str(task.due_date) if task.due_date else None,
+            }
+
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action="TASK_UPDATED",
+                old_value=old_value,
+                new_value=new_value,
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.TASK_UPDATED,
+                outcome=f"Task updated: {task.task_title}",
+                lead=task.lead,
+                customer=task.customer,
             )
 
             if task.assigned_to and task.assigned_to != request.user:
@@ -688,6 +744,36 @@ class TaskDetailView(APIView):
                 request.user.pk,
             )
 
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action="TASK_DELETED",
+                old_value={"is_active": True, "task_title": task.task_title},
+                new_value={"is_active": False},
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.TASK_DELETED,
+                outcome=f"Task deleted: {task.task_title}",
+                lead=task.lead,
+                customer=task.customer,
+            )
+
+            if task.assigned_to and task.assigned_to != request.user:
+                trigger_notification_event(
+                    event_type=NotificationEventType.TASK_DELETED,
+                    recipient=task.assigned_to,
+                    context={
+                        "user_name": task.assigned_to.get_full_name()
+                        or task.assigned_to.username,
+                        "employee_name": request.user.get_full_name()
+                        or request.user.username,
+                        "task_title": task.task_title,
+                        "due_date": str(task.due_date) if task.due_date else "N/A",
+                    },
+                )
+
             return Response(
                 {"message": "Task deleted successfully.", "task_id": task.task_id},
                 status=status.HTTP_200_OK,
@@ -810,6 +896,31 @@ class TaskAssignView(APIView):
                 if old_user
                 else NotificationEventType.TASK_ASSIGNED
             )
+
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action=("TASK_REASSIGNED" if old_user else "TASK_ASSIGNED"),
+                old_value={"assigned_to": old_user.pk if old_user else None},
+                new_value={"assigned_to": new_user.pk},
+            )
+            log_activity(
+                user=request.user,
+                activity_type=(
+                    Activity.ActivityType.TASK_REASSIGNED
+                    if old_user
+                    else Activity.ActivityType.TASK_ASSIGNED
+                ),
+                outcome=(
+                    f"Task reassigned: {task.task_title}"
+                    if old_user
+                    else f"Task assigned: {task.task_title}"
+                ),
+                lead=task.lead,
+                customer=task.customer,
+            )
+
             trigger_notification_event(
                 event_type=event_type,
                 recipient=new_user,
@@ -1037,6 +1148,24 @@ class TaskStatusUpdateView(APIView):
                     ]
                 )
 
+            log_audit(
+                user=request.user,
+                entity_type="Task",
+                entity_id=task.task_id,
+                action="TASK_STATUS_CHANGED",
+                old_value={"status": old_status.status_name},
+                new_value={"status": new_status.status_name},
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.TASK_STATUS_CHANGED,
+                outcome=(
+                    f"Task status changed: {task.task_title} "
+                    f"({old_status.status_name} -> {new_status.status_name})"
+                ),
+                lead=task.lead,
+                customer=task.customer,
+            )
             # ==================================================
             # SEND NOTIFICATION
             # ==================================================
@@ -1238,6 +1367,27 @@ class MeetingCreateView(APIView):
 
             transaction.on_commit(
                 lambda: notify_manager_about_meeting.delay(meeting.meeting_id)
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="Meeting",
+                entity_id=meeting.meeting_id,
+                action="MEETING_CREATED",
+                new_value={
+                    "meeting_title": meeting.meeting_title,
+                    "meeting_date": str(meeting.meeting_date),
+                    "start_time": str(meeting.start_time),
+                    "end_time": str(meeting.end_time),
+                    "approval_status": meeting.approval_status,
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=f"Meeting requested: {meeting.meeting_title}",
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
             )
 
             logger.info(
@@ -1490,6 +1640,25 @@ class MeetingApprovalView(APIView):
                     lambda: send_approved_meeting.delay(meeting.meeting_id)
                 )
 
+                log_audit(
+                    user=request.user,
+                    entity_type="Meeting",
+                    entity_id=meeting.meeting_id,
+                    action="MEETING_APPROVED",
+                    old_value={"approval_status": "PENDING"},
+                    new_value={
+                        "approval_status": meeting.approval_status,
+                        "approved_by": request.user.pk,
+                    },
+                )
+                log_activity(
+                    user=request.user,
+                    activity_type=Activity.ActivityType.MEETING,
+                    outcome=f"Meeting approved: {meeting.meeting_title}",
+                    lead=meeting.lead or meeting.task_id.lead,
+                    customer=meeting.task_id.customer,
+                )
+
                 return Response(
                     {
                         "message": (
@@ -1546,6 +1715,26 @@ class MeetingApprovalView(APIView):
 
                 transaction.on_commit(
                     lambda: (notify_employee_meeting_rejected.delay(meeting.meeting_id))
+                )
+
+                log_audit(
+                    user=request.user,
+                    entity_type="Meeting",
+                    entity_id=meeting.meeting_id,
+                    action="MEETING_REJECTED",
+                    old_value={"approval_status": "PENDING"},
+                    new_value={
+                        "approval_status": meeting.approval_status,
+                        "rejection_reason": meeting.rejection_reason,
+                    },
+                )
+                log_activity(
+                    user=request.user,
+                    activity_type=Activity.ActivityType.MEETING,
+                    outcome=f"Meeting rejected: {meeting.meeting_title}",
+                    notes=meeting.rejection_reason,
+                    lead=meeting.lead or meeting.task_id.lead,
+                    customer=meeting.task_id.customer,
                 )
 
                 return Response(
@@ -1853,6 +2042,27 @@ class MeetingRescheduleView(APIView):
                 lambda: (notify_manager_about_reschedule.delay(meeting.meeting_id))
             )
 
+            log_audit(
+                user=request.user,
+                entity_type="Meeting",
+                entity_id=meeting.meeting_id,
+                action="MEETING_RESCHEDULED",
+                old_value={"approval_status": "REJECTED"},
+                new_value={
+                    "approval_status": meeting.approval_status,
+                    "meeting_date": str(meeting.meeting_date),
+                    "start_time": str(meeting.start_time),
+                    "end_time": str(meeting.end_time),
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=f"Meeting rescheduled: {meeting.meeting_title}",
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
+            )
+
             logger.info(
                 "Meeting rescheduled and sent " "for approval again: meeting_id=%s",
                 meeting.meeting_id,
@@ -1986,6 +2196,25 @@ class MeetingStatusUpdateView(APIView):
             meeting.meeting_status_id = new_status
             meeting.save(update_fields=["meeting_status_id", "updated_at"])
 
+            log_audit(
+                user=request.user,
+                entity_type="Meeting",
+                entity_id=meeting.meeting_id,
+                action="MEETING_STATUS_CHANGED",
+                old_value={"status": old_status.status_name},
+                new_value={"status": new_status.status_name},
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=(
+                    f"Meeting status changed: {meeting.meeting_title} "
+                    f"({old_status.status_name} -> {new_status.status_name})"
+                ),
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
+            )
+
             logger.info(
                 "Meeting status updated successfully: "
                 "meeting_id=%s previous_status=%s new_status=%s user_id=%s",
@@ -1994,6 +2223,24 @@ class MeetingStatusUpdateView(APIView):
                 new_status.status_name,
                 request.user.pk,
             )
+
+            try:
+                if meeting.created_by and meeting.created_by != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_STATUS_CHANGED,
+                        recipient=meeting.created_by,
+                        context={
+                            "user_name": meeting.created_by.get_full_name()
+                            or meeting.created_by.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "meeting_title": meeting.meeting_title,
+                            "previous_status": old_status.status_name,
+                            "new_status": new_status.status_name,
+                        },
+                    )
+            except Exception:
+                logger.exception("Failed to send meeting status change notification")
 
             return Response(
                 {
@@ -2176,6 +2423,52 @@ class MeetingParticipantAddView(APIView):
                 request.user.pk,
             )
 
+            log_audit(
+                user=request.user,
+                entity_type="MeetingParticipant",
+                entity_id=participant.pk,
+                action="MEETING_PARTICIPANT_ADDED",
+                new_value={
+                    "meeting_id": meeting.meeting_id,
+                    "user_id": user.pk,
+                    "participant_role": participant.participant_role,
+                    "is_required": participant.is_required,
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=(
+                    f"Participant added to meeting "
+                    f"{meeting.meeting_title}: {user.username}"
+                ),
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
+            )
+
+            try:
+                if user != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_PARTICIPANT_ADDED,
+                        recipient=user,
+                        context={
+                            "user_name": user.get_full_name() or user.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "meeting_title": meeting.meeting_title,
+                            "meeting_date": str(meeting.meeting_date),
+                            "start_time": str(meeting.start_time),
+                            "end_time": str(meeting.end_time),
+                            "participant_role": participant_role.strip(),
+                            "meeting_link": meeting.meeting_link or "N/A",
+                            "location": meeting.location or "N/A",
+                        },
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to send meeting participant added notification"
+                )
+
             # --------------------------------------------------
             # SERIALIZE RESPONSE
             # --------------------------------------------------
@@ -2272,7 +2565,30 @@ class MeetingParticipantRemoveView(APIView):
                 MeetingParticipant, meeting_id=meeting, user_id_id=user_id
             )
 
+            removed_user = participant.user_id
             participant.delete()
+
+            log_audit(
+                user=request.user,
+                entity_type="MeetingParticipant",
+                entity_id=participant.participant_id,
+                action="MEETING_PARTICIPANT_REMOVED",
+                old_value={
+                    "meeting_id": meeting.meeting_id,
+                    "user_id": user_id,
+                    "participant_role": participant.participant_role,
+                },
+            )
+            log_activity(
+                user=request.user,
+                activity_type=Activity.ActivityType.MEETING,
+                outcome=(
+                    f"Participant removed from meeting "
+                    f"{meeting.meeting_title}: {removed_user.username if removed_user else user_id}"
+                ),
+                lead=meeting.lead or meeting.task_id.lead,
+                customer=meeting.task_id.customer,
+            )
 
             logger.info(
                 "Meeting participant removed successfully: "
@@ -2281,6 +2597,26 @@ class MeetingParticipantRemoveView(APIView):
                 user_id,
                 request.user.pk,
             )
+
+            try:
+                if removed_user and removed_user != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_PARTICIPANT_REMOVED,
+                        recipient=removed_user,
+                        context={
+                            "user_name": removed_user.get_full_name()
+                            or removed_user.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "meeting_title": meeting.meeting_title,
+                            "meeting_date": str(meeting.meeting_date),
+                            "start_time": str(meeting.start_time),
+                        },
+                    )
+            except Exception:
+                logger.exception(
+                    "Failed to send meeting participant removed notification"
+                )
 
             return Response(
                 {
@@ -2362,6 +2698,19 @@ class ReminderCreateView(APIView):
                 "Reminder created successfully: reminder_id=%s user_id=%s",
                 reminder.reminder_id,
                 request.user.pk,
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="Reminder",
+                entity_id=reminder.reminder_id,
+                action="REMINDER_CREATED",
+                new_value={
+                    "reminder_datetime": str(reminder.reminder_datetime),
+                    "message": reminder.message[:100],
+                    "reminder_for": reminder.reminder_for_id,
+                    "status": str(reminder.reminder_status_id),
+                },
             )
 
             try:
@@ -2546,12 +2895,33 @@ class ReminderDetailView(APIView):
                 )
                 return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+            old_value = {
+                "reminder_datetime": str(reminder.reminder_datetime),
+                "message": reminder.message[:100],
+                "reminder_for": reminder.reminder_for_id,
+                "status": str(reminder.reminder_status_id),
+            }
+
             reminder = serializer.save()
 
             logger.info(
                 "Reminder updated successfully: " "reminder_id=%s user_id=%s",
                 reminder.reminder_id,
                 request.user.pk,
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="Reminder",
+                entity_id=reminder.reminder_id,
+                action="REMINDER_UPDATED",
+                old_value=old_value,
+                new_value={
+                    "reminder_datetime": str(reminder.reminder_datetime),
+                    "message": reminder.message[:100],
+                    "reminder_for": reminder.reminder_for_id,
+                    "status": str(reminder.reminder_status_id),
+                },
             )
 
             return Response(
@@ -2617,6 +2987,18 @@ class ReminderDetailView(APIView):
                 "Reminder deleted successfully: " "reminder_id=%s user_id=%s",
                 reminder_id,
                 request.user.pk,
+            )
+
+            log_audit(
+                user=request.user,
+                entity_type="Reminder",
+                entity_id=reminder.reminder_id,
+                action="REMINDER_DELETED",
+                old_value={
+                    "reminder_datetime": str(reminder.reminder_datetime),
+                    "message": reminder.message[:100],
+                    "is_active": True,
+                },
             )
 
             return Response(
@@ -2740,6 +3122,15 @@ class ReminderStatusUpdateView(APIView):
             old_status = reminder.reminder_status_id
             reminder.reminder_status_id = new_status
             reminder.save(update_fields=["reminder_status_id", "updated_at"])
+
+            log_audit(
+                user=request.user,
+                entity_type="Reminder",
+                entity_id=reminder.reminder_id,
+                action="REMINDER_STATUS_CHANGED",
+                old_value={"status": old_status.status_name},
+                new_value={"status": new_status.status_name},
+            )
 
             logger.info(
                 "Reminder status updated successfully: "
