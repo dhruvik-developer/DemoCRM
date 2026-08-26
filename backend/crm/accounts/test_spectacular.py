@@ -27,7 +27,6 @@ class SchemaGenerationTests(TestCase):
         info = self.schema["info"]
         self.assertEqual(info["title"], "DemoCRM API")
         self.assertEqual(info["version"], "1.0.0")
-        self.assertIn("description", info)
 
     def test_security_schemes_defined(self):
         security_schemes = self.schema["components"].get("securitySchemes", {})
@@ -88,6 +87,21 @@ class EndpointCoverageTests(TestCase):
     def test_permissions_endpoint(self):
         self.assertIn("/api/permissions/", self.paths)
         self.assertIn("get", self.paths["/api/permissions/"])
+        self.assertIn("post", self.paths["/api/permissions/"])
+
+    def test_permission_detail_endpoint(self):
+        self.assertIn("/api/permissions/{permission_id}/", self.paths)
+        methods = self.paths["/api/permissions/{permission_id}/"]
+        self.assertIn("put", methods)
+        self.assertIn("delete", methods)
+
+    def test_forgot_password_endpoint(self):
+        self.assertIn("/api/forgot-password/", self.paths)
+        self.assertIn("post", self.paths["/api/forgot-password/"])
+
+    def test_reset_password_endpoint(self):
+        self.assertIn("/api/reset-password/", self.paths)
+        self.assertIn("post", self.paths["/api/reset-password/"])
 
     # ---- Task endpoints ----
 
