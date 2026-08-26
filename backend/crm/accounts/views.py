@@ -33,12 +33,11 @@ import hmac
 import secrets
 from datetime import timedelta
 
-from django.conf import settings as django_settings
-from django.core.mail import send_mail
 from django.utils import timezone
 
 from .models import PasswordResetOTP
 from .serializers import ForgotPasswordSerializer, ResetPasswordSerializer
+from .tasks import send_password_reset_otp_email
 
 import os
 from dotenv import load_dotenv
@@ -1054,25 +1053,7 @@ class ForgotPasswordAPIView(APIView):
                     expires_at=timezone.now() + timedelta(minutes=OTP_EXPIRY_MINUTES),
                 )
 
-            send_mail(
-                subject="CRM Password Reset OTP",
-                message=(
-                    f"Hello {user.username},\n\n"
-                    "We received a request to reset your CRM account password.\n"
-                    "Use the One-Time Password (OTP) below "
-                    "to reset it:\n\n"
-                    f"OTP: {otp}\n\n"
-                    f"This OTP is valid for "
-                    f"{OTP_EXPIRY_MINUTES} minutes and can be used only once.\n"
-                    f"You have {OTP_MAX_ATTEMPTS} attempts "
-                    "to enter it correctly.\n"
-                    "If you did not request this, you can safely ignore "
-                    "this email.\n"
-                ),
-                from_email=django_settings.DEFAULT_FROM_EMAIL,
-                recipient_list=[user.email],
-                fail_silently=False,
-            )
+            send_password_reset_otp_email.delay(user.pk, otp)
 
             logger.info(
                 "Password reset OTP sent to user %s",

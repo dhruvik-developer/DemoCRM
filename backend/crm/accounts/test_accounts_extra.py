@@ -1957,17 +1957,19 @@ class APIViewExceptionHandlingTests(APITestCase):
             response.data["error"], "Failed to delete permission. Please try again."
         )
 
+    @override_settings(
+        CELERY_TASK_ALWAYS_EAGER=True,
+        CELERY_TASK_EAGER_PROPAGATES=False,
+    )
     def test_forgot_password_handles_send_mail_exception(self):
         user = make_user("mail.fail@example.com")
         url = reverse("forgot_password")
         with patch(
-            "accounts.views.send_mail", side_effect=Exception("SMTP server offline")
+            "accounts.tasks.send_mail", side_effect=Exception("SMTP server offline")
         ):
             response = APIClient().post(url, {"email": user.email}, format="json")
-        self.assertEqual(response.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
-        self.assertEqual(
-            response.data["error"], "Failed to send reset OTP. Please try again."
-        )
+        # Email is sent asynchronously; request still succeeds.
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_reset_password_handles_save_exception(self):
         user = make_user("reset.fail@example.com")
