@@ -42,6 +42,8 @@ from .tasks import send_password_reset_otp_email
 import os
 from dotenv import load_dotenv
 
+from .rate_limiter import is_locked, record_failure, reset, unlock as limiter_unlock
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -169,24 +171,76 @@ class LoginAPIView(APIView):
             email = serializer.validated_data["email"]
             password = serializer.validated_data["password"]
 
+            # ---- Login rate limiting --------------------------------------
+            lock = is_locked(email)
+            if lock.get("blocked"):
+                if lock.get("reason") == "permanent":
+                    return Response(
+                        {
+                            "error": "Account locked due to repeated failed login attempts.",
+                            "code": "account_locked",
+                        },
+                        status=status.HTTP_403_FORBIDDEN,
+                    )
+                retry_after = lock.get("retry_after", 0)
+                minutes = max(1, round(retry_after / 60))
+                return Response(
+                    {
+                        "error": (
+                            "Too many failed login attempts. "
+                            f"Please try again in {minutes} minute(s)."
+                        ),
+                        "code": "login_cooldown",
+                        "retry_after": retry_after,
+                    },
+                    status=status.HTTP_429_TOO_MANY_REQUESTS,
+                )
+
             try:
                 user = CustomUser.objects.get(email=email)
             except CustomUser.DoesNotExist:
-                logger.warning("Failed login attempt for non-existent email: %s", email)
+                user = None
+
+            credentials_ok = (
+                user is not None and user.is_active and user.check_password(password)
+            )
+
+            if not credentials_ok:
+                result = record_failure(email)
+                logger.warning(
+                    "Failed login attempt for email: %s (remaining=%s)",
+                    email,
+                    result.get("remaining_attempts"),
+                )
+                if result.get("blocked"):
+                    if result.get("reason") == "permanent":
+                        return Response(
+                            {
+                                "error": "Account locked due to repeated failed login attempts.",
+                                "code": "account_locked",
+                            },
+                            status=status.HTTP_403_FORBIDDEN,
+                        )
+                    retry_after = result.get("retry_after", 0)
+                    minutes = max(1, round(retry_after / 60))
+                    return Response(
+                        {
+                            "error": (
+                                "Too many failed login attempts. "
+                                f"Please try again in {minutes} minute(s)."
+                            ),
+                            "code": "login_cooldown",
+                            "retry_after": retry_after,
+                        },
+                        status=status.HTTP_429_TOO_MANY_REQUESTS,
+                    )
                 return Response(
                     {"error": "Invalid credentials"},
                     status=status.HTTP_401_UNAUTHORIZED,
                 )
 
-            if not user.is_active or not user.check_password(password):
-                logger.warning(
-                    "Failed login attempt for user: %s (inactive or wrong password)",
-                    email,
-                )
-                return Response(
-                    {"error": "Invalid credentials"},
-                    status=status.HTTP_401_UNAUTHORIZED,
-                )
+            # Reset rate-limit state on success
+            reset(email)
 
             try:
                 refresh = RefreshToken.for_user(user)
@@ -1247,5 +1301,59 @@ class UserListAPIView(APIView):
                 "users": data,
                 "results": data,
             },
+            status=status.HTTP_200_OK,
+        )
+
+
+class UnlockUserAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="Unlock a locked user account",
+        description="Clears the login rate-limit lock for a user. Only Admin and Manager can unlock accounts. Requires authentication.",
+        tags=["Accounts"],
+        operation_id="unlock_user_update",
+        parameters=[
+            OpenApiParameter(
+                name="user_id",
+                type=str,
+                location=OpenApiParameter.PATH,
+                description="User UUID",
+            ),
+        ],
+        responses={
+            200: inline_serializer(
+                "UnlockUserSuccessResponse",
+                fields={"message": serializers.CharField()},
+            ),
+            403: inline_serializer(
+                "UnlockUserForbiddenResponse",
+                fields={"error": serializers.CharField()},
+            ),
+            404: inline_serializer(
+                "UnlockUserNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
+    def post(self, request, user_id):
+        if request.user.is_superuser:
+            pass
+        elif request.user.role is None or request.user.role.rolename not in [
+            "Admin",
+            "Manager",
+        ]:
+            return Response(
+                {"error": "Only Admin and Manager can unlock user accounts."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        user = get_object_or_404(CustomUser, user_id=user_id)
+        limiter_unlock(user.email)
+
+        logger.info("User %s unlocked by %s", user.email, request.user.email)
+
+        return Response(
+            {"message": "User account unlocked successfully."},
             status=status.HTTP_200_OK,
         )

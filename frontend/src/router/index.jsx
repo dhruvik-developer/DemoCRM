@@ -1,11 +1,12 @@
 import { createBrowserRouter } from "react-router-dom";
 
 import AppLayout from "@/layouts/AppLayout";
-import { ProtectedRoute, PublicOnlyRoute } from "@/router/guards";
+import { ProtectedRoute, PublicOnlyRoute, AdminManagerRoute, ForceChangePasswordRoute } from "@/router/guards";
 import LoginPage from "@/features/auth/pages/LoginPage";
 import RegisterPage from "@/features/auth/pages/RegisterPage";
 import ForgotPasswordPage from "@/features/auth/pages/ForgotPasswordPage";
 import ResetPasswordPage from "@/features/auth/pages/ResetPasswordPage";
+import ForceChangePasswordPage from "@/features/auth/pages/ForceChangePasswordPage";
 import DashboardPage from "@/features/dashboard/pages/DashboardPage";
 import NotFoundPage from "@/pages/NotFoundPage";
 import LeadsListPage from "@/features/leads/pages/LeadsListPage";
@@ -43,9 +44,22 @@ export const router = createBrowserRouter([
         errorElement: <RouteErrorBoundary />,
         children: [
           { path: "/login", element: <LoginPage /> },
-          { path: "/register", element: <RegisterPage /> },
           { path: "/forgot-password", element: <ForgotPasswordPage /> },
           { path: "/reset-password", element: <ResetPasswordPage /> },
+        ],
+      },
+      {
+        element: <ForceChangePasswordRoute />,
+        errorElement: <RouteErrorBoundary />,
+        children: [
+          { path: "/force-change-password", element: <ForceChangePasswordPage /> },
+        ],
+      },
+      {
+        element: <AdminManagerRoute />,
+        errorElement: <RouteErrorBoundary />,
+        children: [
+          { path: "/register", element: <RegisterPage /> },
         ],
       },
       {
@@ -82,7 +96,6 @@ export const router = createBrowserRouter([
           { path: "/admin/roles", element: <AdminRolesPage /> },
           { path: "/profile", element: <ProfilePage /> },
           { path: "/reminders", element: <RemindersPage /> },
-          // Remaining module routes land in Phases 13–15.
         ],
           },
         ],

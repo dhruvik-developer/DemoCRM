@@ -45,3 +45,9 @@ export async function assignRole(userId, roleId) {
   });
   return data;
 }
+
+/** POST /users/<uuid>/unlock/ — clear login lock for a user. */
+export async function unlockUser(userId) {
+  const { data } = await apiClient.post(endpoints.auth.unlockUser(userId));
+  return data;
+}

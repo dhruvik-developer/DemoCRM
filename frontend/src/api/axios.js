@@ -9,7 +9,7 @@ const apiClient = axios.create({
   },
 });
 
-// Bare instance for the refresh call so its own 401/400 can't re-trigger the
+// Bare instance for the refresh call so its own 401/400 can'"'"'t re-trigger the
 // response interceptor below (no recursion).
 const refreshClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL,
@@ -52,8 +52,18 @@ apiClient.interceptors.response.use(
     const originalRequest = error.config;
     const status = error.response?.status;
     const isRefreshCall = originalRequest?.url === "/refresh/";
+    const mustChange = error.response?.data?.code === "must_change_password" || error.response?.data?.must_change_password === true;
 
-    // Refresh failed → session is over; caller (or auth context) handles redirect.
+    if (mustChange) {
+      // Redirect to forced change screen if not already there
+      if (window.location.pathname !== "/force-change-password") {
+        window.location.href = "/force-change-password";
+      }
+      error.normalized = normalizeApiError(error);
+      return Promise.reject(error);
+    }
+
+    // Refresh failed ? session is over; caller (or auth context) handles redirect.
     if (isRefreshCall || !getRefreshToken()) {
       if (status === 401 || status === 400) {
         clearTokens();
@@ -62,7 +72,7 @@ apiClient.interceptors.response.use(
       return Promise.reject(error);
     }
 
-    // Expired access token → refresh once and retry the original request once.
+    // Expired access token ? refresh once and retry the original request once.
     if (status === 401 && !originalRequest._retried) {
       originalRequest._retried = true;
       try {

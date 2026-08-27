@@ -2,6 +2,7 @@
 // bell slot + user menu (logout). Nav items are gated on the codenames from
 // PERMISSION_CONTRACT.md; backend remains authoritative on 403s.
 
+import { useState } from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -17,6 +18,7 @@ import {
   LogOut,
   ChevronDown,
   ShieldCheck,
+  UserPlus,
 } from "lucide-react";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
@@ -33,6 +35,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
 import apiClient from "@/api/axios";
 import { endpoints } from "@/api/endpoints";
+import AddEmployeeDialog from "@/features/admin/components/AddEmployeeDialog";
 
 const NAV_ITEMS = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -47,6 +50,7 @@ const NAV_ITEMS = [
   { to: "/callforms", label: "Call forms", icon: ClipboardList, codename: "view_calltemplate" },
   { to: "/notifications", label: "Notifications", icon: Bell, codename: "view_notificationtemplate" },
   { to: "/admin/roles", label: "Admin · Roles", icon: ShieldCheck, codename: "view_role" },
+  { to: "/admin/roles", label: "Add Employee", icon: UserPlus, adminOnly: true, action: "addEmployee" },
 ];
 
 function NotificationBell() {
@@ -80,6 +84,12 @@ function NotificationBell() {
 
 export default function AppLayout() {
   const { user, resolved, logout } = useAuth();
+  const [addEmployeeOpen, setAddEmployeeOpen] = useState(false);
+
+  const visibleNavItems = NAV_ITEMS.filter((item) => {
+    if (item.adminOnly) return resolved?.isAdmin;
+    return !item.codename || hasPermission(resolved, item.codename);
+  });
 
   return (
     <div className="flex min-h-screen bg-background">
@@ -88,26 +98,35 @@ export default function AppLayout() {
           CRM
         </div>
         <nav className="flex flex-1 flex-col gap-1 p-2">
-          {NAV_ITEMS.filter(
-            (item) => !item.codename || hasPermission(resolved, item.codename),
-          ).map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                ].join(" ")
-              }
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </NavLink>
-          ))}
+          {visibleNavItems.map((item) =>
+            item.action === "addEmployee" ? (
+              <button
+                key={item.label}
+                onClick={() => setAddEmployeeOpen(true)}
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </button>
+            ) : (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  [
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  ].join(" ")
+                }
+              >
+                <item.icon className="h-4 w-4" />
+                {item.label}
+              </NavLink>
+            ),
+          )}
         </nav>
       </aside>
 
@@ -145,6 +164,7 @@ export default function AppLayout() {
       </div>
 
       <Toaster richColors position="top-right" />
+      <AddEmployeeDialog open={addEmployeeOpen} onOpenChange={setAddEmployeeOpen} />
     </div>
   );
 }

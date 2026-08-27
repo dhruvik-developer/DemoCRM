@@ -422,7 +422,10 @@ class HasDynamicPermissionUnitTests(APITestCase):
 @no_throttle
 class RegisterAPITests(APITestCase):
     def setUp(self):
-        self.client = APIClient()
+        # Register now requires Admin/Manager authentication per new RBAC
+        self.admin = make_user("register.admin@example.com", rolename="Admin")
+        self.client = auth_client(self.admin)
+        self.anon_client = APIClient()
         self.url = reverse("register")
         Role.objects.get_or_create(rolename="Employee")
 
@@ -447,6 +450,11 @@ class RegisterAPITests(APITestCase):
         self.client.post(self.url, self._payload(), format="json")
         user = CustomUser.objects.get(email="newuser@example.com")
         self.assertEqual(user.role.rolename, "Employee")
+
+    def test_register_sets_must_change_password(self):
+        self.client.post(self.url, self._payload(), format="json")
+        user = CustomUser.objects.get(email="newuser@example.com")
+        self.assertTrue(user.must_change_password)
 
     def test_register_duplicate_email_400(self):
         self.client.post(self.url, self._payload(), format="json")
@@ -490,6 +498,30 @@ class RegisterAPITests(APITestCase):
     def test_register_response_has_no_password(self):
         response = self.client.post(self.url, self._payload(), format="json")
         self.assertNotIn("password", response.data)
+
+    def test_register_unauthenticated_401(self):
+        response = self.anon_client.post(self.url, self._payload(), format="json")
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_register_as_employee_forbidden_403(self):
+        emp = make_user("register.emp@example.com", rolename="Employee")
+        emp_client = auth_client(emp)
+        response = emp_client.post(
+            self.url,
+            self._payload(email="emp.reg@example.com", phone_number=unique_phone()),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_register_as_manager_success(self):
+        mgr = make_user("register.mgr@example.com", rolename="Manager")
+        mgr_client = auth_client(mgr)
+        response = mgr_client.post(
+            self.url,
+            self._payload(email="mgr.reg@example.com", phone_number=unique_phone()),
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
 
 # ==================================================================
@@ -974,6 +1006,8 @@ class ProfileAPITests(APITestCase):
             "email",
             "phone_number",
             "role",
+            "role_name",
+            "must_change_password",
             "created_at",
             "updated_at",
         }

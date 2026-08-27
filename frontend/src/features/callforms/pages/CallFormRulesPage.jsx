@@ -75,8 +75,6 @@ export default function CallFormRulesPage() {
   });
   const ruleVersion = useWatch({ control: ruleForm.control, name: "version" });
 
-  const ruleVersion = useWatch({ control: ruleForm.control, name: "version" });
-
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
       <h1 className="text-2xl font-semibold tracking-tight">Trigger rules</h1>

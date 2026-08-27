@@ -13,7 +13,9 @@ class CustomUserManager(BaseUserManager):
         user.save(using=self._db)
         return user
 
-    def create_superuser(self, email, username, password=None, **extra_fields):
+    def create_superuser(
+        self, email, username, phone_number, password=None, **extra_fields
+    ):
         Role = apps.get_model("accounts", "Role")
 
         extra_fields.setdefault("is_staff", True)
@@ -21,7 +23,11 @@ class CustomUserManager(BaseUserManager):
         extra_fields.setdefault("is_active", True)
 
         user = self.create_user(
-            email=email, username=username, password=password, **extra_fields
+            email=email,
+            username=username,
+            phone_number=phone_number,
+            password=password,
+            **extra_fields
         )
 
         # Assign Admin role automatically, creating if it doesn't exist

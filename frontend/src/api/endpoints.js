@@ -15,6 +15,7 @@ export const endpoints = {
     roles: "/roles/",
     roleDetail: (roleId) => `/roles/${roleId}/`,
     users: "/users/",
+    unlockUser: (userId) => `/users/${userId}/unlock/`,
     permissions: "/permissions/",
     permissionDetail: (permissionId) => `/permissions/${permissionId}/`,
     assignRole: (userId) => `/assign-role/${userId}/`,

@@ -7,6 +7,7 @@ import {
   useDeleteRole,
   usePermissions,
   useRoles,
+  useUnlockUser,
   useUpdateRole,
   useUsers,
 } from "../hooks";

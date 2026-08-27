@@ -2,11 +2,11 @@
 // isAuthenticated / currentUser / permissions / loading + login/logout.
 //
 // Current-user resolution (no /auth/me/ exists — G4):
-//   access token → decode JWT user_id → GET /profile/<user_id>/ → data.profile
+//   access token -> decode JWT user_id -> GET /profile/<user_id>/ -> data.profile
 //
 // Permission hydration follows PERMISSION_CONTRACT.md: the profile carries
 // only a numeric role id. GET /roles/ is Admin-only; when it succeeds we map
-// role_id → rolename, otherwise we fall back to the seed maps keyed by an
+// role_id -> rolename, otherwise we fall back to the seed maps keyed by an
 // unknown role ("staff" union). See utils/permissions.js.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
@@ -50,6 +50,39 @@ export function AuthProvider({ children }) {
     resolved: null, // { isAdmin, codenames } from resolvePermissions
   });
 
+  const refreshProfile = useCallback(async () => {
+    const accessToken = getAccessToken();
+    if (!accessToken || isTokenExpired(accessToken)) {
+      clearTokens();
+      setState({ status: "unauthenticated", user: null, resolved: null });
+      return null;
+    }
+    const userId = getUserId() ?? getUserIdFromToken(accessToken);
+    if (!userId) {
+      clearTokens();
+      setState({ status: "unauthenticated", user: null, resolved: null });
+      return null;
+    }
+    try {
+      const profile = await fetchProfile(userId);
+      const roleName =
+        profile.role_name ??
+        profile.role?.rolename ??
+        (await tryResolveRoleName(profile.role));
+      const resolved = resolvePermissions({ roleName });
+      setState({
+        status: "authenticated",
+        user: profile,
+        resolved,
+      });
+      return profile;
+    } catch {
+      clearTokens();
+      setState({ status: "unauthenticated", user: null, resolved: null });
+      return null;
+    }
+  }, []);
+
   const applySession = useCallback(async () => {
     const accessToken = getAccessToken();
     if (!accessToken || isTokenExpired(accessToken)) {
@@ -77,7 +110,7 @@ export function AuthProvider({ children }) {
         resolved: resolvePermissions({ roleName }),
       });
     } catch {
-      // Profile fetch failed (expired refresh / network) — force re-login.
+      // Profile fetch failed (expired refresh / network) - force re-login.
       clearTokens();
       setState({ status: "unauthenticated", user: null, resolved: null });
     }
@@ -121,7 +154,7 @@ export function AuthProvider({ children }) {
           resolved: resolvePermissions({ roleName }),
         });
       } catch {
-        // Profile fetch failed (expired refresh / network) — force re-login.
+        // Profile fetch failed (expired refresh / network) - force re-login.
         clearTokens();
         if (!cancelled) {
           setState({ status: "unauthenticated", user: null, resolved: null });
@@ -140,7 +173,11 @@ export function AuthProvider({ children }) {
         accessToken: tokens.access_token,
         refreshToken: tokens.refresh_token,
       });
+      if (tokens.user_id) {
+        try { localStorage.setItem("crm_user_id", tokens.user_id); } catch {}
+      }
       await applySession();
+      return tokens;
     },
     [applySession],
   );
@@ -149,22 +186,27 @@ export function AuthProvider({ children }) {
     try {
       await logoutRequest(getRefreshToken());
     } catch {
-      // Backend already-invalidated/absent token is fine — local cleanup continues.
+      // Backend already-invalidated/absent token is fine - local cleanup continues.
     }
     clearTokens();
     queryClient.clear();
     setState({ status: "unauthenticated", user: null, resolved: null });
   }, [queryClient]);
 
+  const mustChangePassword = Boolean(state.user?.must_change_password);
+
   const value = useMemo(
     () => ({
       ...state,
       isLoading: state.status === "initializing",
       isAuthenticated: state.status === "authenticated",
+      mustChangePassword,
       login,
       logout,
+      refreshProfile,
+      applySession,
     }),
-    [state, login, logout],
+    [state, mustChangePassword, login, logout, refreshProfile, applySession],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

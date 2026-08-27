@@ -331,3 +331,19 @@ CELERY_BEAT_SCHEDULE = {
         "schedule": crontab(minute="*"),
     },
 }
+
+# ==============================================================================
+# CACHE (Redis — db 1, separate from Celery db 0)
+# ==============================================================================
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": os.getenv("REDIS_URL", "redis://redis:6379/1"),
+    }
+}
+
+# ==============================================================================
+# LOGIN RATE LIMITING
+# ==============================================================================
+LOGIN_MAX_ATTEMPTS = int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))
+LOGIN_COOLDOWN_SECONDS = int(os.getenv("LOGIN_COOLDOWN_SECONDS", "600"))  # 10 min

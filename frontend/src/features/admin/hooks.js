@@ -13,6 +13,7 @@ import {
   getPermissions,
   getRoles,
   getUsers,
+  unlockUser,
   updateRole,
 } from "./api";
 
@@ -84,6 +85,18 @@ export function useAssignRole() {
     onSuccess: () => {
       invalidate();
       toast.success("Role assigned.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useUnlockUser() {
+  const invalidate = useInvalidateAdmin();
+  return useMutation({
+    mutationFn: (userId) => unlockUser(userId),
+    onSuccess: () => {
+      invalidate();
+      toast.success("User unlocked.");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });

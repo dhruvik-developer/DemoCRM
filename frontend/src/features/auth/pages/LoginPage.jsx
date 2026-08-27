@@ -29,7 +29,12 @@ export default function LoginPage() {
   const onSubmit = async (values) => {
     setFormError("");
     try {
-      await login(values);
+      const tokens = await login(values);
+      // If backend signals must_change_password, force redirect to change screen
+      if (tokens?.must_change_password) {
+        navigate("/force-change-password", { replace: true });
+        return;
+      }
       const redirectTo = location.state?.from?.pathname ?? "/";
       navigate(redirectTo, { replace: true });
     } catch (error) {
@@ -77,16 +82,14 @@ export default function LoginPage() {
         ) : null}
 
         <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? "Signing in…" : "Sign in"}
+          {isSubmitting ? "Signing in..." : "Sign in"}
         </Button>
 
         <div className="flex items-center justify-between text-sm">
           <Link to="/forgot-password" className="text-muted-foreground hover:underline">
             Forgot password?
           </Link>
-          <Link to="/register" className="hover:underline">
-            Create account
-          </Link>
+          <span className="text-muted-foreground text-xs">New employee? Ask admin for your temporary password.</span>
         </div>
       </form>
     </AuthLayout>
