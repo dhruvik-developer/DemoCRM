@@ -58,11 +58,11 @@ logger = logging.getLogger(__name__)
 
 # Create your views here.
 class RegisterAPIView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
-        summary="Register a new user",
-        description="Create a new user account. The user is automatically assigned the Employee role. No authentication required.",
+        summary="Register a new user (Admin/Manager only)",
+        description="Create a new user account. Only Admin and Manager roles can register employees. The new user is assigned the Employee role and must change password on first login. Authentication required.",
         tags=["Accounts"],
         operation_id="register_create",
         request=RegisterSerializer,
@@ -80,9 +80,34 @@ class RegisterAPIView(APIView):
                 "RegisterErrorResponse",
                 fields={"error": serializers.CharField()},
             ),
+            401: inline_serializer(
+                "RegisterUnauthorizedResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            403: inline_serializer(
+                "RegisterForbiddenResponse",
+                fields={"error": serializers.CharField()},
+            ),
         },
     )
     def post(self, request):
+        # Only Admin and Manager (and superuser) can register new employees
+        if request.user.is_superuser:
+            pass
+        elif request.user.role is None or request.user.role.rolename not in [
+            "Admin",
+            "Manager",
+        ]:
+            logger.warning(
+                "Unauthorized register attempt by user %s with role %s",
+                getattr(request.user, "user_id", request.user),
+                getattr(getattr(request.user, "role", None), "rolename", None),
+            )
+            return Response(
+                {"error": "Only Admin and Manager can register new employees."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
         serializer = RegisterSerializer(data=request.data)
         # breakpoint()
 
@@ -90,9 +115,10 @@ class RegisterAPIView(APIView):
             try:
                 serializer.save()
                 logger.info(
-                    "User registered successfully: %s (ID: %s)",
+                    "User registered successfully: %s (ID: %s) by %s",
                     serializer.data["email"],
                     serializer.data["user_id"],
+                    getattr(request.user, "email", "unknown"),
                 )
                 return Response(
                     {
@@ -116,7 +142,7 @@ class LoginAPIView(APIView):
 
     @extend_schema(
         summary="Log in and obtain JWT tokens",
-        description="Authenticate with email and password. Returns access and refresh tokens.",
+        description="Authenticate with email and password. Returns access and refresh tokens. Includes must_change_password flag when the user must change password on first login.",
         tags=["Accounts"],
         operation_id="login_create",
         request=LoginSerializer,
@@ -127,6 +153,7 @@ class LoginAPIView(APIView):
                     "message": serializers.CharField(),
                     "refresh_token": serializers.CharField(),
                     "access_token": serializers.CharField(),
+                    "must_change_password": serializers.BooleanField(),
                 },
             ),
             401: inline_serializer(
@@ -163,6 +190,11 @@ class LoginAPIView(APIView):
 
             try:
                 refresh = RefreshToken.for_user(user)
+                # Add must_change_password to both refresh and access tokens for client-side detection
+                refresh["must_change_password"] = bool(user.must_change_password)
+                refresh.access_token["must_change_password"] = bool(
+                    user.must_change_password
+                )
             except Exception:
                 logger.exception("Token generation failed for user %s", user.user_id)
                 return Response(
@@ -177,6 +209,7 @@ class LoginAPIView(APIView):
                     "message": "Login successful",
                     "refresh_token": str(refresh),
                     "access_token": str(refresh.access_token),
+                    "must_change_password": bool(user.must_change_password),
                 }
             )
 
@@ -328,6 +361,9 @@ class ChangePasswordAPIView(APIView):
 
             try:
                 user.set_password(new_password)
+                # Clear forced password change flag — user has now set their own password
+                if getattr(user, "must_change_password", False):
+                    user.must_change_password = False
                 user.save()
             except Exception:
                 logger.exception("Password change failed for user %s", request.user)
@@ -1157,6 +1193,8 @@ class ResetPasswordAPIView(APIView):
 
         try:
             user.set_password(new_password)
+            if getattr(user, "must_change_password", False):
+                user.must_change_password = False
             user.save()
 
             otp_record.is_used = True

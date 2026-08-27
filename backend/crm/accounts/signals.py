@@ -74,6 +74,16 @@ MANAGER_CODENAMES = _codename_set(MANAGER_MODEL_PREFIXES) | {
     "manage_stage_activity",
     "add_adhoc_field",
     "manage_adhoc_field",
+    # Role and permission management codenames
+    "view_role",
+    "add_role",
+    "change_role",
+    "delete_role",
+    "assign_role",
+    "view_permission",
+    "add_permission",
+    "change_permission",
+    "delete_permission",
 }
 
 # Models the Employee role can read.

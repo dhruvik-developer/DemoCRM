@@ -37,6 +37,10 @@ class CustomUser(AbstractUser):
         ],
     )
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, blank=True, null=True)
+    must_change_password = models.BooleanField(
+        default=False,
+        help_text="True when the user must change password on next login (first login after admin creation).",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # passowrd field is coming from AbstractUser

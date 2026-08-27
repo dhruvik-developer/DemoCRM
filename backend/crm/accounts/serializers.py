@@ -23,6 +23,12 @@ class RegisterSerializer(serializers.ModelSerializer):
             role=employee_role,
         )
 
+        # New employees created by Admin/Manager must change password on first login.
+        # Using update to avoid triggering an extra save that might recurse.
+        if not getattr(user, "must_change_password", False):
+            user.must_change_password = True
+            user.save(update_fields=["must_change_password"])
+
         return user
 
 
