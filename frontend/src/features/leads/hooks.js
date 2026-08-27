@@ -20,7 +20,13 @@ import {
 export function useLeads(filters) {
   return useQuery({
     queryKey: leadKeys.list(filters),
-    queryFn: () => getLeads(filters),
+    queryFn: async () => {
+      const data = await getLeads(filters);
+      if (Array.isArray(data)) {
+        return { count: data.length, results: data };
+      }
+      return data;
+    },
     placeholderData: (previous) => previous, // keep table stable across page/filter changes
   });
 }

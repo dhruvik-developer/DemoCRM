@@ -21,15 +21,15 @@ export default function MeetingsListPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Meetings</h1>
         {canCreate ? (
-          <Button asChild>
+          <Button asChild className="bg-[#2563EB] hover:bg-[#1D4ED8]">
             <Link to="/meetings/new">Request meeting</Link>
           </Button>
         ) : null}
       </div>
 
-      <Card>
+      <Card className="rounded-xl border-[#E5E7EB] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
         <CardHeader>
-          <CardTitle className="text-base">Open a meeting</CardTitle>
+          <CardTitle className="text-sm">Open a meeting</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">

@@ -23,8 +23,11 @@ export const endpoints = {
 
   crm: {
     leadSources: "/crm/lead-sources/",
+    leadSourceDetail: (id) => `/crm/lead-sources/${id}/`,
     pipelines: "/crm/pipelines/",
+    pipelineDetail: (id) => `/crm/pipelines/${id}/`,
     pipelineStages: "/crm/pipeline-stages/",
+    pipelineStageDetail: (id) => `/crm/pipeline-stages/${id}/`,
 
     leads: "/crm/leads/",
     leadDetail: (leadId) => `/crm/leads/${leadId}/`,

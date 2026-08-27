@@ -32,6 +32,8 @@ import CallTemplateDetailPage from "@/features/callforms/pages/CallTemplateDetai
 import CallFormSubmitPage from "@/features/callforms/pages/CallFormSubmitPage";
 import CallFormRulesPage, { AdhocProposalsPage } from "@/features/callforms/pages/CallFormRulesPage";
 import AdminRolesPage from "@/features/admin/pages/AdminRolesPage";
+import AdminLeadSourcesPage from "@/features/admin/pages/AdminLeadSourcesPage";
+import AdminPipelinesPage from "@/features/admin/pages/AdminPipelinesPage";
 import ProfilePage from "@/features/admin/pages/ProfilePage";
 import RouteErrorBoundary from "@/pages/RouteErrorBoundary";
 
@@ -94,6 +96,8 @@ export const router = createBrowserRouter([
           { path: "/callforms/rules", element: <CallFormRulesPage /> },
           { path: "/callforms/adhoc", element: <AdhocProposalsPage /> },
           { path: "/admin/roles", element: <AdminRolesPage /> },
+          { path: "/admin/sources", element: <AdminLeadSourcesPage /> },
+          { path: "/admin/pipelines", element: <AdminPipelinesPage /> },
           { path: "/profile", element: <ProfilePage /> },
           { path: "/reminders", element: <RemindersPage /> },
         ],

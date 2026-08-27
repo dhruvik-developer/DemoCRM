@@ -12,6 +12,7 @@ import {
   TASK_STATUSES,
 } from "@/utils/taskMasterData";
 import { useCreateTask } from "../hooks";
+import { useUsers } from "@/features/admin/hooks";
 import LeadSelect from "@/features/leads/components/LeadSelect";
 import { taskSchema } from "@/schemas/task.schema";
 import FormField from "@/components/forms/FormField";
@@ -29,6 +30,7 @@ import {
 export default function TaskCreatePage() {
   const navigate = useNavigate();
   const createTask = useCreateTask();
+  const usersQuery = useUsers();
 
   const {
     register,
@@ -46,6 +48,7 @@ export default function TaskCreatePage() {
       status: String(TASK_STATUSES[0]?.id ?? ""),
       priority: String(TASK_PRIORITIES[1]?.id ?? TASK_PRIORITIES[0]?.id ?? ""),
       category: String(TASK_CATEGORIES[0]?.id ?? ""),
+      assigned_to: "",
     },
   });
 
@@ -53,6 +56,7 @@ export default function TaskCreatePage() {
   const statusValue = useWatch({ control, name: "status" });
   const priorityValue = useWatch({ control, name: "priority" });
   const categoryValue = useWatch({ control, name: "category" });
+  const assignedToValue = useWatch({ control, name: "assigned_to" });
 
   const onSubmit = async (values) => {
     try {
@@ -66,6 +70,7 @@ export default function TaskCreatePage() {
         status: Number(values.status),
         priority: Number(values.priority),
         category: Number(values.category),
+        assigned_to: values.assigned_to || undefined,
       });
       navigate("/tasks");
     } catch (error) {
@@ -104,9 +109,29 @@ export default function TaskCreatePage() {
           <Textarea id="description" rows={3} {...register("description")} />
         </FormField>
 
-        <FormField id="lead" label="Lead" error={errors.lead?.message} help="Every task belongs to a lead.">
-          <LeadSelect value={leadValue} onChange={(value) => setValue("lead", value)} />
-        </FormField>
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField id="lead" label="Lead" error={errors.lead?.message} help="Every task belongs to a lead.">
+            <LeadSelect value={leadValue} onChange={(value) => setValue("lead", value)} />
+          </FormField>
+
+          <FormField id="assigned_to" label="Assigned To Employee" error={errors.assigned_to?.message}>
+            <Select
+              value={assignedToValue || ""}
+              onValueChange={(value) => setValue("assigned_to", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select Employee…" />
+              </SelectTrigger>
+              <SelectContent>
+                {(usersQuery.data ?? []).map((user) => (
+                  <SelectItem key={user.user_id} value={user.user_id}>
+                    {user.full_name || user.username} {user.role ? `(${user.role})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+        </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <FormField id="status" label="Status">
