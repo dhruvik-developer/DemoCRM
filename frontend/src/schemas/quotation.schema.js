@@ -5,10 +5,15 @@ import { z } from "zod";
 
 export const lineItemSchema = z.object({
   description: z.string().trim().min(1, "Description is required."),
-  quantity: z.coerce
-    .number({ message: "Quantity is required." })
-    .int("Quantity must be a whole number.")
-    .min(1, "Quantity must be at least 1."),
+  quantity: z.preprocess(
+    (val) => (val === "" || val === undefined || val === null ? undefined : Number(val)),
+    z
+      .number({ message: "Quantity is required." })
+      .min(1, "Quantity must be at least 1.")
+      .refine((val) => Number.isInteger(val), {
+        message: "Quantity must be a whole number.",
+      }),
+  ),
   unit_price: z.coerce
     .number({ message: "Unit price is required." })
     .min(0.01, "Unit price must be at least 0.01."),

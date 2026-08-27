@@ -1193,3 +1193,40 @@ class ResetPasswordAPIView(APIView):
             {"message": "Password has been reset successfully."},
             status=status.HTTP_200_OK,
         )
+
+
+class UserListAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    @extend_schema(
+        summary="List active users/employees",
+        description="Retrieve a list of all active users/employees for assignment dropdowns.",
+        tags=["Accounts"],
+        operation_id="user_list",
+    )
+    def get(self, request):
+        users = (
+            CustomUser.objects.select_related("role")
+            .filter(is_active=True)
+            .order_by("username")
+        )
+        data = [
+            {
+                "user_id": str(u.user_id),
+                "id": str(u.user_id),
+                "username": u.username,
+                "email": u.email,
+                "full_name": u.get_full_name() or u.username,
+                "role": u.role.rolename if u.role else None,
+                "role_id": u.role.role_id if u.role else None,
+            }
+            for u in users
+        ]
+        return Response(
+            {
+                "message": "Users retrieved successfully.",
+                "users": data,
+                "results": data,
+            },
+            status=status.HTTP_200_OK,
+        )

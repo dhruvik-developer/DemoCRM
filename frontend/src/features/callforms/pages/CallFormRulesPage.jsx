@@ -2,7 +2,7 @@
 // field proposals with review flow. Version selection via dropdown.
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import {
@@ -68,13 +68,13 @@ export default function CallFormRulesPage() {
     resolver: zodResolver(triggerRuleSchema),
     defaultValues: {
       version: "",
-      trigger_condition: "ALWAYS",
-      task_title_template: "Follow-up with {lead_name}",
-      due_days_offset: 1,
-      assignee_rule: "CONDUCTING_AGENT",
-      create_reminder: true,
+      trigger_condition: "COMPLETED",
+      target_type: "TASK",
+      configuration: {},
     },
   });
+
+  const ruleVersion = useWatch({ control: ruleForm.control, name: "version" });
 
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
@@ -102,7 +102,7 @@ export default function CallFormRulesPage() {
               <VersionSelect
                 id="rule_version"
                 label="Template version"
-                value={ruleForm.watch("version")}
+                value={ruleVersion}
                 onChange={(value) => ruleForm.setValue("version", value)}
               />
             </div>
@@ -187,6 +187,7 @@ export function AdhocProposalsPage() {
     resolver: zodResolver(adhocProposalSchema),
     defaultValues: { template_version: "", field_key: "", label: "" },
   });
+  const proposalVersion = useWatch({ control: proposalForm.control, name: "template_version" });
   const [rejectId, setRejectId] = useState(null);
 
   return (
@@ -206,7 +207,7 @@ export function AdhocProposalsPage() {
               <VersionSelect
                 id="adhoc_version"
                 label="Template version"
-                value={proposalForm.watch("template_version")}
+                value={proposalVersion}
                 onChange={(value) => proposalForm.setValue("template_version", value)}
               />
             </div>

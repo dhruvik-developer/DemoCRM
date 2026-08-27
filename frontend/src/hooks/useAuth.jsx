@@ -67,7 +67,10 @@ export function AuthProvider({ children }) {
 
     try {
       const profile = await fetchProfile(userId);
-      const roleName = await tryResolveRoleName(profile.role);
+      const roleName =
+        profile.role_name ??
+        profile.role?.rolename ??
+        (await tryResolveRoleName(profile.role));
       setState({
         status: "authenticated",
         user: profile,
@@ -107,7 +110,10 @@ export function AuthProvider({ children }) {
       try {
         const profile = await fetchProfile(userId);
         if (cancelled) return;
-        const roleName = await tryResolveRoleName(profile.role);
+        const roleName =
+          profile.role_name ??
+          profile.role?.rolename ??
+          (await tryResolveRoleName(profile.role));
         if (cancelled) return;
         setState({
           status: "authenticated",
