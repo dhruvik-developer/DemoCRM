@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
-export default function DynamicFormFields({ fields, values, onChange }) {
+export default function DynamicFormFields({ fields, values, errors = {}, onChange }) {
   if (!fields?.length) {
     return <p className="text-sm text-muted-foreground">This form has no fields.</p>;
   }
@@ -23,6 +23,7 @@ export default function DynamicFormFields({ fields, values, onChange }) {
       {fields.map((field) => {
         const id = `dyn_${field.field_key}`;
         const value = values[field.field_key] ?? "";
+        const fieldError = errors[field.field_key];
 
         return (
           <div key={field.id ?? field.field_key} className="flex flex-col gap-1">
@@ -32,7 +33,13 @@ export default function DynamicFormFields({ fields, values, onChange }) {
             </label>
 
             {field.field_type === "textarea" ? (
-              <Textarea id={id} rows={2} value={value} onChange={(e) => set(field.field_key, e.target.value)} />
+              <Textarea
+                id={id}
+                rows={2}
+                value={value}
+                className={fieldError ? "border-destructive focus-visible:ring-destructive" : ""}
+                onChange={(e) => set(field.field_key, e.target.value)}
+              />
             ) : field.field_type === "boolean" ? (
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -46,7 +53,7 @@ export default function DynamicFormFields({ fields, values, onChange }) {
               </label>
             ) : field.field_type === "select" ? (
               <Select value={value} onValueChange={(next) => set(field.field_key, next)}>
-                <SelectTrigger id={id}>
+                <SelectTrigger id={id} className={fieldError ? "border-destructive focus:ring-destructive" : ""}>
                   <SelectValue placeholder="Select…" />
                 </SelectTrigger>
                 <SelectContent>
@@ -66,11 +73,18 @@ export default function DynamicFormFields({ fields, values, onChange }) {
                     : field.field_type // date / time / text map directly
                 }
                 value={value}
+                className={fieldError ? "border-destructive focus-visible:ring-destructive" : ""}
                 onChange={(e) => set(field.field_key, e.target.value)}
               />
             )}
 
-            {field.help_text ? (
+            {fieldError ? (
+              <p role="alert" className="text-xs text-destructive font-medium">
+                {fieldError}
+              </p>
+            ) : null}
+
+            {field.help_text && !fieldError ? (
               <p className="text-xs text-muted-foreground">{field.help_text}</p>
             ) : null}
           </div>
@@ -79,4 +93,3 @@ export default function DynamicFormFields({ fields, values, onChange }) {
     </div>
   );
 }
-

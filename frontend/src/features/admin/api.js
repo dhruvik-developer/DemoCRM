@@ -33,6 +33,11 @@ export async function getPermissions() {
   return unwrap(data);
 }
 
+export async function getUsers() {
+  const { data } = await apiClient.get(endpoints.auth.users);
+  return data?.users ?? data?.results ?? (Array.isArray(data) ? data : []);
+}
+
 /** PUT /assign-role/<uuid>/ — {role_id} required. */
 export async function assignRole(userId, roleId) {
   const { data } = await apiClient.put(endpoints.auth.assignRole(userId), {

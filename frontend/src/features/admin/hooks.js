@@ -12,6 +12,7 @@ import {
   deleteRole,
   getPermissions,
   getRoles,
+  getUsers,
   updateRole,
 } from "./api";
 
@@ -24,6 +25,14 @@ export function usePermissions() {
     queryKey: ["admin", "permissions"],
     queryFn: getPermissions,
     staleTime: 5 * 60 * 1000,
+  });
+}
+
+export function useUsers() {
+  return useQuery({
+    queryKey: ["admin", "users"],
+    queryFn: getUsers,
+    staleTime: 60 * 1000,
   });
 }
 

@@ -11,6 +11,7 @@ from .views import (
     AssignRoleAPIView,
     PermissionListCreateAPIView,
     PermissionDetailAPIView,
+    UserListAPIView,
 )
 
 # Forgot / Reset password (new - existing imports untouched)
@@ -23,6 +24,7 @@ urlpatterns = [
     path("refresh/", RefreshTokenAPIView.as_view(), name="token_refresh"),
     path("change-password/", ChangePasswordAPIView.as_view(), name="change_password"),
     path("profile/<uuid:user_id>/", ProfileAPIView.as_view(), name="profile"),
+    path("users/", UserListAPIView.as_view(), name="users"),
     path("roles/", RoleListCreateAPIView.as_view(), name="roles"),
     path("roles/<int:role_id>/", RoleDetailAPIView.as_view(), name="role_detail"),
     path("permissions/", PermissionListCreateAPIView.as_view(), name="permissions"),

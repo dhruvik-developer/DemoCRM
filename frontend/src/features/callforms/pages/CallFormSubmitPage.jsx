@@ -171,7 +171,12 @@ export default function CallFormSubmitPage() {
           <Card>
             <CardHeader><CardTitle className="text-base">3. Form</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-4">
-              <DynamicFormFields fields={fields} values={dynamicData} onChange={setDynamicData} />
+              <DynamicFormFields
+                fields={fields}
+                values={dynamicData}
+                errors={fieldErrors}
+                onChange={setDynamicData}
+              />
               {Object.entries(fieldErrors).map(([key, message]) => (
                 <p key={key} role="alert" className="text-xs text-destructive">{message}</p>
               ))}
