@@ -2,6 +2,7 @@
 // Queries underlying modules: leads, tasks, quotations, activities, notifications.
 // Role-specific cards gated via hasPermission; backend 403 remains authoritative.
 
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { useLeads } from "@/features/leads/hooks";
@@ -10,11 +11,13 @@ import { useQuotations } from "@/features/quotations/hooks";
 import { useActivities } from "@/features/activities/hooks";
 import { useNotifications } from "@/features/notifications/hooks";
 import { usePipelineStages, usePipelines } from "@/features/crm/hooks";
+import { useUsers, useUnlockUser } from "@/features/admin/hooks";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Users, CheckSquare, FileText, Bell, Activity } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Users, CheckSquare, FileText, Bell, Activity, ShieldCheck, Unlock } from "lucide-react";
 import ChangePasswordPage from "@/features/auth/pages/ChangePasswordPage";
 
 function Stat({ title, value, desc, icon: Icon, to, loading }) {
@@ -33,9 +36,78 @@ function Stat({ title, value, desc, icon: Icon, to, loading }) {
   );
 }
 
+function isAdminOrManager(user, resolved) {
+  if (resolved?.isAdmin) return true;
+  const roleName = user?.role_name ?? user?.role?.rolename;
+  if (roleName === "Admin" || roleName === "Manager") return true;
+  if (roleName === "Employee") return false;
+  if (typeof user?.role === "number" && resolved?.codenames) {
+    if (resolved.codenames.has("assign_task")) return true;
+    return false;
+  }
+  return false;
+}
+
+function AdminUnlockCard() {
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const usersQuery = useUsers();
+  const unlockUser = useUnlockUser();
+
+  return (
+    <Card className="rounded-xl border-amber-200 bg-amber-50/50 dark:bg-amber-950/20">
+      <CardHeader>
+        <CardTitle className="text-sm flex items-center gap-2">
+          <ShieldCheck className="h-4 w-4" /> Admin Panel — Unlock User
+        </CardTitle>
+        <CardDescription>
+          Clear login rate-limit lock. After 5 failed logins user gets 10 min cooldown, next failure = permanent 30-day lock until Admin/Manager unlocks. POST <span className="font-mono">/users/&#123;id&#125;/unlock/</span>
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="min-w-64 flex-1">
+            <label className="text-xs font-medium text-muted-foreground">Select user to unlock</label>
+            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+              <SelectTrigger className="mt-1 bg-white dark:bg-background">
+                <SelectValue placeholder={usersQuery.isLoading ? "Loading users…" : "Select user…"} />
+              </SelectTrigger>
+              <SelectContent>
+                {(usersQuery.data ?? []).map((u) => (
+                  <SelectItem key={u.user_id} value={u.user_id}>
+                    {u.full_name || u.username} — {u.email} {u.role ? `(${u.role})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <Button
+            disabled={!selectedUserId || unlockUser.isPending}
+            onClick={() => {
+              if (!selectedUserId) return;
+              unlockUser.mutate(selectedUserId, {
+                onSuccess: () => setSelectedUserId(""),
+              });
+            }}
+          >
+            <Unlock className="mr-2 h-4 w-4" />
+            {unlockUser.isPending ? "Unlocking…" : "Unlock"}
+          </Button>
+          <Link to="/admin/employees">
+            <Button variant="outline">Manage Employees →</Button>
+          </Link>
+        </div>
+        <p className="mt-2 text-xs text-muted-foreground">
+          Also available per-user in <span className="font-medium">Administration → Employees</span> table.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function DashboardPage() {
-  const { user, logout } = useAuth();
+  const { user, resolved, logout } = useAuth();
   const hasNoRole = user != null && user.role == null;
+  const canManageEmployees = isAdminOrManager(user, resolved);
 
   // Real queries — page_size 1 for count-only where possible, else small page
   const leadsQ = useLeads({ page: 1, page_size: 1, status: "ACTIVE" });
@@ -79,6 +151,8 @@ export default function DashboardPage() {
           Your account has no role yet — ask an admin to assign one (user ID: <span className="font-mono">{user?.user_id}</span>).
         </p>
       ) : null}
+
+      {canManageEmployees ? <AdminUnlockCard /> : null}
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <Stat title="Open leads" value={leadsQ.isLoading ? "—" : openLeads} desc="ACTIVE status" icon={Users} to="/leads" loading={leadsQ.isLoading} />

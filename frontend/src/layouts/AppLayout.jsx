@@ -20,9 +20,9 @@ import {
   Menu,
   PhoneCall,
   ShieldCheck,
+  UserPlus,
   Users,
 } from "lucide-react";
-import { useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -61,22 +61,43 @@ const NAV_GROUPS = [
       { to: "/meetings", label: "Meetings", icon: CalendarClock, codename: "view_meeting" },
       { to: "/followups", label: "Follow-ups", icon: PhoneCall, codename: "view_followup" },
       { to: "/reminders", label: "Reminders", icon: CalendarClock, codename: "view_reminder" },
-      { to: "/notifications", label: "Notifications", icon: Bell, codename: "view_notificationtemplate" },
+      { to: "/notifications", label: "Notifications", icon: Bell }, // inbox: IsAuthenticated, visible to all (Employee/Manager/Admin)
     ],
   },
   {
     label: "Administration",
     items: [
+      { to: "/admin/employees", label: "Employees", icon: UserPlus, requireAdminOrManager: true },
       { to: "/admin/roles", label: "Users / Roles", icon: ShieldCheck, codename: "view_role" },
       { to: "/admin/sources", label: "Lead Sources", icon: Database, codename: "view_leadsource" },
       { to: "/admin/pipelines", label: "Pipelines", icon: GitBranch, codename: "view_pipeline" },
       { to: "/callforms", label: "Form Templates", icon: ClipboardList, codename: "manage_calltemplate" },
-      { to: "/notifications/templates", label: "Notification Templates", icon: Bell, codename: "view_notificationtemplate" },
+      { to: "/notifications/templates", label: "Notification Templates", icon: Bell, requireAdminOrManager: true },
     ],
   },
 ];
 // eslint-disable-next-line no-unused-vars
 const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
+
+function isAdminOrManager(user, resolved) {
+  if (resolved?.isAdmin) return true;
+  const roleName = user?.role_name ?? user?.role?.rolename;
+  if (roleName === "Admin" || roleName === "Manager") return true;
+  if (roleName === "Employee") return false;
+  // fallback when role_name missing but role is numeric: infer from permissions
+  if (typeof user?.role === "number" && resolved?.codenames) {
+    // Manager seed has assign_task, Employee does not
+    if (resolved.codenames.has("assign_task")) return true;
+    return false;
+  }
+  return false;
+}
+
+function isNavItemVisible(item, resolved, user) {
+  if (item.requireAdminOrManager) return isAdminOrManager(user, resolved);
+  if (!item.codename) return true;
+  return hasPermission(resolved, item.codename);
+}
 
 function NotificationBell() {
   const { data } = useQuery({
@@ -107,14 +128,15 @@ function NotificationBell() {
   );
 }
 
-function MobileNav({ open, onOpenChange, resolved }) {
+function MobileNav({ open, onOpenChange, resolved, user, onAddEmployee }) {
+  const canManageEmployees = isAdminOrManager(user, resolved);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="left-0 top-0 h-dvh w-72 translate-x-0 translate-y-0 p-0 max-w-none gap-0 rounded-none">
         <div className="flex h-14 items-center border-b px-4 text-lg font-semibold">CRM</div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
           {NAV_GROUPS.map((group) => {
-            const visible = group.items.filter((i) => !i.codename || hasPermission(resolved, i.codename));
+            const visible = group.items.filter((i) => isNavItemVisible(i, resolved, user));
             if (!visible.length) return null;
             return (
               <div key={group.label} className="mb-2">
@@ -131,6 +153,20 @@ function MobileNav({ open, onOpenChange, resolved }) {
             );
           })}
         </nav>
+        {canManageEmployees ? (
+          <div className="border-t p-3">
+            <Button
+              className="w-full"
+              onClick={() => {
+                onOpenChange(false);
+                onAddEmployee?.();
+              }}
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add Employee
+            </Button>
+          </div>
+        ) : null}
       </DialogContent>
     </Dialog>
   );
@@ -139,17 +175,19 @@ function MobileNav({ open, onOpenChange, resolved }) {
 export default function AppLayout() {
   const { user, resolved, logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [addEmployeeOpen, setAddEmployeeOpen] = useState(false);
+  const canManageEmployees = isAdminOrManager(user, resolved);
 
   return (
     <div className="flex min-h-screen bg-background">
-      <MobileNav open={mobileOpen} onOpenChange={setMobileOpen} resolved={resolved} />
+      <MobileNav open={mobileOpen} onOpenChange={setMobileOpen} resolved={resolved} user={user} onAddEmployee={() => setAddEmployeeOpen(true)} />
       <aside className="hidden w-60 flex-col border-r bg-muted/30 md:flex">
         <div className="flex h-14 items-center border-b px-4 text-lg font-semibold tracking-tight">
           CRM
         </div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
           {NAV_GROUPS.map((group) => {
-            const visible = group.items.filter((i) => !i.codename || hasPermission(resolved, i.codename));
+            const visible = group.items.filter((i) => isNavItemVisible(i, resolved, user));
             if (visible.length === 0) return null;
             return (
               <div key={group.label} className="mb-3">
@@ -180,6 +218,14 @@ export default function AppLayout() {
             );
           })}
         </nav>
+        {canManageEmployees ? (
+          <div className="border-t p-3">
+            <Button className="w-full" onClick={() => setAddEmployeeOpen(true)}>
+              <UserPlus className="mr-2 h-4 w-4" />
+              Add Employee
+            </Button>
+          </div>
+        ) : null}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

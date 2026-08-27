@@ -585,6 +585,7 @@ class RoleDetailAPIView(APIView):
     permission_classes = [HasDynamicPermission]
     permission_names = {
         "PUT": "change_role",
+        "PATCH": "change_role",
         "DELETE": "delete_role",
     }
 
@@ -650,8 +651,8 @@ class RoleDetailAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     @extend_schema(
-        summary="Add permissions to a role",
-        description="Add permissions to an existing role.",
+        summary="Sync permissions for a role",
+        description="Sync permissions for a role — checked = granted, unchecked = removed. Send full desired permission id set; backend will set exactly that set (add + subtract).",
         tags=["Accounts"],
         operation_id="role_patch_permissions",
         parameters=[
@@ -665,7 +666,9 @@ class RoleDetailAPIView(APIView):
         request=inline_serializer(
             "RolePermissionPatchRequest",
             fields={
-                "permissions": serializers.ListField(child=serializers.IntegerField()),
+                "permissions": serializers.ListField(
+                    child=serializers.IntegerField(), allow_empty=True
+                ),
             },
         ),
         responses={
@@ -707,13 +710,21 @@ class RoleDetailAPIView(APIView):
 
         permission_ids = request.data.get("permissions")
 
-        if not permission_ids:
+        if permission_ids is None:
             return Response(
                 {"error": "permissions is required."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        permissions = Permission.objects.filter(id__in=permission_ids)
+        if not isinstance(permission_ids, list):
+            return Response(
+                {"error": "permissions must be a list."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        permissions = (
+            Permission.objects.filter(id__in=permission_ids) if permission_ids else []
+        )
 
         if permissions.count() != len(set(permission_ids)):
             return Response(
@@ -722,17 +733,18 @@ class RoleDetailAPIView(APIView):
             )
 
         try:
-            role.permissions.add(*permissions)
+            # set() syncs exactly — adds checked, removes unchecked
+            role.permissions.set(permissions)
         except Exception as e:
-            logger.exception("Failed to add permissions to role %s", role.rolename)
+            logger.exception("Failed to sync permissions for role %s", role.rolename)
             return Response(
-                {"error": "Failed to add permissions. Please try again."},
+                {"error": "Failed to sync permissions. Please try again."},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         return Response(
             {
-                "message": "Permissions added successfully.",
+                "message": "Permissions synced successfully.",
                 "role": RoleSerializer(role).data,
             },
             status=status.HTTP_200_OK,

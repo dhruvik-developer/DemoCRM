@@ -17,7 +17,7 @@ export async function createRole(values) {
   return data;
 }
 
-/** PATCH merges the given permission ids into the role. */
+/** PATCH syncs permission ids to role — checked = keep, unchecked = removed (set). */
 export async function updateRole(roleId, partial) {
   const { data } = await apiClient.patch(endpoints.auth.roleDetail(roleId), partial);
   return data;

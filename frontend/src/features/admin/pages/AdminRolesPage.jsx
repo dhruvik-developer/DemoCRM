@@ -40,6 +40,7 @@ import {
 } from "@/components/ui/select";
 
 const PROTECTED_ROLES = ["Admin", "Manager", "Employee"];
+const EDIT_PROTECTED_ROLES = ["Admin"]; // Admin perms cannot be changed; Manager/Employee can be edited via checkboxes
 
 export default function AdminRolesPage() {
   const rolesQuery = useRoles();
@@ -93,13 +94,14 @@ export default function AdminRolesPage() {
       <div className="grid gap-4 md:grid-cols-2">
         {roles.map((role) => {
           const roleName = role?.rolename ?? "Unknown";
-          const isProtected = PROTECTED_ROLES.includes(roleName);
+          const isDeleteProtected = PROTECTED_ROLES.includes(roleName);
+          const isEditProtected = EDIT_PROTECTED_ROLES.includes(roleName);
           const assignedPerms = role.permissions ?? [];
           return (
             <Card key={role.role_id}>
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-base font-semibold">{role.rolename}</CardTitle>
-                {!isProtected ? (
+                {!isDeleteProtected ? (
                   <Button
                     size="sm"
                     variant="ghost"
@@ -144,7 +146,7 @@ export default function AdminRolesPage() {
                     ) : null}
                   </div>
                 </div>
-                {!isProtected ? (
+                {!isEditProtected ? (
                   <Button
                     variant="outline"
                     size="sm"
@@ -158,7 +160,9 @@ export default function AdminRolesPage() {
                   >
                     Manage permissions
                   </Button>
-                ) : null}
+                ) : (
+                  <p className="text-xs text-muted-foreground">Admin has all permissions — not editable.</p>
+                )}
               </CardContent>
             </Card>
           );
