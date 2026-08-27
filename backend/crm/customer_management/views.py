@@ -221,6 +221,96 @@ class PipelineStageListCreateView(APIView):
         )
 
 
+@extend_schema(tags=["Lead Sources"])
+class LeadSourceDetailView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "view_leadsource",
+        "PATCH": "manage_lead_source",
+        "PUT": "manage_lead_source",
+        "DELETE": "manage_lead_source",
+    }
+
+    def get(self, request, pk):
+        source = get_object_or_404(LeadSource, pk=pk)
+        return Response(LeadSourceSerializer(source).data)
+
+    def patch(self, request, pk):
+        source = get_object_or_404(LeadSource, pk=pk)
+        serializer = LeadSourceSerializer(source, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        return self.patch(request, pk)
+
+    def delete(self, request, pk):
+        source = get_object_or_404(LeadSource, pk=pk)
+        source.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["Pipelines"])
+class PipelineDetailView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "view_pipeline",
+        "PATCH": "manage_pipeline",
+        "PUT": "manage_pipeline",
+        "DELETE": "manage_pipeline",
+    }
+
+    def get(self, request, pk):
+        pipeline = get_object_or_404(Pipeline, pk=pk)
+        return Response(PipelineSerializer(pipeline).data)
+
+    def patch(self, request, pk):
+        pipeline = get_object_or_404(Pipeline, pk=pk)
+        serializer = PipelineSerializer(pipeline, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        return self.patch(request, pk)
+
+    def delete(self, request, pk):
+        pipeline = get_object_or_404(Pipeline, pk=pk)
+        pipeline.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@extend_schema(tags=["Pipelines"])
+class PipelineStageDetailView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {
+        "GET": "view_pipelinestage",
+        "PATCH": "manage_pipeline_stage",
+        "PUT": "manage_pipeline_stage",
+        "DELETE": "manage_pipeline_stage",
+    }
+
+    def get(self, request, pk):
+        stage = get_object_or_404(PipelineStage, pk=pk)
+        return Response(PipelineStageSerializer(stage).data)
+
+    def patch(self, request, pk):
+        stage = get_object_or_404(PipelineStage, pk=pk)
+        serializer = PipelineStageSerializer(stage, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        return self.patch(request, pk)
+
+    def delete(self, request, pk):
+        stage = get_object_or_404(PipelineStage, pk=pk)
+        stage.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 @extend_schema(tags=["Leads"])
 class LeadListCreateView(APIView):
     permission_classes = [CRMHasPermission]

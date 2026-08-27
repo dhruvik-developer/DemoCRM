@@ -58,8 +58,28 @@ export default function LeadsListPage() {
     page_size: 10,
   });
 
-  const rows = leadsQuery.data?.results ?? [];
-  const count = leadsQuery.data?.count ?? 0;
+  const rawData = leadsQuery.data;
+  const rawRows = Array.isArray(rawData)
+    ? rawData
+    : Array.isArray(rawData?.results)
+      ? rawData.results
+      : [];
+
+  const filteredRows = rawRows.filter((lead) => {
+    if (status && status !== "ALL" && lead.status !== status) return false;
+    if (search) {
+      const query = search.toLowerCase();
+      const nameMatch = lead.name?.toLowerCase().includes(query);
+      const emailMatch = lead.email?.toLowerCase().includes(query);
+      const phoneMatch = lead.phone?.toLowerCase().includes(query);
+      const companyMatch = lead.company_name?.toLowerCase().includes(query);
+      return nameMatch || emailMatch || phoneMatch || companyMatch;
+    }
+    return true;
+  });
+
+  const rows = filteredRows;
+  const count = rawData?.count ?? filteredRows.length;
   const canCreate = hasPermission(resolved, "add_lead");
   const masterData = useMasterDataMaps();
 
@@ -117,6 +137,11 @@ export default function LeadsListPage() {
             { key: "email", header: "Email" },
             { key: "phone", header: "Phone" },
             { key: "company_name", header: "Company" },
+            {
+              key: "source",
+              header: "Source",
+              render: (lead) => masterData.sourceName(lead.source) ?? "—",
+            },
             {
               key: "status",
               header: "Status",

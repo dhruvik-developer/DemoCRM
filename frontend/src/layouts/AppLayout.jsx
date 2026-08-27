@@ -5,22 +5,27 @@
 import { Link, NavLink, Outlet } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Users,
+  Bell,
   Building2,
   CalendarClock,
   CheckSquare,
-  ClipboardList,
-  FileText,
-  PhoneCall,
-  LayoutDashboard,
-  Bell,
-  LogOut,
   ChevronDown,
+  ClipboardList,
+  Database,
+  FileText,
+  GitBranch,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  PhoneCall,
   ShieldCheck,
+  Users,
 } from "lucide-react";
+import { useState } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,20 +39,42 @@ import { hasPermission } from "@/utils/permissions";
 import apiClient from "@/api/axios";
 import { endpoints } from "@/api/endpoints";
 
-const NAV_ITEMS = [
-  { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  // Leads module is Admin-only under current role seeds (BACKEND_GAPS.md G23) —
-  // gating keeps Employees/Managers out instead of serving them 403 pages.
-  { to: "/leads", label: "Leads", icon: Users, codename: "view_lead" },
-  { to: "/customers", label: "Customers", icon: Building2, codename: "view_customer" },
-  { to: "/tasks", label: "Tasks", icon: CheckSquare, codename: "view_task" },
-  { to: "/meetings", label: "Meetings", icon: CalendarClock, codename: "view_meeting" },
-  { to: "/followups", label: "Follow-ups", icon: PhoneCall, codename: "view_followup" },
-  { to: "/quotations", label: "Quotations", icon: FileText, codename: "view_quotation" },
-  { to: "/callforms", label: "Call forms", icon: ClipboardList, codename: "view_calltemplate" },
-  { to: "/notifications", label: "Notifications", icon: Bell, codename: "view_notificationtemplate" },
-  { to: "/admin/roles", label: "Admin · Roles", icon: ShieldCheck, codename: "view_role" },
+const NAV_GROUPS = [
+  {
+    label: "CRM Sales",
+    items: [
+      { to: "/", label: "Overview", icon: LayoutDashboard, end: true },
+      { to: "/leads", label: "Leads", icon: Users, codename: "view_lead" },
+      { to: "/tasks", label: "My Tasks", icon: CheckSquare, codename: "view_task" },
+      { to: "/followups", label: "Activities", icon: PhoneCall, codename: "view_followup" },
+      { to: "/admin/pipelines", label: "Pipeline", icon: GitBranch, codename: "view_pipeline" },
+      { to: "/callforms", label: "Forms", icon: ClipboardList, codename: "manage_calltemplate" },
+      { to: "/quotations", label: "Quotations", icon: FileText, codename: "view_quotation" },
+      { to: "/customers", label: "Customers", icon: Building2, codename: "view_customer" },
+    ],
+  },
+  {
+    label: "Operations",
+    items: [
+      { to: "/meetings", label: "Meetings", icon: CalendarClock, codename: "view_meeting" },
+      { to: "/followups", label: "Follow-ups", icon: PhoneCall, codename: "view_followup" },
+      { to: "/reminders", label: "Reminders", icon: CalendarClock, codename: "view_reminder" },
+      { to: "/notifications", label: "Notifications", icon: Bell, codename: "view_notificationtemplate" },
+    ],
+  },
+  {
+    label: "Administration",
+    items: [
+      { to: "/admin/roles", label: "Users / Roles", icon: ShieldCheck, codename: "view_role" },
+      { to: "/admin/sources", label: "Lead Sources", icon: Database, codename: "view_leadsource" },
+      { to: "/admin/pipelines", label: "Pipelines", icon: GitBranch, codename: "view_pipeline" },
+      { to: "/callforms", label: "Form Templates", icon: ClipboardList, codename: "manage_calltemplate" },
+      { to: "/notifications/templates", label: "Notification Templates", icon: Bell, codename: "view_notificationtemplate" },
+    ],
+  },
 ];
+// eslint-disable-next-line no-unused-vars
+const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
 
 function NotificationBell() {
   const { data } = useQuery({
@@ -78,42 +105,87 @@ function NotificationBell() {
   );
 }
 
+function MobileNav({ open, onOpenChange, resolved }) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="left-0 top-0 h-dvh w-72 translate-x-0 translate-y-0 p-0 max-w-none gap-0 rounded-none">
+        <div className="flex h-14 items-center border-b px-4 text-lg font-semibold">CRM</div>
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
+          {NAV_GROUPS.map((group) => {
+            const visible = group.items.filter((i) => !i.codename || hasPermission(resolved, i.codename));
+            if (!visible.length) return null;
+            return (
+              <div key={group.label} className="mb-2">
+                <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</div>
+                <div className="flex flex-col gap-1">
+                  {visible.map((item) => (
+                    <NavLink key={`${group.label}-${item.to}`} to={item.to} end={item.end} onClick={() => onOpenChange(false)} className={({ isActive }) => ["flex items-center gap-3 rounded-md px-3 py-2 text-sm", isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"].join(" ")}>
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </nav>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AppLayout() {
   const { user, resolved, logout } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
     <div className="flex min-h-screen bg-background">
+      <MobileNav open={mobileOpen} onOpenChange={setMobileOpen} resolved={resolved} />
       <aside className="hidden w-60 flex-col border-r bg-muted/30 md:flex">
         <div className="flex h-14 items-center border-b px-4 text-lg font-semibold tracking-tight">
           CRM
         </div>
-        <nav className="flex flex-1 flex-col gap-1 p-2">
-          {NAV_ITEMS.filter(
-            (item) => !item.codename || hasPermission(resolved, item.codename),
-          ).map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                [
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                ].join(" ")
-              }
-            >
-              <item.icon className="h-4 w-4" />
-              {item.label}
-            </NavLink>
-          ))}
+        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
+          {NAV_GROUPS.map((group) => {
+            const visible = group.items.filter((i) => !i.codename || hasPermission(resolved, i.codename));
+            if (visible.length === 0) return null;
+            return (
+              <div key={group.label} className="mb-3">
+                <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {group.label}
+                </div>
+                <div className="flex flex-col gap-1">
+                  {visible.map((item) => (
+                    <NavLink
+                      key={`${group.label}-${item.to}`}
+                      to={item.to}
+                      end={item.end}
+                      className={({ isActive }) =>
+                        [
+                          "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                          isActive
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                        ].join(" ")
+                      }
+                    >
+                      <item.icon className="h-4 w-4" />
+                      {item.label}
+                    </NavLink>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </nav>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center justify-between border-b px-4">
-          <span />
+          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
+            <Menu className="h-5 w-5" />
+          </Button>
+          <span className="hidden md:block" />
           <div className="flex items-center gap-1">
             <NotificationBell />
             <DropdownMenu>

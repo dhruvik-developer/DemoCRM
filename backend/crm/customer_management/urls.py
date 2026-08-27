@@ -15,8 +15,11 @@ from .views import (
     LeadLostView,
     LeadProgressView,
     LeadReengageView,
+    LeadSourceDetailView,
     LeadSourceListCreateView,
+    PipelineDetailView,
     PipelineListCreateView,
+    PipelineStageDetailView,
     PipelineStageListCreateView,
     QuotationAcceptView,
     QuotationApproveView,
@@ -57,17 +60,32 @@ urlpatterns = [
         LeadSourceListCreateView.as_view(),
         name="lead-source-list-create",
     ),
+    path(
+        "lead-sources/<uuid:pk>/",
+        LeadSourceDetailView.as_view(),
+        name="lead-source-detail",
+    ),
     # Pipelines
     path(
         "pipelines/",
         PipelineListCreateView.as_view(),
         name="pipeline-list-create",
     ),
+    path(
+        "pipelines/<uuid:pk>/",
+        PipelineDetailView.as_view(),
+        name="pipeline-detail",
+    ),
     # Pipeline Stages
     path(
         "pipeline-stages/",
         PipelineStageListCreateView.as_view(),
         name="pipeline-stage-list-create",
+    ),
+    path(
+        "pipeline-stages/<uuid:pk>/",
+        PipelineStageDetailView.as_view(),
+        name="pipeline-stage-detail",
     ),
     # Leads
     path(
