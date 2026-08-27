@@ -68,13 +68,13 @@ export default function CallFormRulesPage() {
     resolver: zodResolver(triggerRuleSchema),
     defaultValues: {
       version: "",
-      trigger_condition: "ALWAYS",
-      task_title_template: "Follow-up with {lead_name}",
-      due_days_offset: 1,
-      assignee_rule: "CONDUCTING_AGENT",
-      create_reminder: true,
+      trigger_condition: "COMPLETED",
+      target_type: "TASK",
+      configuration: {},
     },
   });
+  const ruleVersion = useWatch({ control: ruleForm.control, name: "version" });
+
   const ruleVersion = useWatch({ control: ruleForm.control, name: "version" });
 
   return (

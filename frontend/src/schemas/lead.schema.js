@@ -21,6 +21,7 @@ export const leadSchema = z.object({
   company_name: z.string().trim().max(255).optional().or(z.literal("")),
   source: z.string().uuid("Select a lead source."),
   pipeline: z.string().uuid("Select a pipeline."),
+  assigned_to: z.string().optional().or(z.literal("")),
   total_value: z
     .string()
     .optional()

@@ -82,10 +82,7 @@ export default function ActivityCreateDialog({ leadId, customerId, open, onOpenC
     }
   };
 
-  // Computed once per dialog mount (lazy init keeps Date.now() out of render).
-  const [minDate] = useState(() =>
-    toLocalInputValue(new Date(Date.now() + 60 * 1000)),
-  );
+  const [minDate] = useState(() => toLocalInputValue(new Date(Date.now() + 60 * 1000)));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

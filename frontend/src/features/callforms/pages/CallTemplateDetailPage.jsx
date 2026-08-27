@@ -59,7 +59,8 @@ function FieldEditor({ version }) {
   const deleteField = useDeleteField();
   const reorder = useReorderFields();
   const [form, setForm] = useState(EMPTY_FIELD_FORM);
-  const [formError, setFormError] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
+  const [generalError, setGeneralError] = useState("");
 
   const locked = version.is_locked;
   const fields = [...(fieldsQuery.data ?? [])].sort(
@@ -80,30 +81,68 @@ function FieldEditor({ version }) {
     });
   };
 
+  const sanitizeKey = (key) =>
+    key
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9_]/g, "_")
+      .replace(/_+/g, "_");
+
   const onCreate = async (event) => {
     event.preventDefault();
-    setFormError("");
-    const parsed = callFieldSchema.safeParse(form); // mirrors serializer rules
+    setFieldErrors({});
+    setGeneralError("");
+
+    // Auto-sanitize field_key if user typed uppercase or spaces
+    const effectiveKey = form.field_key
+      ? sanitizeKey(form.field_key)
+      : form.label
+      ? sanitizeKey(form.label)
+      : "";
+
+    const candidate = { ...form, field_key: effectiveKey };
+    const parsed = callFieldSchema.safeParse(candidate);
+
     if (!parsed.success) {
-      setFormError(parsed.error.issues[0]?.message ?? "Invalid field.");
+      const errors = {};
+      parsed.error.issues.forEach((issue) => {
+        const fieldName = issue.path[0] ?? "general";
+        errors[fieldName] = issue.message;
+      });
+      setFieldErrors(errors);
+      if (errors.general) setGeneralError(errors.general);
       return;
     }
+
     try {
       await createField.mutateAsync({
         template_version: version.id,
-        field_key: form.field_key,
-        label: form.label,
-        field_type: form.field_type,
-        is_required: form.is_required,
-        help_text: form.help_text || undefined,
+        field_key: candidate.field_key,
+        label: candidate.label,
+        field_type: candidate.field_type,
+        is_required: candidate.is_required,
+        help_text: candidate.help_text || undefined,
         options:
-          form.field_type === "select"
-            ? form.options_text.split(",").map((option) => option.trim()).filter(Boolean)
+          candidate.field_type === "select"
+            ? candidate.options_text
+                .split(",")
+                .map((option) => option.trim())
+                .filter(Boolean)
             : undefined,
       });
       setForm(EMPTY_FIELD_FORM);
-    } catch {
-      // Toasted by the mutation.
+      setFieldErrors({});
+      setGeneralError("");
+    } catch (err) {
+      if (err?.normalized?.fieldErrors) {
+        const backendErrors = {};
+        Object.entries(err.normalized.fieldErrors).forEach(([k, msgs]) => {
+          backendErrors[k] = Array.isArray(msgs) ? msgs[0] : msgs;
+        });
+        setFieldErrors(backendErrors);
+      } else {
+        setGeneralError(err?.message ?? "Failed to create field.");
+      }
     }
   };
 
@@ -162,18 +201,31 @@ function FieldEditor({ version }) {
 
         {!locked ? (
           <form onSubmit={onCreate} className="grid gap-3 md:grid-cols-6">
-            <FormField id="f_key" label="Key">
+            <FormField
+              id="f_key"
+              label="Key"
+              required
+              error={fieldErrors.field_key}
+              help="Lowercase letters, digits and underscores."
+            >
               <Input
                 id="f_key"
-                placeholder="e.g. interested"
+                placeholder="e.g. company_name"
+                className={fieldErrors.field_key ? "border-destructive" : ""}
                 value={form.field_key}
                 onChange={(e) => setForm({ ...form, field_key: e.target.value })}
               />
             </FormField>
-            <FormField id="f_label" label="Label">
-              <Input id="f_label" value={form.label} onChange={(e) => setForm({ ...form, label: e.target.value })} />
+            <FormField id="f_label" label="Label" required error={fieldErrors.label}>
+              <Input
+                id="f_label"
+                placeholder="e.g. Company Name"
+                className={fieldErrors.label ? "border-destructive" : ""}
+                value={form.label}
+                onChange={(e) => setForm({ ...form, label: e.target.value })}
+              />
             </FormField>
-            <FormField id="f_type" label="Type">
+            <FormField id="f_type" label="Type" error={fieldErrors.field_type}>
               <Select value={form.field_type} onValueChange={(value) => setForm({ ...form, field_type: value })}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -183,10 +235,11 @@ function FieldEditor({ version }) {
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField id="f_options" label="Options (select only)">
+            <FormField id="f_options" label="Options (select only)" error={fieldErrors.options_text}>
               <Input
                 id="f_options"
                 placeholder="a,b,c"
+                className={fieldErrors.options_text ? "border-destructive" : ""}
                 value={form.options_text}
                 onChange={(e) => setForm({ ...form, options_text: e.target.value })}
                 disabled={form.field_type !== "select"}
@@ -202,12 +255,12 @@ function FieldEditor({ version }) {
               Required
             </label>
             <Button type="submit" className="self-end" disabled={createField.isPending}>
-              Add field
+              {createField.isPending ? "Adding…" : "Add field"}
             </Button>
 
-            {formError ? (
+            {generalError ? (
               <p role="alert" className="text-sm text-destructive md:col-span-6">
-                {formError}
+                {generalError}
               </p>
             ) : null}
           </form>

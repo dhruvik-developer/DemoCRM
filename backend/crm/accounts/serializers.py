@@ -52,6 +52,10 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    role_name = serializers.CharField(
+        source="role.rolename", read_only=True, default=None
+    )
+
     class Meta:
         model = CustomUser
         fields = [
@@ -60,6 +64,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "email",
             "phone_number",
             "role",
+            "role_name",
             "created_at",
             "updated_at",
         ]

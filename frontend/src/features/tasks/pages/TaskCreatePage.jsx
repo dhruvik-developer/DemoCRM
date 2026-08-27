@@ -49,10 +49,10 @@ export default function TaskCreatePage() {
     },
   });
 
-  const lead = useWatch({ control, name: "lead" });
-  const status = useWatch({ control, name: "status" });
-  const priority = useWatch({ control, name: "priority" });
-  const category = useWatch({ control, name: "category" });
+  const leadValue = useWatch({ control, name: "lead" });
+  const statusValue = useWatch({ control, name: "status" });
+  const priorityValue = useWatch({ control, name: "priority" });
+  const categoryValue = useWatch({ control, name: "category" });
 
   const onSubmit = async (values) => {
     try {
@@ -105,12 +105,12 @@ export default function TaskCreatePage() {
         </FormField>
 
         <FormField id="lead" label="Lead" error={errors.lead?.message} help="Every task belongs to a lead.">
-          <LeadSelect value={lead} onChange={(value) => setValue("lead", value)} />
+          <LeadSelect value={leadValue} onChange={(value) => setValue("lead", value)} />
         </FormField>
 
         <div className="grid gap-4 md:grid-cols-2">
           <FormField id="status" label="Status">
-            <Select value={status} onValueChange={(value) => setValue("status", value)}>
+            <Select value={statusValue} onValueChange={(value) => setValue("status", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -125,7 +125,7 @@ export default function TaskCreatePage() {
           </FormField>
 
           <FormField id="priority" label="Priority">
-            <Select value={priority} onValueChange={(value) => setValue("priority", value)}>
+            <Select value={priorityValue} onValueChange={(value) => setValue("priority", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -142,7 +142,7 @@ export default function TaskCreatePage() {
 
         <div className="grid gap-4 md:grid-cols-2">
           <FormField id="category" label="Category">
-            <Select value={category} onValueChange={(value) => setValue("category", value)}>
+            <Select value={categoryValue} onValueChange={(value) => setValue("category", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>

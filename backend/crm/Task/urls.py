@@ -5,10 +5,12 @@ from .views import (
     TaskDetailView,
     TaskAssignView,
     TaskStatusUpdateView,
+    MeetingCreateView,
     MeetingRescheduleView,
     MeetingStatusUpdateView,
     MeetingParticipantAddView,
     MeetingParticipantRemoveView,
+    ReminderCreateView,
     ReminderDetailView,
     ReminderStatusUpdateView,
     TaskStatusListView,
@@ -75,6 +77,11 @@ urlpatterns = [
     # MEETING
     # ======================================================
     path(
+        "meetings/",
+        MeetingCreateView.as_view(),
+        name="meeting-list-create",
+    ),
+    path(
         "meetings/<int:meeting_id>/reschedule/",
         MeetingRescheduleView.as_view(),
         name="meeting-reschedule",
@@ -97,6 +104,11 @@ urlpatterns = [
     # ======================================================
     # REMINDER
     # ======================================================
+    path(
+        "reminders/",
+        ReminderCreateView.as_view(),
+        name="reminder-list-create",
+    ),
     path(
         "reminders/<int:reminder_id>/",
         ReminderDetailView.as_view(),

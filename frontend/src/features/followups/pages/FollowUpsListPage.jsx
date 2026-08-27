@@ -62,8 +62,8 @@ function CreateDialog({ open, onOpenChange }) {
   });
 
   const taskId = useWatch({ control, name: "task_id" });
-  const followupTypeId = useWatch({ control, name: "followup_type_id" });
-  const followupStatusId = useWatch({ control, name: "followup_status_id" });
+  const typeId = useWatch({ control, name: "followup_type_id" });
+  const statusId = useWatch({ control, name: "followup_status_id" });
 
   const onSubmit = (values) =>
     createFollowUp
@@ -90,7 +90,7 @@ function CreateDialog({ open, onOpenChange }) {
 
           <div className="grid gap-3 md:grid-cols-2">
             <FormField id="followup_type" label="Type" error={errors.followup_type_id?.message}>
-              <Select value={followupTypeId} onValueChange={(value) => setValue("followup_type_id", value)}>
+              <Select value={typeId} onValueChange={(value) => setValue("followup_type_id", value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -105,7 +105,7 @@ function CreateDialog({ open, onOpenChange }) {
             </FormField>
 
             <FormField id="followup_status" label="Status">
-              <Select value={followupStatusId} onValueChange={(value) => setValue("followup_status_id", value)}>
+              <Select value={statusId} onValueChange={(value) => setValue("followup_status_id", value)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

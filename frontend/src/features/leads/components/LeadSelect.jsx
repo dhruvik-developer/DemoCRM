@@ -50,8 +50,8 @@ export default function LeadSelect({ value, onChange, disabled }) {
         </SelectTrigger>
         <SelectContent>
           {leads.map((lead) => (
-            <SelectItem key={lead.id} value={lead.id}>
-              {lead.name} — {lead.company_name || lead.email || String(lead.id).slice(0, 8)}
+            <SelectItem key={lead.id} value={String(lead.id)}>
+              {lead.id} - {lead.name}
             </SelectItem>
           ))}
         </SelectContent>
