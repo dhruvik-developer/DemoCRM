@@ -20,19 +20,28 @@ import {
   useRemoveParticipant,
   useRescheduleMeeting,
 } from "../hooks";
+import { useUsers } from "@/features/admin/hooks";
 import { approvalDecisionSchema } from "@/schemas/meeting.schema";
 import PageError from "@/components/common/PageError";
 import PageLoader from "@/components/common/PageLoader";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import StatusBadge from "@/components/common/StatusBadge";
 import FormField from "@/components/forms/FormField";
-import { Button } from "@/components/ui/button";import {
+import { Button } from "@/components/ui/button";
+import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function Field({ label, value }) {
   return (
@@ -74,15 +83,23 @@ export default function MeetingDetailPage() {
 
   const isAssignedManager =
     user?.user_id != null &&
-    String(meeting.manager ?? "") === String(user.user_id);
+    String(meeting?.manager?.user_id ?? meeting?.manager ?? "") === String(user.user_id);
   const isCreator =
     user?.user_id != null &&
-    String(meeting.created_by ?? "") === String(user.user_id);
-  const isPending = meeting.approval_status === "PENDING";
-  const isRejected = meeting.approval_status === "REJECTED";
+    String(meeting?.created_by?.user_id ?? meeting?.created_by ?? "") === String(user.user_id);
+  const isManagerRole =
+    resolved?.isAdmin ||
+    resolved?.roleName === "Manager" ||
+    String(resolved?.roleName || "").toLowerCase() === "manager";
 
-  const showApprovalActions = isPending && isAssignedManager && can("change_meeting");
-  const showReschedule = isRejected && isCreator;
+  const isEmployeeRole = resolved?.roleName === "Employee";
+
+  const isPending = meeting?.approval_status === "PENDING";
+  const isRejected = meeting?.approval_status === "REJECTED";
+
+  const showApprovalActions = isPending && (isAssignedManager || isManagerRole);
+  // Only Employee (creator) can reschedule — Manager cannot reschedule
+  const showReschedule = isRejected && isCreator && isEmployeeRole;
 
   const onApprove = () =>
     decideApproval.mutateAsync({ approval_status: "APPROVED" });
@@ -219,13 +236,19 @@ export default function MeetingDetailPage() {
               }}
             >
               <div className="flex-1">
-                <FormField id="participant_user" label="Add participant (user UUID)">
-                  <Input
-                    id="participant_user"
-                    placeholder="00000000-0000-4000-8000-…"
-                    value={participantId}
-                    onChange={(event) => setParticipantId(event.target.value)}
-                  />
+                <FormField id="participant_user" label="Add participant">
+                  <Select value={participantId} onValueChange={setParticipantId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select user to invite…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((u) => (
+                        <SelectItem key={u.user_id} value={String(u.user_id)}>
+                          {u.full_name || u.username} {u.role ? `(${u.role})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </FormField>
               </div>
               <Button type="submit" disabled={!participantId.trim() || addParticipant.isPending}>

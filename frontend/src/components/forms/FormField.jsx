@@ -4,7 +4,7 @@ import { Label } from "@/components/ui/label";
 
 export default function FormField({ id, label, error, help, children }) {
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2 min-w-0">
       <Label htmlFor={id}>{label}</Label>
       {children}
       {help && !error ? (

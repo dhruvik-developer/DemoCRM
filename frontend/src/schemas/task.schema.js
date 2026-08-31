@@ -15,6 +15,10 @@ export const taskSchema = z.object({
     .max(200, "Title must be at most 200 characters."),
   description: z.string().trim().max(5000).optional().or(z.literal("")),
   lead: z.string().uuid("A lead is required for every task."),
+  status: z.union([z.string(), z.number()]).optional(),
+  priority: z.union([z.string(), z.number()]).optional(),
+  category: z.union([z.string(), z.number()]).optional(),
+  assigned_to: z.string().optional().or(z.literal("")),
   due_date: z
     .string()
     .optional()

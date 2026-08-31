@@ -1,17 +1,20 @@
 // Tasks list — server-side visibility (Admin/Manager: all, Employee: own).
 // Status/priority names resolve from the G7 workaround constants.
 
+import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
 import { taskPriorityName, taskStatusName } from "@/utils/taskMasterData";
-import { useTasks } from "../hooks";
+import { useTasks, useDeleteTask } from "../hooks";
 import DataTable from "@/components/tables/DataTable";
 import EmptyState from "@/components/common/EmptyState";
 import PageError from "@/components/common/PageError";
+import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Pencil, Trash2 } from "lucide-react";
 
 import { useUsers } from "@/features/admin/hooks";
 
@@ -19,6 +22,8 @@ export default function TasksListPage() {
   const { resolved } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const usersQuery = useUsers();
+  const [taskToDelete, setTaskToDelete] = useState(null);
+  const deleteTask = useDeleteTask();
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -151,13 +156,35 @@ export default function TasksListPage() {
               render: (task) => findUserName(task.assigned_to),
             },
             {
-              key: "open",
+              key: "actions",
               header: "",
-              render: (task) => (
-                <Button asChild variant="ghost" size="sm">
-                  <Link to={task.lead ? `/leads/${task.lead}` : `/tasks/${task.task_id}`}>Open →</Link>
-                </Button>
-              ),
+              render: (task) => {
+                const isManagerOrAdmin = Boolean(resolved?.isAdmin || hasPermission(resolved, "assign_task"));
+                if (!isManagerOrAdmin) {
+                  return null;
+                }
+                return (
+                  <div className="flex items-center justify-end gap-1">
+                    <Button asChild variant="ghost" size="sm">
+                      <Link to={task.lead ? `/leads/${task.lead}` : `/tasks/${task.task_id}`}>Open →</Link>
+                    </Button>
+                    <Button asChild variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" title="Edit task">
+                      <Link to={`/tasks/${task.task_id}`}>
+                        <Pencil className="size-4" />
+                      </Link>
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                      title="Delete task"
+                      onClick={() => setTaskToDelete(task)}
+                    >
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                );
+              },
             },
           ]}
           rows={rows}
@@ -185,6 +212,23 @@ export default function TasksListPage() {
           onPageChange={(nextPage) => updateParam("page", String(nextPage))}
         />
       )}
+
+      <ConfirmDialog
+        open={Boolean(taskToDelete)}
+        onOpenChange={(open) => {
+          if (!open) setTaskToDelete(null);
+        }}
+        title="Delete Task"
+        description={`Are you sure you want to delete "${taskToDelete?.task_title}"? This action will remove the task.`}
+        confirmLabel="Delete"
+        destructive
+        loading={deleteTask.isPending}
+        onConfirm={async () => {
+          if (!taskToDelete) return;
+          await deleteTask.mutateAsync(taskToDelete.task_id);
+          setTaskToDelete(null);
+        }}
+      />
     </div>
   );
 }

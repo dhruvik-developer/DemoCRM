@@ -13,8 +13,11 @@ export default function CallAttemptPanel({ leadId, stageId, activityId, template
   const logAttempt = useLogAttempt();
   const [outcome, setOutcome] = useState("CONNECTED");
   const [notes, setNotes] = useState("");
-
-  const attempts = (timelineQ.data?.call_attempts ?? timelineQ.data?.attempts ?? timelineQ.data ?? []).filter(Boolean);
+  const rawAttempts =
+    timelineQ.data?.call_attempts ??
+    timelineQ.data?.attempts ??
+    (Array.isArray(timelineQ.data) ? timelineQ.data : timelineQ.data?.results ?? []);
+  const attempts = Array.isArray(rawAttempts) ? rawAttempts.filter(Boolean) : [];
   // timeline endpoint returns mixed submissions/attempts; fallback to separate history if needed
 
   return (

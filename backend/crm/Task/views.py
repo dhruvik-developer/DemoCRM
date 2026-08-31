@@ -74,11 +74,11 @@ User = get_user_model()
 class MasterDataListView(APIView):
     """
     Base for read-only master-data (enum) list endpoints.
-    Subclasses set model / serializer_class / response_key /
-    permission_names. Only active rows are returned.
+    Subclasses set model / serializer_class / response_key.
+    Only active rows are returned.
     """
 
-    permission_classes = [CanCommunicateWithLead]
+    permission_classes = [IsAuthenticated]
     model = None
     serializer_class = None
     response_key = None
@@ -394,8 +394,11 @@ class TaskListCreateView(APIView):
     )
     def post(self, request):
         try:
+            data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+            if not data.get("assigned_to"):
+                data["assigned_to"] = getattr(request.user, "user_id", request.user.pk)
 
-            serializer = TaskSerializer(data=request.data, context={"request": request})
+            serializer = TaskSerializer(data=data, context={"request": request})
 
             if not serializer.is_valid():
 
@@ -437,6 +440,25 @@ class TaskListCreateView(APIView):
                 lead=task.lead,
                 customer=task.customer,
             )
+
+            # Automatically create a Follow-up instance if task is follow-up category or follow-up related
+            category_name = str(getattr(task.category, "category_name", "") or str(task.category)).lower()
+            if "follow" in category_name or "follow" in task.task_title.lower():
+                try:
+                    from FollowUp.models import Followup, FollowUpStatus, FollowUpTypes
+                    default_status = FollowUpStatus.objects.filter(is_active=True).first()
+                    default_type = FollowUpTypes.objects.filter(is_active=True).first()
+                    if default_status and default_type:
+                        Followup.objects.create(
+                            task_id=task,
+                            followup_status=default_status,
+                            followup_type=default_type,
+                            followup_date=task.due_date or timezone.now(),
+                            decription=task.description or f"Follow-up for {task.task_title}",
+                            created_by=request.user,
+                        )
+                except Exception:
+                    logger.exception("Failed to auto-create Followup record for task: %s", task.pk)
 
             if task.assigned_to and task.assigned_to != request.user:
                 trigger_notification_event(
@@ -719,19 +741,65 @@ class TaskDetailView(APIView):
                 customer=task.customer,
             )
 
-            if task.assigned_to and task.assigned_to != request.user:
-                trigger_notification_event(
-                    event_type=NotificationEventType.TASK_UPDATED,
-                    recipient=task.assigned_to,
-                    context={
-                        "user_name": task.assigned_to.get_full_name()
-                        or task.assigned_to.username,
-                        "employee_name": request.user.get_full_name()
-                        or request.user.username,
-                        "task_title": task.task_title,
-                        "due_date": str(task.due_date) if task.due_date else "N/A",
-                    },
-                )
+            status_str = str(task.status.status_name).lower() if task.status else ""
+            is_completed = "complete" in status_str
+
+            if is_completed:
+                # Notify task creator / manager on task completion
+                if task.created_by and task.created_by != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.TASK_COMPLETED,
+                        recipient=task.created_by,
+                        context={
+                            "user_name": task.created_by.get_full_name()
+                            or task.created_by.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "due_date": str(task.due_date) if task.due_date else "N/A",
+                        },
+                    )
+                # Also notify assigned employee if marked completed by manager
+                if task.assigned_to and task.assigned_to != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.TASK_COMPLETED,
+                        recipient=task.assigned_to,
+                        context={
+                            "user_name": task.assigned_to.get_full_name()
+                            or task.assigned_to.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "due_date": str(task.due_date) if task.due_date else "N/A",
+                        },
+                    )
+            else:
+                if task.assigned_to and task.assigned_to != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.TASK_UPDATED,
+                        recipient=task.assigned_to,
+                        context={
+                            "user_name": task.assigned_to.get_full_name()
+                            or task.assigned_to.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "due_date": str(task.due_date) if task.due_date else "N/A",
+                        },
+                    )
+                elif task.created_by and task.created_by != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.TASK_UPDATED,
+                        recipient=task.created_by,
+                        context={
+                            "user_name": task.created_by.get_full_name()
+                            or task.created_by.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "due_date": str(task.due_date) if task.due_date else "N/A",
+                        },
+                    )
 
             return Response(
                 TaskSerializer(task, context={"request": request}).data,
@@ -836,51 +904,55 @@ class TaskDetailView(APIView):
                         )
 
             # ==================================================
-            # SOFT DELETE
+            # PERMANENT DELETE (HARD DELETE)
             # ==================================================
 
-            task.is_active = False
+            task_id_val = task.task_id
+            task_title_val = task.task_title
+            task_lead = task.lead
+            task_customer = task.customer
+            assigned_user = task.assigned_to
 
-            task.save(update_fields=["is_active"])
+            task.delete()
 
             logger.info(
-                "Task soft deleted successfully: " "task_id=%s user_id=%s",
-                task.task_id,
+                "Task permanently deleted successfully: task_id=%s user_id=%s",
+                task_id_val,
                 request.user.pk,
             )
 
             log_audit(
                 user=request.user,
                 entity_type="Task",
-                entity_id=task.task_id,
+                entity_id=task_id_val,
                 action="TASK_DELETED",
-                old_value={"is_active": True, "task_title": task.task_title},
-                new_value={"is_active": False},
+                old_value={"task_title": task_title_val},
+                new_value=None,
             )
             log_activity(
                 user=request.user,
                 activity_type=Activity.ActivityType.TASK_DELETED,
-                outcome=f"Task deleted: {task.task_title}",
-                lead=task.lead,
-                customer=task.customer,
+                outcome=f"Task deleted: {task_title_val}",
+                lead=task_lead,
+                customer=task_customer,
             )
 
-            if task.assigned_to and task.assigned_to != request.user:
+            if assigned_user and assigned_user != request.user:
                 trigger_notification_event(
                     event_type=NotificationEventType.TASK_DELETED,
-                    recipient=task.assigned_to,
+                    recipient=assigned_user,
                     context={
-                        "user_name": task.assigned_to.get_full_name()
-                        or task.assigned_to.username,
+                        "user_name": assigned_user.get_full_name()
+                        or assigned_user.username,
                         "employee_name": request.user.get_full_name()
                         or request.user.username,
-                        "task_title": task.task_title,
-                        "due_date": str(task.due_date) if task.due_date else "N/A",
+                        "task_title": task_title_val,
+                        "due_date": "N/A",
                     },
                 )
 
             return Response(
-                {"message": "Task deleted successfully.", "task_id": task.task_id},
+                {"message": "Task deleted successfully.", "task_id": task_id_val},
                 status=status.HTTP_200_OK,
             )
 
@@ -1363,11 +1435,7 @@ class MeetingCreateView(APIView):
     It goes to manager for approval.
     """
 
-    permission_classes = [CanCommunicateWithLead]
-    permission_names = {
-        "GET": "view_meeting",
-        "POST": "add_meeting",
-    }
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Meetings"],
@@ -1458,7 +1526,7 @@ class MeetingCreateView(APIView):
 
                 role_name = getattr(role, "rolename", "").strip().lower()
 
-                if role_name not in ["admin", "manager"]:
+                if role_name != "admin":
                     meetings = meetings.filter(Q(created_by=user) | Q(manager=user))
 
             approval_status = request.query_params.get("approval_status")
@@ -1530,6 +1598,28 @@ class MeetingCreateView(APIView):
     def post(self, request):
 
         try:
+
+            # ==================================================
+            # ONLY MANAGER CAN CREATE MEETINGS
+            # ==================================================
+
+            user_role = getattr(request.user, "role", None)
+            role_name = (
+                getattr(user_role, "rolename", "").strip().lower()
+                if user_role
+                else ""
+            )
+
+            if not request.user.is_superuser and role_name != "manager":
+                return Response(
+                    {
+                        "error": (
+                            "Only Managers can create meetings. "
+                            "Please contact your manager to schedule one."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
             serializer = MeetingSerializer(
                 data=request.data,
@@ -1707,12 +1797,7 @@ class MeetingApprovalView(APIView):
     Only assigned manager can approve/reject.
     """
 
-    permission_classes = [
-        CanCommunicateWithLead,
-    ]
-    permission_names = {
-        "PATCH": "meeting_approve",
-    }
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Meetings"],
@@ -1949,6 +2034,19 @@ class MeetingApprovalView(APIView):
                     customer=meeting.task_id.customer,
                 )
 
+                if meeting.created_by:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_APPROVED,
+                        recipient=meeting.created_by,
+                        context={
+                            "user_name": meeting.created_by.get_full_name() or meeting.created_by.username,
+                            "meeting_title": meeting.meeting_title,
+                            "meeting_date": str(meeting.meeting_date),
+                            "start_time": str(meeting.start_time),
+                            "meeting_link": meeting.meeting_link or meeting.location or "Scheduled",
+                        },
+                    )
+
                 return Response(
                     {
                         "message": (
@@ -1996,6 +2094,17 @@ class MeetingApprovalView(APIView):
                         "updated_at",
                     ]
                 )
+
+                if meeting.created_by:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_REJECTED,
+                        recipient=meeting.created_by,
+                        context={
+                            "user_name": meeting.created_by.get_full_name() or meeting.created_by.username,
+                            "meeting_title": meeting.meeting_title,
+                            "rejection_reason": rejection_reason,
+                        },
+                    )
 
                 # ==================================================
                 # CELERY
@@ -2063,19 +2172,16 @@ class MeetingApprovalView(APIView):
 @extend_schema(tags=["Meetings"])
 class MeetingDetailView(APIView):
     """
-    GET /api/meetings/<meeting_id>/
+    GET /api/tasks/meetings/<meeting_id>/
     Get meeting details.
     """
 
-    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
-    permission_names = {
-        "GET": "view_meeting",
-    }
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Meetings"],
         summary="Get meeting details",
-        description="Retrieve details of a meeting by its ID. Permission: view_meeting.",
+        description="Retrieve details of a meeting by its ID.",
         operation_id="meeting_detail",
         parameters=[
             OpenApiParameter(
@@ -2110,7 +2216,6 @@ class MeetingDetailView(APIView):
                 meeting_id=meeting_id,
                 is_active=True,
             )
-            self.check_object_permissions(request, meeting)
             serializer = MeetingSerializer(meeting, context={"request": request})
             logger.info(
                 "Meeting fetched successfully: meeting_id=%s user_id=%s",

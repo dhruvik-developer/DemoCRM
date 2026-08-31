@@ -9,7 +9,9 @@
 
 export const TASK_STATUSES = [
   { id: 1, name: "Pending" },
-  { id: 2, name: "Completed" },
+  { id: 2, name: "In Progress" },
+  { id: 3, name: "Completed" },
+  { id: 4, name: "Cancelled" },
 ];
 
 export const TASK_PRIORITIES = [

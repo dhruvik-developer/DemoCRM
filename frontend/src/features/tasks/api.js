@@ -44,3 +44,13 @@ export async function updateTaskStatus(taskId, statusId) {
   });
   return data;
 }
+
+export async function getTaskStatuses() {
+  const { data } = await apiClient.get(endpoints.tasks.masterStatuses);
+  return data?.task_statuses || [];
+}
+
+export async function getTaskCategories() {
+  const { data } = await apiClient.get(endpoints.tasks.masterCategories);
+  return data?.task_categories || [];
+}

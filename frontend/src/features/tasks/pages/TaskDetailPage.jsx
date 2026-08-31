@@ -1,18 +1,30 @@
-// Task detail: info card + Assign / Status / soft-Delete actions, each gated
-// on its codename. Employees can only act on their own tasks (server-side).
-
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useForm } from "react-hook-form";
 
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
-import { taskPriorityName, taskStatusName, TASK_STATUSES } from "@/utils/taskMasterData";
+import {
+  taskPriorityName,
+  taskStatusName,
+  TASK_STATUSES,
+  TASK_PRIORITIES,
+  TASK_CATEGORIES,
+} from "@/utils/taskMasterData";
 import { toast } from "sonner";
 import { useLead, useProgressLead } from "@/features/leads/hooks";
 import { useLeadPrimaryForm, useLogAttempt, useSubmitForm } from "@/features/callforms/hooks";
 import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
 import { useMasterDataMaps, usePipelineStages } from "@/features/crm/hooks";
-import { useAssignTask, useDeleteTask, useTask, useUpdateTaskStatus } from "../hooks";
+import {
+  useAssignTask,
+  useDeleteTask,
+  useTask,
+  useTaskCategories,
+  useTaskStatuses,
+  useUpdateTask,
+  useUpdateTaskStatus,
+} from "../hooks";
 import { useUsers } from "@/features/admin/hooks";
 import PageError from "@/components/common/PageError";
 import PageLoader from "@/components/common/PageLoader";
@@ -20,6 +32,145 @@ import ConfirmDialog from "@/components/common/ConfirmDialog";
 import FormField from "@/components/forms/FormField";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+
+function EditTaskDialog({ task, open, onOpenChange }) {
+  const updateTask = useUpdateTask(task?.task_id);
+  const { data: taskStatuses = [] } = useTaskStatuses();
+  const { data: taskCategories = [] } = useTaskCategories();
+
+  const formattedDueDate = task?.due_date
+    ? new Date(task.due_date).toISOString().slice(0, 16)
+    : "";
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm({
+    defaultValues: {
+      task_title: task?.task_title ?? "",
+      description: task?.description ?? "",
+      due_date: formattedDueDate,
+      status: String(task?.status ?? "1"),
+      priority: String(task?.priority ?? "2"),
+      category: String(task?.category ?? "1"),
+    },
+  });
+
+  const onSubmit = async (values) => {
+    await updateTask.mutateAsync({
+      task_title: values.task_title,
+      description: values.description || undefined,
+      due_date: values.due_date ? new Date(values.due_date).toISOString() : undefined,
+      status: Number(values.status),
+      priority: Number(values.priority),
+      category: Number(values.category),
+    });
+    onOpenChange(false);
+  };
+
+  const statusOptions =
+    taskStatuses.length > 0
+      ? taskStatuses.map((s) => ({ id: s.status_id ?? s.id, name: s.status_name ?? s.name }))
+      : TASK_STATUSES;
+
+  const categoryOptions =
+    taskCategories.length > 0
+      ? taskCategories.map((c) => ({ id: c.category_id ?? c.id, name: c.category_name ?? c.name }))
+      : TASK_CATEGORIES;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit task</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+          <FormField id="task_title" label="Title" error={errors.task_title?.message}>
+            <Input {...register("task_title", { required: "Title is required" })} />
+          </FormField>
+
+          <FormField id="description" label="Description">
+            <Textarea {...register("description")} rows={3} />
+          </FormField>
+
+          <FormField id="due_date" label="Due date">
+            <Input type="datetime-local" {...register("due_date")} />
+          </FormField>
+
+          <div className="grid grid-cols-2 gap-3">
+            <FormField id="priority" label="Priority">
+              <Select
+                value={watch("priority")}
+                onValueChange={(val) => setValue("priority", val)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TASK_PRIORITIES.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+
+            <FormField id="category" label="Category">
+              <Select
+                value={watch("category")}
+                onValueChange={(val) => setValue("category", val)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoryOptions.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+
+          <FormField id="status" label="Status">
+            <Select
+              value={watch("status")}
+              onValueChange={(val) => setValue("status", val)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <DialogFooter className="mt-4">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updateTask.isPending}>
+              {updateTask.isPending ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 import {
   Card,
   CardContent,
@@ -151,6 +302,17 @@ function TaskCallWorkspace({ task, updateStatus }) {
       formData?.template_version_id ||
       formData?.id;
 
+    const mapToBackendOutcome = (val) => {
+      if (!val) return "COMPLETED";
+      const upper = String(val).toUpperCase();
+      if (upper === "CONNECTED" || upper.includes("CONNECTED") || upper.includes("INTERESTED") || upper.includes("PROPOSAL")) return "CONNECTED";
+      if (upper.includes("BUSY")) return "BUSY";
+      if (upper.includes("NO_ANSWER") || upper.includes("NO ANSWER")) return "NO_ANSWER";
+      if (upper.includes("FOLLOW") || upper.includes("CALLBACK")) return "CALLBACK";
+      if (upper.includes("LOST") || upper.includes("NOT INTERESTED")) return "LOST_SUGGESTED";
+      return "COMPLETED";
+    };
+
     try {
       if (versionId) {
         await submitForm.mutateAsync({
@@ -159,10 +321,15 @@ function TaskCallWorkspace({ task, updateStatus }) {
           data: formValues,
         });
       } else {
+        const validOutcome = mapToBackendOutcome(formValues.call_outcome);
+        const formattedNotes = Object.entries(formValues)
+          .filter(([_, v]) => Boolean(v))
+          .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`)
+          .join("\n");
         await logAttempt.mutateAsync({
           lead_id: leadId,
-          notes: JSON.stringify(formValues),
-          outcome: formValues.call_outcome || "COMPLETED",
+          notes: formattedNotes || undefined,
+          outcome: validOutcome,
         });
       }
       toast.success("Call form responses saved!");
@@ -366,6 +533,7 @@ export default function TaskDetailPage() {
   const usersQuery = useUsers();
 
   const [assignOpen, setAssignOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [statusValue, setStatusValue] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const updateStatus = useUpdateTaskStatus(taskId);
@@ -398,6 +566,11 @@ export default function TaskDetailPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {can("assign_task") ? (
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
+          ) : null}
           {can("assign_task") ? (
             <Button variant="outline" size="sm" onClick={() => setAssignOpen(true)}>
               Assign
@@ -481,6 +654,8 @@ export default function TaskDetailPage() {
       <Link to="/tasks" className="text-sm text-muted-foreground hover:underline">
         ← Back to tasks
       </Link>
+
+      <EditTaskDialog task={task} open={editOpen} onOpenChange={setEditOpen} />
 
       <AssignDialog taskId={taskId} open={assignOpen} onOpenChange={setAssignOpen} />
 

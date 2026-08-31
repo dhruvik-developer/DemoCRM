@@ -1,0 +1,3026 @@
+{
+  "info": {
+    "_postman_id": "crm-postman-2026-0000-0000-000000000001",
+    "name": "CRM Full API",
+    "description": "DemoCRM backend . Use variables: {{base_url}} (default http://127.0.0.1:8000/api) aur {{access_token}} (login se copy karein).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000/api"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "user_id",
+      "value": "<user-uuid>"
+    },
+    {
+      "key": "manager_user_id",
+      "value": "<manager-user-uuid>"
+    },
+    {
+      "key": "role_id",
+      "value": "1"
+    },
+    {
+      "key": "lead_id",
+      "value": "<lead-uuid>"
+    },
+    {
+      "key": "source_id",
+      "value": "<source-uuid>"
+    },
+    {
+      "key": "pipeline_id",
+      "value": "<pipeline-uuid>"
+    },
+    {
+      "key": "stage_id",
+      "value": "<stage-uuid>"
+    },
+    {
+      "key": "account_id",
+      "value": "<account-uuid>"
+    },
+    {
+      "key": "contact_id",
+      "value": "<contact-uuid>"
+    },
+    {
+      "key": "customer_id",
+      "value": "<customer-uuid>"
+    },
+    {
+      "key": "quotation_id",
+      "value": "<quotation-uuid>"
+    },
+    {
+      "key": "task_id",
+      "value": "1"
+    },
+    {
+      "key": "meeting_id",
+      "value": "1"
+    },
+    {
+      "key": "reminder_id",
+      "value": "1"
+    },
+    {
+      "key": "followup_id",
+      "value": "1"
+    },
+    {
+      "key": "template_id",
+      "value": "1"
+    },
+    {
+      "key": "template_uuid",
+      "value": "<template-uuid>"
+    },
+    {
+      "key": "version_uuid",
+      "value": "<version-uuid>"
+    },
+    {
+      "key": "field_uuid",
+      "value": "<field-uuid>"
+    },
+    {
+      "key": "proposal_uuid",
+      "value": "<proposal-uuid>"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. AUTH & ACCOUNTS",
+      "item": [
+        {
+          "name": "POST Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"rahul\",\n  \"email\": \"rahul@mail.com\",\n  \"phone_number\": \"9876543210\",\n  \"password\": \"Pass@1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/register/",
+              "host": ["{{base_url}}"],
+              "path": ["register", ""]
+            },
+            "description": "Public - koi auth nahi. User automatically Employee role me banta hai."
+          }
+        },
+        {
+          "name": "POST Login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rahul@mail.com\",\n  \"password\": \"Pass@1234\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/login/",
+              "host": ["{{base_url}}"],
+              "path": ["login", ""]
+            },
+            "description": "Public. Response  access_token + refresh_token . access_token ko {access_token} variable me daalein."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access_token) { pm.collectionVariables.set('access_token', json.access_token); }",
+                  "if (json.refresh_token) { pm.collectionVariables.set('refresh_token', json.refresh_token); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST Refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/refresh/",
+              "host": ["{{base_url}}"],
+              "path": ["refresh", ""]
+            },
+            "description": "Public. Naya access_token milta hai."
+          }
+        },
+        {
+          "name": "POST Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/logout/",
+              "host": ["{{base_url}}"],
+              "path": ["logout", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Change Password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"old_password\": \"Pass@1234\",\n  \"new_password\": \"New@Pass1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/change-password/",
+              "host": ["{{base_url}}"],
+              "path": ["change-password", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Users",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/users/",
+              "host": ["{{base_url}}"],
+              "path": ["users", ""]
+            },
+            "description": "Sab active users ki list - assignment dropdown ke liye. user_id (UUID) wahan se copy karein."
+          }
+        },
+        {
+          "name": "GET Profile",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/profile/{{user_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["profile", "{{user_id}}", ""]
+            },
+            "description": "Dusre user ka profile dekhne ke liye Admin/Manager hona chahiye."
+          }
+        },
+        {
+          "name": "POST Forgot Password (OTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rahul@mail.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/forgot-password/",
+              "host": ["{{base_url}}"],
+              "path": ["forgot-password", ""]
+            },
+            "description": "Public. Email pe 6-digit OTP jata hai (console/email backend ke hisaab se)."
+          }
+        },
+        {
+          "name": "POST Reset Password (OTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"rahul@mail.com\",\n  \"otp\": \"123456\",\n  \"new_password\": \"New@Pass1\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/reset-password/",
+              "host": ["{{base_url}}"],
+              "path": ["reset-password", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Roles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/roles/",
+              "host": ["{{base_url}}"],
+              "path": ["roles", ""]
+            },
+            "description": "Admin/Manager hi dekh sakta hai."
+          }
+        },
+        {
+          "name": "POST Create Role",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rolename\": \"SalesHead\",\n  \"description\": \"Sales team head\",\n  \"permissions\": []\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/roles/",
+              "host": ["{{base_url}}"],
+              "path": ["roles", ""]
+            },
+            "description": "permissions = permission ID list (optional). rolename max 13 chars."
+          }
+        },
+        {
+          "name": "PUT Update Role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rolename\": \"SalesHead\",\n  \"description\": \"Updated description\",\n  \"permissions\": []\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/roles/{{role_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["roles", "{{role_id}}", ""]
+            },
+            "description": "Admin role update nahi hota."
+          }
+        },
+        {
+          "name": "PATCH Role Permissions",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"permissions\": [1, 2, 3]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/roles/{{role_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["roles", "{{role_id}}", ""]
+            },
+            "description": "Permission IDs role pe add karta hai. IDs /permissions/ se lo."
+          }
+        },
+        {
+          "name": "DELETE Role",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/roles/{{role_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["roles", "{{role_id}}", ""]
+            },
+            "description": "Admin/Manager/Employee default roles delete nahi hote."
+          }
+        },
+        {
+          "name": "GET Permissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/permissions/",
+              "host": ["{{base_url}}"],
+              "path": ["permissions", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Permission",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Can add sample\",\n  \"codename\": \"add_sample\",\n  \"content_type\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/permissions/",
+              "host": ["{{base_url}}"],
+              "path": ["permissions", ""]
+            }
+          }
+        },
+        {
+          "name": "PUT Update Permission",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Can add sample\",\n  \"codename\": \"add_sample\",\n  \"content_type\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/permissions/{{permission_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["permissions", "{{permission_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "DELETE Permission",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/permissions/{{permission_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["permissions", "{{permission_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PUT Assign Role",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role_id\": {{role_id}}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/assign-role/{{user_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["assign-role", "{{user_id}}", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. MASTER DATA",
+      "item": [
+        {
+          "name": "GET Task Statuses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/master/task-statuses/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "master", "task-statuses", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Task Priorities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/master/task-priorities/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "master", "task-priorities", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Task Categories",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/master/task-categories/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "master", "task-categories", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Meeting Statuses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/master/meeting-statuses/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "master", "meeting-statuses", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Meeting Types",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/master/meeting-types/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "master", "meeting-types", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Reminder Types",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/master/reminder-types/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "master", "reminder-types", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Reminder Statuses",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/master/reminder-statuses/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "master", "reminder-statuses", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. TASKS",
+      "item": [
+        {
+          "name": "GET Tasks",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assigned_to\": \"{{user_id}}\",\n  \"lead\": \"{{lead_id}}\",\n  \"status\": 1,\n  \"priority\": 1,\n  \"category\": 1,\n  \"task_title\": \"Follow up call\",\n  \"description\": \"Call the client\",\n  \"due_date\": \"2026-09-05T10:00:00Z\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", ""]
+            },
+            "description": "status/priority/category = master data se integer ID."
+          }
+        },
+        {
+          "name": "GET Task Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/{{task_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "{{task_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PATCH Update Task",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_title\": \"Updated title\",\n  \"description\": \"Updated note\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/{{task_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "{{task_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Assign Task",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assigned_to\": \"{{user_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/{{task_id}}/assign/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "{{task_id}}", "assign", ""]
+            }
+          }
+        },
+        {
+          "name": "PATCH Update Task Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status_id\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/{{task_id}}/status/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "{{task_id}}", "status", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. MEETINGS",
+      "item": [
+        {
+          "name": "POST Create Meeting",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": {{task_id}},\n  \"lead\": \"{{lead_id}}\",\n  \"meeting_status_id\": 1,\n  \"meeting_type_id\": 1,\n  \"meeting_title\": \"Client demo\",\n  \"meeting_date\": \"2026-09-10\",\n  \"start_time\": \"10:00:00\",\n  \"end_time\": \"11:00:00\",\n  \"location\": \"Office\",\n  \"description\": \"Product demo\",\n  \"manager\": \"{{manager_user_id}}\",\n  \"extra_fields\": {}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/meetings/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "meetings", ""]
+            },
+            "description": "manager = Manager role wale user ka UUID."
+          }
+        },
+        {
+          "name": "PATCH Reschedule Meeting",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meeting_date\": \"2026-09-12\",\n  \"start_time\": \"14:00:00\",\n  \"end_time\": \"15:00:00\",\n  \"meeting_link\": \"https://meet.example.com/abc\",\n  \"location\": \"Zoom\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/meetings/{{meeting_id}}/reschedule/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "meetings", "{{meeting_id}}", "reschedule", ""]
+            },
+            "description": "Sirf REJECTED meeting, sirf creator reschedule kar sakta hai."
+          }
+        },
+        {
+          "name": "PATCH Update Meeting Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meeting_status_id\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/meetings/{{meeting_id}}/status/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "meetings", "{{meeting_id}}", "status", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Add Participant",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"participant_role\": \"Client\",\n  \"is_required\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/meetings/{{meeting_id}}/participants/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "meetings", "{{meeting_id}}", "participants", ""]
+            }
+          }
+        },
+        {
+          "name": "DELETE Remove Participant",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/meetings/{{meeting_id}}/participants/{{user_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "meetings", "{{meeting_id}}", "participants", "{{user_id}}", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. REMINDERS",
+      "item": [
+        {
+          "name": "GET Reminders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/reminders/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "reminders", ""]
+            },
+            "description": "Filters: ?reminder_status=&reminder_type=&task=&meeting=&is_sent=&search="
+          }
+        },
+        {
+          "name": "POST Create Reminder",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": {{task_id}},\n  \"reminder_for\": \"{{user_id}}\",\n  \"reminder_type_id\": 1,\n  \"reminder_status_id\": 1,\n  \"reminder_datetime\": \"2026-09-05T09:00:00Z\",\n  \"message\": \"Call follow-up reminder\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/reminders/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "reminders", ""]
+            },
+            "description": "task_id ya meeting_id - ek dena zaroori."
+          }
+        },
+        {
+          "name": "GET Reminder Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/tasks/reminders/{{reminder_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "reminders", "{{reminder_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PATCH Update Reminder Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reminder_status_id\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/tasks/reminders/{{reminder_id}}/status/",
+              "host": ["{{base_url}}"],
+              "path": ["tasks", "reminders", "{{reminder_id}}", "status", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. FOLLOWUPS",
+      "item": [
+        {
+          "name": "GET Followups",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/followups/",
+              "host": ["{{base_url}}"],
+              "path": ["followups", ""]
+            },
+            "description": "Filters: ?followup_status=&followup_type=&task_id=&created_by=&search= - Employee sirf apne assigned tasks ke followups dekhta hai."
+          }
+        },
+        {
+          "name": "POST Create Followup",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"task_id\": {{task_id}},\n  \"followup_status\": 1,\n  \"followup_type\": 1,\n  \"followup_date\": \"2026-09-06T10:00:00Z\",\n  \"decription\": \"Call notes\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/followups/",
+              "host": ["{{base_url}}"],
+              "path": ["followups", ""]
+            },
+            "description": "Employee sirf apne assigned task ke liye bana sakta hai."
+          }
+        },
+        {
+          "name": "GET Followup Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/followups/{{followup_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["followups", "{{followup_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PATCH Update Followup",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"followup_date\": \"2026-09-08T10:00:00Z\",\n  \"decription\": \"Updated notes\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/followups/{{followup_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["followups", "{{followup_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "DELETE Followup",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/followups/{{followup_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["followups", "{{followup_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PATCH Update Followup Status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status_id\": 2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/followups/{{followup_id}}/status/",
+              "host": ["{{base_url}}"],
+              "path": ["followups", "{{followup_id}}", "status", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7. CRM - MASTER (Sources/Pipelines/Stages)",
+      "item": [
+        {
+          "name": "GET Lead Sources",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/lead-sources/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "lead-sources", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Lead Source",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Website\",\n  \"description\": \"Website form leads\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/lead-sources/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "lead-sources", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Lead Source Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/lead-sources/{{source_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "lead-sources", "{{source_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PATCH Lead Source",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Updated description\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/lead-sources/{{source_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "lead-sources", "{{source_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "DELETE Lead Source",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/lead-sources/{{source_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "lead-sources", "{{source_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Pipelines",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/pipelines/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "pipelines", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Pipeline",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Sales Pipeline\",\n  \"description\": \"Main sales pipeline\",\n  \"entity_label\": \"Opportunity\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/pipelines/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "pipelines", ""]
+            }
+          }
+        },
+        {
+          "name": "GET/PATCH/DELETE Pipeline Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/pipelines/{{pipeline_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "pipelines", "{{pipeline_id}}", ""]
+            },
+            "description": "PATCH body: {\"description\":\"Updated\"}. DELETE: koi body nahi."
+          }
+        },
+        {
+          "name": "GET Pipeline Stages",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/pipeline-stages/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "pipeline-stages", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Pipeline Stage",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pipeline\": \"{{pipeline_id}}\",\n  \"name\": \"New Lead\",\n  \"description\": \"Initial stage\",\n  \"display_order\": 1,\n  \"requires_quotation\": false,\n  \"quotation_approval_required\": false,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/pipeline-stages/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "pipeline-stages", ""]
+            }
+          }
+        },
+        {
+          "name": "GET/PATCH/DELETE Pipeline Stage Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/pipeline-stages/{{stage_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "pipeline-stages", "{{stage_id}}", ""]
+            },
+            "description": "PATCH body: {\"display_order\":2} etc."
+          }
+        }
+      ]
+    },
+    {
+      "name": "8. CRM - LEADS",
+      "item": [
+        {
+          "name": "GET Leads",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/leads/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "leads", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Corp\",\n  \"email\": \"client@acme.com\",\n  \"phone\": \"9876543210\",\n  \"company_name\": \"Acme\",\n  \"source\": \"{{source_id}}\",\n  \"assigned_to\": \"{{user_id}}\",\n  \"pipeline\": \"{{pipeline_id}}\",\n  \"current_stage\": \"{{stage_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/leads/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "leads", ""]
+            },
+            "description": "current_stage usi pipeline ka hona chahiye. status khud ACTIVE set hota hai."
+          }
+        },
+        {
+          "name": "GET Lead Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/leads/{{lead_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "leads", "{{lead_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PATCH Update Lead",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Corp Updated\",\n  \"phone\": \"9876500000\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/leads/{{lead_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "leads", "{{lead_id}}", ""]
+            },
+            "description": "LOST/CONVERTED lead direct update nahi hota - workflow endpoints use karo."
+          }
+        },
+        {
+          "name": "POST Assign Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"assigned_to\": \"{{user_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/leads/{{lead_id}}/assign/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "leads", "{{lead_id}}", "assign", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Progress Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stage_id\": \"{{stage_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/leads/{{lead_id}}/progress/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "leads", "{{lead_id}}", "progress", ""]
+            },
+            "description": "stage_id = PipelineStage ka UUID."
+          }
+        },
+        {
+          "name": "POST Mark Lead Lost",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lost_reason\": \"Not interested\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/leads/{{lead_id}}/lost/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "leads", "{{lead_id}}", "lost", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Reengage Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/leads/{{lead_id}}/reengage/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "leads", "{{lead_id}}", "reengage", ""]
+            },
+            "description": "empty body - lost lead waapas active."
+          }
+        },
+        {
+          "name": "POST Convert Lead",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Acme Corp\",\n  \"email\": \"client@acme.com\",\n  \"phone\": \"9876543210\",\n  \"company_name\": \"Acme\",\n  \"gst_number\": \"27AAAPC1234F1Z5\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/leads/{{lead_id}}/convert/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "leads", "{{lead_id}}", "convert", ""]
+            },
+            "description": "Default lead se aa jate hain; email + phone required."
+          }
+        }
+      ]
+    },
+    {
+      "name": "9. CRM - CUSTOMERS / ACTIVITIES / AUDIT",
+      "item": [
+        {
+          "name": "GET Smart Customer Lookup",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/customers/smart-lookup/?query=acme&email=&phone=&gst_number=&company_name=",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "customers", "smart-lookup", ""]
+            },
+            "description": "query, email, phone, gst_number, company_name - sab optional filters."
+          }
+        },
+        {
+          "name": "GET Activities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/activities/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "activities", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Activity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"activity_type\": \"CALL\",\n  \"outcome\": \"CONNECTED\",\n  \"lead\": \"{{lead_id}}\",\n  \"notes\": \"Called the client\",\n  \"follow_up_required\": true,\n  \"follow_up_date\": \"2026-09-08T10:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/activities/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "activities", ""]
+            },
+            "description": "lead ya customer - ek hi dena hai. follow_up_required=true pe follow_up_date chahiye."
+          }
+        },
+        {
+          "name": "GET Audit Logs",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/audit-logs/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "audit-logs", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Customers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/customers/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "customers", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Customer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lead\": \"{{lead_id}}\",\n  \"name\": \"Acme Corp\",\n  \"email\": \"client@acme.com\",\n  \"phone\": \"9876543210\",\n  \"company_name\": \"Acme\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/customers/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "customers", ""]
+            },
+            "description": "lead CONVERTED hona chahiye."
+          }
+        },
+        {
+          "name": "GET Customer Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/customers/{{customer_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "customers", "{{customer_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Customer Activities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/customers/{{customer_id}}/activities/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "customers", "{{customer_id}}", "activities", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Customer Accounts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/accounts/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "accounts", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Customer Account",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"company_name\": \"Acme Ltd\",\n  \"gst_number\": \"27AAAPC1234F1Z5\",\n  \"website\": \"https://acme.com\",\n  \"primary_phone\": \"9876543210\",\n  \"billing_address\": \"Mumbai\",\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/accounts/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "accounts", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Customer Contacts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/contacts/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "contacts", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Customer Contact",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"account\": \"{{account_id}}\",\n  \"name\": \"Rahul\",\n  \"email\": \"rahul@acme.com\",\n  \"phone\": \"9876543210\",\n  \"designation\": \"Manager\",\n  \"is_primary\": true,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/contacts/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "contacts", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10. CRM - QUOTATIONS",
+      "item": [
+        {
+          "name": "GET Quotations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/?lead={{lead_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", ""]
+            },
+            "description": "?lead=<uuid> optional filter."
+          }
+        },
+        {
+          "name": "POST Create Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"terms\": \"Payment in 30 days\",\n  \"notes\": \"Negotiable\",\n  \"line_items\": [\n    {\n      \"description\": \"Consulting\",\n      \"quantity\": 2,\n      \"unit_price\": 5000.00\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Quotation Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PATCH Update Draft Quotation",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"terms\": \"Updated terms\",\n  \"notes\": \"Updated notes\",\n  \"line_items\": [\n    {\n      \"description\": \"Consulting\",\n      \"quantity\": 3,\n      \"unit_price\": 5000.00\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/update-draft/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "update-draft", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Submit Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/submit/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "submit", ""]
+            },
+            "description": "empty body - approval me jata hai (PENDING_APPROVAL)."
+          }
+        },
+        {
+          "name": "POST Approve Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/approve/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "approve", ""]
+            },
+            "description": "empty body."
+          }
+        },
+        {
+          "name": "POST Reject Quotation Approval",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Fix pricing\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/reject-approval/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "reject-approval", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Send Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/send/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "send", ""]
+            },
+            "description": "empty body - SENT mark karta hai."
+          }
+        },
+        {
+          "name": "POST Send Quotation Email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recipient_email\": \"client@acme.com\",\n  \"subject\": \"Your Quotation\",\n  \"body\": \"Please find attached\",\n  \"version\": 1\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/send-email/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "send-email", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Request Quotation Revision",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"terms\": \"New terms\",\n  \"notes\": \"\",\n  \"line_items\": [\n    {\n      \"description\": \"Consulting\",\n      \"quantity\": 5,\n      \"unit_price\": 4500.00\n    }\n  ],\n  \"revision_reason\": \"Client asked for discount\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/revision/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "revision", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Accept Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/accept/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "accept", ""]
+            },
+            "description": "empty body - customer auto-create hota hai."
+          }
+        },
+        {
+          "name": "POST Reject Quotation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"rejection_reason\": \"Too expensive\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/reject/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "reject", ""]
+            },
+            "description": "rejection_reason required."
+          }
+        },
+        {
+          "name": "GET Quotation PDF",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/quotations/{{quotation_id}}/pdf/?version=1",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotations", "{{quotation_id}}", "pdf", ""]
+            },
+            "description": "version optional. DRAFT/PENDING_APPROVAL state me PDF nahi milega."
+          }
+        },
+        {
+          "name": "GET Quotation Integration Events",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/crm/quotation-events/",
+              "host": ["{{base_url}}"],
+              "path": ["crm", "quotation-events", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11. NOTIFICATIONS",
+      "item": [
+        {
+          "name": "GET Notification Templates",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification-templates/?event_type=TASK_ASSIGNED&is_active=true",
+              "host": ["{{base_url}}"],
+              "path": ["notification-templates", ""]
+            },
+            "description": "event_type aur is_active optional filters."
+          }
+        },
+        {
+          "name": "POST Create Notification Template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Task Assigned Alert\",\n  \"event_type\": \"TASK_ASSIGNED\",\n  \"message\": \"Task {task_title} assigned by {employee_name}\",\n  \"channel\": \"IN_APP\",\n  \"is_default\": true,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/notification-templates/",
+              "host": ["{{base_url}}"],
+              "path": ["notification-templates", ""]
+            },
+            "description": "event_type: NotificationEventType me se (TASK_ASSIGNED, LEAD_CREATED, MEETING_CREATED, FOLLOWUP_CREATED, QUOTATION_SUBMITTED, ROLE_CHANGED, MANUAL, etc). channel: IN_APP / EMAIL / BOTH."
+          }
+        },
+        {
+          "name": "GET Notification Template Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification-templates/{{template_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["notification-templates", "{{template_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PUT Update Notification Template",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Task Assigned Alert v2\",\n  \"event_type\": \"TASK_ASSIGNED\",\n  \"message\": \"Task {task_title} assigned by {employee_name}\",\n  \"channel\": \"BOTH\",\n  \"is_default\": true,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/notification-templates/{{template_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["notification-templates", "{{template_id}}", ""]
+            },
+            "description": "PATCH bhi chalta hai (partial)."
+          }
+        },
+        {
+          "name": "DELETE Notification Template",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notification-templates/{{template_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["notification-templates", "{{template_id}}", ""]
+            },
+            "description": "Soft delete - is_active=false ho jata hai."
+          }
+        },
+        {
+          "name": "POST Send Manual Notification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"recipient_id\": \"{{user_id}}\",\n  \"template_id\": {{template_id}},\n  \"event_type\": \"MANUAL\",\n  \"custom_message\": \"Hello team\",\n  \"channel\": \"BOTH\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/notifications/send/",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "send", ""]
+            },
+            "description": "recipient_id ya recipient_ids (array) - ek chahiye. template_id optional; custom_message optional."
+          }
+        },
+        {
+          "name": "GET My Notifications",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/?is_read=false",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", ""]
+            },
+            "description": "is_read optional filter."
+          }
+        },
+        {
+          "name": "GET Notification Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/{{notification_id}}/",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "{{notification_id}}", ""]
+            }
+          }
+        },
+        {
+          "name": "PUT Mark Notification Read",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/notifications/{{notification_id}}/read/",
+              "host": ["{{base_url}}"],
+              "path": ["notifications", "{{notification_id}}", "read", ""]
+            },
+            "description": "empty body. PATCH bhi chalta hai."
+          }
+        }
+      ]
+    },
+    {
+      "name": "12. CALLFORMS - TEMPLATES & VERSIONS",
+      "item": [
+        {
+          "name": "GET Call Templates",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/templates/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "templates", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Call Template",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Call Script\",\n  \"description\": \"Initial call script\",\n  \"is_active\": true,\n  \"initial_fields\": [\n    {\n      \"field_key\": \"customer_name\",\n      \"label\": \"Customer Name\",\n      \"field_type\": \"text\",\n      \"is_required\": true,\n      \"display_order\": 1,\n      \"help_text\": \"Full name\",\n      \"options\": [],\n      \"validation_rules\": {}\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/templates/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "templates", ""]
+            },
+            "description": "initial_fields optional. Template + pehli version ek saath banti hai."
+          }
+        },
+        {
+          "name": "GET Call Template Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/templates/{{template_uuid}}/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "templates", "{{template_uuid}}", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Set Primary Version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version_id\": \"{{version_uuid}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/templates/{{template_uuid}}/set-primary/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "templates", "{{template_uuid}}", "set-primary", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"from_version_id\": \"{{version_uuid}}\",\n  \"set_primary\": true,\n  \"version_label\": \"v2.0\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/templates/{{template_uuid}}/create-version/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "templates", "{{template_uuid}}", "create-version", ""]
+            },
+            "description": "from_version_id optional - na do to blank version banega."
+          }
+        },
+        {
+          "name": "GET Template Versions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/versions/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "versions", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Template Version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template\": \"{{template_uuid}}\",\n  \"version_number\": 2,\n  \"version_label\": \"v2.0\",\n  \"is_primary\": true,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/versions/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "versions", ""]
+            }
+          }
+        },
+        {
+          "name": "GET/UPDATE Template Version Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/versions/{{version_uuid}}/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "versions", "{{version_uuid}}", ""]
+            },
+            "description": "PUT edit karne ke liye. Is locked (submissions ho gayi) to edit nahi hoga."
+          }
+        },
+        {
+          "name": "POST Clone Template Version",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version_label\": \"v2.0\",\n  \"set_primary\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/versions/{{version_uuid}}/clone/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "versions", "{{version_uuid}}", "clone", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13. CALLFORMS - FIELDS & STAGE ACTIVITIES",
+      "item": [
+        {
+          "name": "GET Template Fields",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/fields/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "fields", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Template Field",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_version\": \"{{version_uuid}}\",\n  \"field_key\": \"budget\",\n  \"label\": \"Budget\",\n  \"field_type\": \"number\",\n  \"is_required\": false,\n  \"display_order\": 1,\n  \"help_text\": \"\",\n  \"options\": [],\n  \"validation_rules\": {\n    \"min_value\": 0\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/fields/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "fields", ""]
+            },
+            "description": "field_key: lowercase + underscore. field_type: text/textarea/number/boolean/date/time/select (select pe options chahiye)."
+          }
+        },
+        {
+          "name": "PUT Update Template Field",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_version\": \"{{version_uuid}}\",\n  \"field_key\": \"budget\",\n  \"label\": \"Budget Value\",\n  \"field_type\": \"number\",\n  \"is_required\": true,\n  \"display_order\": 1,\n  \"options\": [],\n  \"validation_rules\": {}\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/fields/{{field_uuid}}/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "fields", "{{field_uuid}}", ""]
+            },
+            "description": "Locked version ke fields edit/delete nahi hote."
+          }
+        },
+        {
+          "name": "POST Reorder Fields",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_version_id\": \"{{version_uuid}}\",\n  \"orders\": [\n    {\n      \"field_id\": \"{{field_uuid}}\",\n      \"display_order\": 2\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/fields/reorder/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "fields", "reorder", ""]
+            },
+            "description": "Saare fields apne display_order ke saath bhejo."
+          }
+        },
+        {
+          "name": "GET Stage Activities",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/stage-activities/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "stage-activities", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Create Stage Activity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"stage\": \"{{stage_id}}\",\n  \"name\": \"Initial Call\",\n  \"description\": \"First call to lead\",\n  \"activity_type\": \"CALL\",\n  \"call_template\": \"{{template_uuid}}\",\n  \"is_primary\": true,\n  \"display_order\": 1,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/stage-activities/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "stage-activities", ""]
+            },
+            "description": "activity_type: CALL/MEETING/EMAIL/FOLLOWUP. is_primary hone pe dusri primary off ho jati hai."
+          }
+        },
+        {
+          "name": "GET Stage Activity Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/stage-activities/{{activity_uuid}}/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "stage-activities", "{{activity_uuid}}", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Set Primary Stage Activity",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/stage-activities/{{activity_uuid}}/set-primary/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "stage-activities", "{{activity_uuid}}", "set-primary", ""]
+            },
+            "description": "empty body."
+          }
+        },
+        {
+          "name": "GET Stage Activities for Stage",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/stage-activities/for-stage/?stage_id={{stage_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "stage-activities", "for-stage", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Lead Primary Form",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/stage-activities/lead-primary-form/?lead_id={{lead_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "stage-activities", "lead-primary-form", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "14. CALLFORMS - ATTEMPTS & SUBMISSIONS",
+      "item": [
+        {
+          "name": "GET Call Attempts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/attempts/?lead_id={{lead_id}}&agent_id=&outcome=",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "attempts", ""]
+            },
+            "description": "lead_id/agent_id/outcome optional filters."
+          }
+        },
+        {
+          "name": "POST Log Call Attempt",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"stage_id\": \"{{stage_id}}\",\n  \"activity_id\": \"{{activity_uuid}}\",\n  \"template_version_id\": \"{{version_uuid}}\",\n  \"outcome\": \"CONNECTED\",\n  \"notes\": \"Client interested\",\n  \"start_time\": \"2026-09-01T10:00:00Z\",\n  \"end_time\": \"2026-09-01T10:15:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/attempts/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "attempts", ""]
+            },
+            "description": "outcome: NO_ANSWER/BUSY/CONNECTED/CALLBACK/COMPLETED/LOST_SUGGESTED. agent khud request user hota hai."
+          }
+        },
+        {
+          "name": "GET Call Attempt Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/attempts/{{attempt_uuid}}/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "attempts", "{{attempt_uuid}}", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Lead Attempt History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/attempts/lead-history/?lead_id={{lead_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "attempts", "lead-history", ""]
+            }
+          }
+        },
+        {
+          "name": "GET Form Submissions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/submissions/?lead_id={{lead_id}}&template_version_id=&field_key=&field_value=",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "submissions", ""]
+            },
+            "description": "field_key+field_value se data filter hota hai."
+          }
+        },
+        {
+          "name": "POST Submit Call Form",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"lead_id\": \"{{lead_id}}\",\n  \"template_version_id\": \"{{version_uuid}}\",\n  \"call_attempt_id\": \"{{attempt_uuid}}\",\n  \"quotation_id\": \"{{quotation_id}}\",\n  \"data\": {\n    \"customer_name\": \"Rahul\",\n    \"budget\": 5000\n  },\n  \"notes\": \"Form filled\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/submissions/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "submissions", ""]
+            },
+            "description": "data me field_key ki values; call_attempt_id aur quotation_id optional. Submission ke baad trigger rules se task/reminder ban sakti hai."
+          }
+        },
+        {
+          "name": "GET Lead Timeline",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/submissions/lead-timeline/?lead_id={{lead_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "submissions", "lead-timeline", ""]
+            },
+            "description": "lead_id ya account_id ya contact_id - koi ek."
+          }
+        },
+        {
+          "name": "GET Template Analytics",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/submissions/analytics/?template_version_id={{version_uuid}}",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "submissions", "analytics", ""]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "15. CALLFORMS - TRIGGER RULES & ADHOC",
+      "item": [
+        {
+          "name": "GET Trigger Rules",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/trigger-rules/?template_version_id={{version_uuid}}",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "trigger-rules", ""]
+            },
+            "description": "template_version_id optional filter."
+          }
+        },
+        {
+          "name": "POST Create Trigger Rule",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_version\": \"{{version_uuid}}\",\n  \"name\": \"Follow-up on submission\",\n  \"trigger_condition\": \"ALWAYS\",\n  \"condition_field_key\": \"\",\n  \"condition_value\": {},\n  \"task_title_template\": \"Follow-up with {lead_name}\",\n  \"task_category\": 1,\n  \"task_priority\": 1,\n  \"due_days_offset\": 1,\n  \"assignee_rule\": \"CONDUCTING_AGENT\",\n  \"specific_assignee\": \"\",\n  \"create_reminder\": true,\n  \"reminder_minutes_before\": 30,\n  \"is_active\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/trigger-rules/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "trigger-rules", ""]
+            },
+            "description": "trigger_condition: ALWAYS/FOLLOW_UP_REQUIRED/OUTCOME_MATCH/FIELD_VALUE_MATCH. assignee_rule: CONDUCTING_AGENT/LEAD_OWNER/SPECIFIC_USER (SPECIFIC_USER pe specific_assignee do)."
+          }
+        },
+        {
+          "name": "GET Adhoc Field Proposals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/adhoc-proposals/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "adhoc-proposals", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Propose Adhoc Field",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"template_version\": \"{{version_uuid}}\",\n  \"field_key\": \"extra_note\",\n  \"label\": \"Extra Note\",\n  \"field_type\": \"text\",\n  \"help_text\": \"Any extra note\",\n  \"options\": []\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/adhoc-proposals/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "adhoc-proposals", ""]
+            }
+          }
+        },
+        {
+          "name": "POST Review Adhoc Proposal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\",\n  \"rejection_reason\": \"\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/callforms/adhoc-proposals/{{proposal_uuid}}/review/",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "adhoc-proposals", "{{proposal_uuid}}", "review", ""]
+            },
+            "description": "status: APPROVED / REJECTED. REJECTED pe rejection_reason bhej sakte ho."
+          }
+        },
+        {
+          "name": "GET Indexed Submission Values",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/callforms/indexed-values/?submission_id=&field_key=",
+              "host": ["{{base_url}}"],
+              "path": ["callforms", "indexed-values", ""]
+            },
+            "description": "submission_id aur field_key optional filters."
+          }
+        }
+      ]
+    }
+  ]
+}

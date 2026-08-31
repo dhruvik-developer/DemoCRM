@@ -210,8 +210,8 @@ export default function FollowUpsListPage() {
               header: "Task",
               render: (row) =>
                 row.task_id ? (
-                  <Link to={`/tasks/${row.task_id}`} className="hover:underline">
-                    #{row.task_id}
+                  <Link to={`/tasks/${row.task_id}`} className="font-medium text-foreground hover:underline">
+                    {row.task_title || `Task #${row.task_id}`}
                   </Link>
                 ) : (
                   "—"
@@ -240,18 +240,21 @@ export default function FollowUpsListPage() {
               header: "",
               render: (row) => (
                 <div className="flex items-center justify-end gap-2">
-                  {canChangeStatus ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={updateStatus.isPending || row.followup_status === 2}
-                      onClick={() =>
-                        updateStatus.mutateAsync({ followUpId: row.followup_id, statusId: 2 })
-                      }
-                    >
-                      Complete
+                  {row.task_id ? (
+                    <Button asChild size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8]">
+                      <Link to={`/tasks/${row.task_id}`}>Take Follow-up →</Link>
                     </Button>
                   ) : null}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={updateStatus.isPending || row.followup_status === 2}
+                    onClick={() =>
+                      updateStatus.mutateAsync({ followUpId: row.followup_id, statusId: 2 })
+                    }
+                  >
+                    {row.followup_status === 2 ? "Completed" : "Complete"}
+                  </Button>
                   {canDelete ? (
                     <Button
                       size="sm"

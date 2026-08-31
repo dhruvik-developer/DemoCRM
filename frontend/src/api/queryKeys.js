@@ -45,6 +45,7 @@ export const taskKeys = {
 
 export const meetingKeys = {
   all: ["meetings"],
+  list: (filters) => ["meetings", "list", filters ?? {}],
   detail: (meetingId) => ["meetings", "detail", meetingId],
 };
 

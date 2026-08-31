@@ -36,6 +36,8 @@ class FollowUpTypesSerializer(serializers.ModelSerializer):
 
 
 class FollowupSerializer(serializers.ModelSerializer):
+    task_title = serializers.CharField(source="task_id.task_title", read_only=True)
+
     class Meta:
         model = Followup
         fields = "__all__"

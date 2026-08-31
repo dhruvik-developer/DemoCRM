@@ -11,7 +11,7 @@ import {
   TASK_PRIORITIES,
   TASK_STATUSES,
 } from "@/utils/taskMasterData";
-import { useCreateTask } from "../hooks";
+import { useCreateTask, useTaskStatuses, useTaskCategories } from "../hooks";
 import { useUsers } from "@/features/admin/hooks";
 import LeadSelect from "@/features/leads/components/LeadSelect";
 import { taskSchema } from "@/schemas/task.schema";
@@ -31,6 +31,8 @@ export default function TaskCreatePage() {
   const navigate = useNavigate();
   const createTask = useCreateTask();
   const usersQuery = useUsers();
+  const { data: taskStatuses = [] } = useTaskStatuses();
+  const { data: taskCategories = [] } = useTaskCategories();
 
   const {
     register,
@@ -60,6 +62,11 @@ export default function TaskCreatePage() {
 
   const onSubmit = async (values) => {
     try {
+      const statusId = Number(values.status || statusValue || taskStatuses[0]?.status_id || 1);
+      const priorityId = Number(values.priority || priorityValue || 2);
+      const categoryId = Number(values.category || categoryValue || taskCategories[0]?.category_id || 1);
+      const assignedTo = values.assigned_to || assignedToValue || undefined;
+
       await createTask.mutateAsync({
         task_title: values.task_title,
         description: values.description || undefined,
@@ -67,19 +74,17 @@ export default function TaskCreatePage() {
         due_date: values.due_date
           ? new Date(values.due_date).toISOString()
           : undefined,
-        status: Number(values.status),
-        priority: Number(values.priority),
-        category: Number(values.category),
-        assigned_to: values.assigned_to || undefined,
+        status: statusId,
+        priority: priorityId,
+        category: categoryId,
+        assigned_to: assignedTo,
       });
       navigate("/tasks");
     } catch (error) {
       const normalized = error.normalized ?? { fieldErrors: {} };
       for (const [field, messages] of Object.entries(normalized.fieldErrors)) {
-        const schemaField =
-          field === "task_title" || field === "lead" ? field : null;
-        if (schemaField) {
-          setError(schemaField, { message: messages[0] });
+        if (messages && messages[0]) {
+          setError(field, { message: messages[0] });
         }
       }
     }
@@ -140,7 +145,10 @@ export default function TaskCreatePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {TASK_STATUSES.map((option) => (
+                {(taskStatuses.length > 0
+                  ? taskStatuses.map((s) => ({ id: s.status_id ?? s.id, name: s.status_name ?? s.name }))
+                  : TASK_STATUSES
+                ).map((option) => (
                   <SelectItem key={option.id} value={String(option.id)}>
                     {option.name}
                   </SelectItem>
@@ -172,7 +180,10 @@ export default function TaskCreatePage() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {TASK_CATEGORIES.map((option) => (
+                {(taskCategories.length > 0
+                  ? taskCategories.map((c) => ({ id: c.category_id ?? c.id, name: c.category_name ?? c.name }))
+                  : TASK_CATEGORIES
+                ).map((option) => (
                   <SelectItem key={option.id} value={String(option.id)}>
                     {option.name}
                   </SelectItem>

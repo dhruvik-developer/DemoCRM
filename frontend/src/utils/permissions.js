@@ -77,16 +77,17 @@ const employeeCodenames = new Set([
  */
 export function resolvePermissions({ roleName, isSuperuser = false }) {
   if (isSuperuser || roleName === ROLES.ADMIN) {
-    return { isAdmin: true, codenames: null }; // null = unrestricted
+    return { isAdmin: true, roleName: ROLES.ADMIN, codenames: null }; // null = unrestricted
   }
   if (roleName === ROLES.MANAGER) {
-    return { isAdmin: false, codenames: managerCodenames };
+    return { isAdmin: false, roleName: ROLES.MANAGER, codenames: managerCodenames };
   }
   if (roleName === ROLES.EMPLOYEE) {
-    return { isAdmin: false, codenames: employeeCodenames };
+    return { isAdmin: false, roleName: ROLES.EMPLOYEE, codenames: employeeCodenames };
   }
   return {
     isAdmin: false,
+    roleName: roleName || null,
     codenames: new Set([...managerCodenames, ...employeeCodenames]),
   };
 }
