@@ -34,6 +34,8 @@ export const useCallTemplate = (id) =>
   });
 export const useCreateCallTemplate = () =>
   useCallFormsMutation(api.createCallTemplate, "Template created.");
+export const useUpdateCallTemplate = () =>
+  useCallFormsMutation(({ id, ...values }) => api.updateCallTemplate(id, values), "Template updated.");
 export const useDeleteCallTemplate = () =>
   useCallFormsMutation((id) => api.deleteCallTemplate(id), "Template deleted.");
 

@@ -182,7 +182,7 @@ export default function LeadCreatePage() {
               </SelectTrigger>
               <SelectContent>
                 {(pipelinesQuery.data ?? [])
-                  .filter((pipeline) => pipeline.is_active)
+                  .filter((pipeline) => pipeline.is_active ?? true)
                   .map((pipeline) => (
                     <SelectItem key={pipeline.id} value={pipeline.id}>
                       {pipeline.name}
