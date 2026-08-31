@@ -13,13 +13,17 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+import { useUsers } from "@/features/admin/hooks";
+
 export default function TasksListPage() {
   const { resolved } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const usersQuery = useUsers();
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
   const ordering = searchParams.get("ordering") ?? "";
+  const inbox = searchParams.get("inbox") ?? "all"; // all | overdue | today | upcoming
 
   const updateParam = (key, value) => {
     setSearchParams(
@@ -45,27 +49,55 @@ export default function TasksListPage() {
     ordering: ordering || undefined,
   });
 
-  const rows = tasksQuery.data?.results ?? [];
+  let rows = tasksQuery.data?.results ?? [];
   const count = tasksQuery.data?.count ?? 0;
   const canCreate = hasPermission(resolved, "add_task");
+
+  // Inbox filtering client-side per §13 (backend has no overdue/today param)
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  if (inbox === "overdue") rows = rows.filter((t) => t.due_date && new Date(t.due_date) < now);
+  else if (inbox === "today") rows = rows.filter((t) => t.due_date && new Date(t.due_date) >= startToday && new Date(t.due_date) < endToday);
+  else if (inbox === "upcoming") rows = rows.filter((t) => t.due_date && new Date(t.due_date) >= endToday);
+
+  const findUserName = (assignee) => {
+    if (!assignee) return "Unassigned";
+    if (typeof assignee === "object") {
+      return assignee.full_name || assignee.username || assignee.email;
+    }
+    const found = (usersQuery.data ?? []).find(
+      (u) => String(u.user_id) === String(assignee),
+    );
+    return found?.full_name || found?.username || `${String(assignee).slice(0, 8)}…`;
+  };
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">Tasks</h1>
+        <h1 className="text-2xl font-semibold tracking-tight">My Tasks</h1>
         {canCreate ? (
-          <Button asChild>
+          <Button asChild className="bg-[#2563EB] hover:bg-[#1D4ED8]">
             <Link to="/tasks/new">New task</Link>
           </Button>
         ) : null}
       </div>
 
-      <Input
-        placeholder="Search tasks…"
-        className="w-64"
-        defaultValue={search}
-        onChange={(event) => updateParam("search", event.target.value.trim())}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          ["all", "All"],
+          ["overdue", "Overdue"],
+          ["today", "Today"],
+          ["upcoming", "Upcoming"],
+        ].map(([key, label]) => (
+          <Button key={key} variant={inbox === key ? "default" : "outline"} size="sm" onClick={() => updateParam("inbox", key === "all" ? "" : key)} className={inbox === key ? "bg-[#2563EB] hover:bg-[#1D4ED8]" : ""}>
+            {label}
+          </Button>
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          <Input placeholder="Search tasks…" className="w-64" defaultValue={search} onChange={(event) => updateParam("search", event.target.value.trim())} />
+        </div>
+      </div>
 
       {tasksQuery.isError ? (
         <PageError error={tasksQuery.error} onRetry={tasksQuery.refetch} />
@@ -76,11 +108,20 @@ export default function TasksListPage() {
               key: "task_title",
               header: "Title",
               sortable: true,
-              render: (task) => (
-                <Link to={`/tasks/${task.task_id}`} className="font-medium hover:underline">
-                  {task.task_title}
-                </Link>
-              ),
+              render: (task) => {
+                const to = task.lead ? `/leads/${task.lead}` : `/tasks/${task.task_id}`;
+                const priority = taskPriorityName(task.priority);
+                const isHigh = priority?.toLowerCase() === "high";
+                return (
+                  <div className="flex items-center gap-2">
+                    {isHigh ? <span className="h-6 w-1 rounded bg-[#2563EB]" /> : null}
+                    <Link to={to} className="font-medium hover:underline">
+                      {task.task_title}
+                    </Link>
+                    {task.lead ? <Badge variant="outline" className="text-[10px]">→ Workspace</Badge> : null}
+                  </div>
+                );
+              },
             },
             {
               key: "status",
@@ -92,7 +133,10 @@ export default function TasksListPage() {
             {
               key: "priority",
               header: "Priority",
-              render: (task) => taskPriorityName(task.priority) ?? "—",
+              render: (task) => {
+                const n = taskPriorityName(task.priority);
+                return n ? <Badge variant={n.toLowerCase() === "high" ? "destructive" : n.toLowerCase() === "medium" ? "secondary" : "outline"}>{n}</Badge> : "—";
+              },
             },
             {
               key: "due_date",
@@ -104,8 +148,16 @@ export default function TasksListPage() {
             {
               key: "assigned_to",
               header: "Assigned to",
-              render: (task) =>
-                task.assigned_to ? `${String(task.assigned_to).slice(0, 8)}…` : "—",
+              render: (task) => findUserName(task.assigned_to),
+            },
+            {
+              key: "open",
+              header: "",
+              render: (task) => (
+                <Button asChild variant="ghost" size="sm">
+                  <Link to={task.lead ? `/leads/${task.lead}` : `/tasks/${task.task_id}`}>Open →</Link>
+                </Button>
+              ),
             },
           ]}
           rows={rows}

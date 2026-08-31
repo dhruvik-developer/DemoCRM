@@ -2,9 +2,23 @@
 // Results may be plain arrays or paginated envelopes depending on the view —
 // normalize both here so consumers always get an array.
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { crmKeys } from "@/api/queryKeys";
-import { getLeadSources, getPipelines, getPipelineStages } from "./api";
+import { getApiErrorMessage } from "@/utils/errors";
+import {
+  createLeadSource,
+  createPipeline,
+  createPipelineStage,
+  deleteLeadSource,
+  deletePipeline,
+  deletePipelineStage,
+  getLeadSources,
+  getPipelines,
+  getPipelineStages,
+  updateLeadSource,
+  updatePipeline,
+} from "./api";
 
 function toArray(data) {
   if (Array.isArray(data)) return data;
@@ -16,6 +30,48 @@ export function useLeadSources() {
     queryKey: crmKeys.leadSources,
     queryFn: async () => toArray(await getLeadSources()),
     staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
+function useInvalidateCRM() {
+  const queryClient = useQueryClient();
+  return () => queryClient.invalidateQueries({ queryKey: crmKeys.leadSources });
+}
+
+export function useCreateLeadSource() {
+  const invalidate = useInvalidateCRM();
+  return useMutation({
+    mutationFn: createLeadSource,
+    onSuccess: () => {
+      invalidate();
+      toast.success("Lead source created.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useUpdateLeadSource() {
+  const invalidate = useInvalidateCRM();
+  return useMutation({
+    mutationFn: ({ id, ...partial }) => updateLeadSource(id, partial),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Lead source updated.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useDeleteLeadSource() {
+  const invalidate = useInvalidateCRM();
+  return useMutation({
+    mutationFn: (id) => deleteLeadSource(id),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Lead source deleted.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
   });
 }
 
@@ -24,6 +80,68 @@ export function usePipelines() {
     queryKey: crmKeys.pipelines,
     queryFn: async () => toArray(await getPipelines()),
     staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+}
+
+export function useCreatePipeline() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createPipeline,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: crmKeys.pipelines });
+      toast.success("Pipeline created.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useUpdatePipeline() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...partial }) => updatePipeline(id, partial),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: crmKeys.pipelines });
+      toast.success("Pipeline updated.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useDeletePipeline() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => deletePipeline(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: crmKeys.pipelines });
+      toast.success("Pipeline deleted.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useCreatePipelineStage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: createPipelineStage,
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["crm", "pipeline-stages"] });
+      toast.success("Pipeline stage created.");
+      return result;
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useDeletePipelineStage() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id) => deletePipelineStage(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["crm", "pipeline-stages"] });
+      toast.success("Pipeline stage deleted.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
   });
 }
 
@@ -34,6 +152,7 @@ export function usePipelineStages(pipelineId) {
     queryFn: async () => toArray(await getPipelineStages(pipelineId)),
     enabled: Boolean(pipelineId),
     staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 }
 
@@ -49,6 +168,7 @@ export function useMasterDataMaps() {
     queryKey: [...crmKeys.pipelineStages(null), "all"],
     queryFn: async () => toArray(await getPipelineStages(null)),
     staleTime: 5 * 60 * 1000,
+    retry: false,
   });
 
   const isLoading =
