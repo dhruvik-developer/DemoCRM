@@ -20,7 +20,6 @@ import {
 } from "../hooks";
 import ActivitiesCard from "@/features/activities/components/ActivitiesCard";
 import {
-  assignLeadSchema,
   convertLeadSchema,
   lostLeadSchema,
 } from "@/schemas/lead.schema";
@@ -65,13 +64,14 @@ function Field({ label, value }) {
   );
 }
 
+import { useUsers } from "@/features/admin/hooks";
+
 function AssignDialog({ lead, open, onOpenChange }) {
   const assignLead = useAssignLead(lead.id);
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm({ resolver: zodResolver(assignLeadSchema) });
+  const usersQuery = useUsers();
+  const [selectedUserId, setSelectedUserId] = useState(
+    lead.assigned_to?.user_id ?? lead.assigned_to ?? "",
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -79,21 +79,36 @@ function AssignDialog({ lead, open, onOpenChange }) {
         <DialogHeader>
           <DialogTitle>Assign lead</DialogTitle>
         </DialogHeader>
-        {/* G6: no user-list endpoint yet, so v1 takes a user UUID directly. */}
-        <form onSubmit={handleSubmit((values) => assignLead.mutateAsync(values.assigned_to).then(() => onOpenChange(false)))}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!selectedUserId) return;
+            assignLead.mutateAsync(selectedUserId).then(() => onOpenChange(false));
+          }}
+        >
           <FormField
             id="assigned_to"
-            label="User UUID"
-            error={errors.assigned_to?.message}
-            help="A searchable user picker will replace this once the backend ships GET /users/."
+            label="Select Employee"
+            help="Select an employee to assign this lead to."
           >
-            <Input id="assigned_to" placeholder="00000000-0000-4000-8000-…" {...register("assigned_to")} />
+            <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select Employee" />
+              </SelectTrigger>
+              <SelectContent>
+                {(usersQuery.data ?? []).map((user) => (
+                  <SelectItem key={user.user_id} value={user.user_id}>
+                    {user.full_name || user.username} {user.role ? `(${user.role})` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FormField>
           <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={assignLead.isPending}>
+            <Button type="submit" disabled={!selectedUserId || assignLead.isPending}>
               {assignLead.isPending ? "Assigning…" : "Assign"}
             </Button>
           </DialogFooter>
@@ -272,6 +287,7 @@ export default function LeadDetailPage() {
   const { leadId } = useParams();
   const { resolved } = useAuth();
   const leadQuery = useLead(leadId);
+  const usersQuery = useUsers();
   const masterData = useMasterDataMaps();
 
   const [dialog, setDialog] = useState(null); // 'assign' | 'progress' | 'lost' | 'convert'
@@ -348,9 +364,25 @@ export default function LeadDetailPage() {
           <Field label="Due amount" value={lead.due_amount} />
           <Field
             label="Assigned to"
-            // No user-list endpoint (G6) — show a short UUID reference.
             value={
-              lead.assigned_to ? `${String(lead.assigned_to).slice(0, 8)}…` : null
+              (() => {
+                if (!lead.assigned_to) return null;
+                if (typeof lead.assigned_to === "object") {
+                  return (
+                    lead.assigned_to.full_name ||
+                    lead.assigned_to.username ||
+                    lead.assigned_to.email
+                  );
+                }
+                const found = (usersQuery?.data ?? []).find(
+                  (u) => String(u.user_id) === String(lead.assigned_to),
+                );
+                return (
+                  found?.full_name ||
+                  found?.username ||
+                  `${String(lead.assigned_to).slice(0, 8)}…`
+                );
+              })()
             }
           />
           <Field label="Created" value={lead.created_at ? new Date(lead.created_at).toLocaleString() : null} />

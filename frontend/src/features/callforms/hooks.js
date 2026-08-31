@@ -42,6 +42,7 @@ export const useVersions = (templateId) =>
   useQuery({
     queryKey: ["callforms", "versions", templateId],
     queryFn: () => api.getVersions(templateId ? { template: templateId } : {}),
+    enabled: Boolean(templateId),
   });
 export const useCreateVersion = () =>
   useCallFormsMutation(

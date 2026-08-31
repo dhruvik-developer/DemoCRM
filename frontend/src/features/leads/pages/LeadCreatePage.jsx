@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useLeadSources, usePipelines, usePipelineStages } from "@/features/crm/hooks";
@@ -23,18 +23,21 @@ import {
 } from "@/components/ui/select";
 import { getApiErrorMessage } from "@/utils/errors";
 
+import { useUsers } from "@/features/admin/hooks";
+
 export default function LeadCreatePage() {
   const navigate = useNavigate();
   const createLead = useCreateLead();
 
   const sourcesQuery = useLeadSources();
   const pipelinesQuery = usePipelines();
+  const usersQuery = useUsers();
 
   const {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     setError,
     formState: { errors },
   } = useForm({
@@ -46,11 +49,14 @@ export default function LeadCreatePage() {
       company_name: "",
       source: "",
       pipeline: "",
+      assigned_to: "",
       total_value: "",
     },
   });
 
-  const pipelineId = watch("pipeline");
+  const pipelineId = useWatch({ control, name: "pipeline" });
+  const sourceValue = useWatch({ control, name: "source" });
+  const assignedToValue = useWatch({ control, name: "assigned_to" });
   const stagesQuery = usePipelineStages(pipelineId);
   const firstStage = useMemo(() => stagesQuery.data?.[0], [stagesQuery.data]);
 
@@ -71,6 +77,7 @@ export default function LeadCreatePage() {
         source: values.source,
         pipeline: values.pipeline,
         current_stage: firstStage?.id,
+        assigned_to: values.assigned_to || undefined,
         total_value: values.total_value === "" ? undefined : values.total_value,
       };
       await createLead.mutateAsync(payload);
@@ -127,22 +134,42 @@ export default function LeadCreatePage() {
           <Input id="company_name" {...register("company_name")} />
         </FormField>
 
-        <FormField id="source" label="Lead source" error={errors.source?.message}>
-          <Select value={watch("source")} onValueChange={(value) => setValue("source", value)}>
-            <SelectTrigger>
-              <SelectValue placeholder="Select source" />
-            </SelectTrigger>
-            <SelectContent>
-              {(sourcesQuery.data ?? [])
-                .filter((source) => source.is_active)
-                .map((source) => (
-                  <SelectItem key={source.id} value={source.id}>
-                    {source.name}
+        <div className="grid gap-4 md:grid-cols-2">
+          <FormField id="source" label="Lead source" error={errors.source?.message}>
+            <Select value={sourceValue} onValueChange={(value) => setValue("source", value)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select source" />
+              </SelectTrigger>
+              <SelectContent>
+                {(sourcesQuery.data ?? [])
+                  .filter((source) => source.is_active)
+                  .map((source) => (
+                    <SelectItem key={source.id} value={source.id}>
+                      {source.name}
+                    </SelectItem>
+                  ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <FormField id="assigned_to" label="Assigned To" error={errors.assigned_to?.message}>
+            <Select
+              value={assignedToValue || ""}
+              onValueChange={(value) => setValue("assigned_to", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select Employee" />
+              </SelectTrigger>
+              <SelectContent>
+                {(usersQuery.data ?? []).map((user) => (
+                  <SelectItem key={user.user_id} value={user.user_id}>
+                    {user.full_name || user.username} {user.role ? `(${user.role})` : ""}
                   </SelectItem>
                 ))}
-            </SelectContent>
-          </Select>
-        </FormField>
+              </SelectContent>
+            </Select>
+          </FormField>
+        </div>
 
         <div className="grid gap-4 md:grid-cols-2">
           <FormField id="pipeline" label="Pipeline" error={errors.pipeline?.message}>

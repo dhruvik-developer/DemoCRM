@@ -2,7 +2,7 @@
 // ID. Delivery itself is handled server-side by Celery beat jobs.
 
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { REMINDER_STATUSES, REMINDER_TYPES } from "@/utils/reminderMasterData";
@@ -75,7 +75,7 @@ export default function RemindersPage() {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(createReminderSchema),
@@ -88,7 +88,11 @@ export default function RemindersPage() {
     },
   });
 
-  const attachToTask = !watch("context_meeting_id");
+  const contextTaskId = useWatch({ control, name: "context_task_id" });
+  const contextMeetingId = useWatch({ control, name: "context_meeting_id" });
+  const reminderTypeId = useWatch({ control, name: "reminder_type_id" });
+
+  const attachToTask = !contextMeetingId;
 
   const onSubmit = async (values) => {
     try {
@@ -162,7 +166,7 @@ export default function RemindersPage() {
                 error={!attachToTask ? undefined : errors.context_task_id?.message}
               >
                 <TaskSelect
-                  value={watch("context_task_id")}
+                  value={contextTaskId}
                   onChange={(value) => {
                     setValue("context_task_id", value);
                     if (value) setValue("context_meeting_id", "");
@@ -175,7 +179,7 @@ export default function RemindersPage() {
                 <Input
                   inputMode="numeric"
                   placeholder="Meeting ID"
-                  value={watch("context_meeting_id")}
+                  value={contextMeetingId}
                   onChange={(event) => {
                     setValue("context_meeting_id", event.target.value.replace(/\D/g, ""));
                     if (event.target.value) setValue("context_task_id", "");
@@ -187,7 +191,7 @@ export default function RemindersPage() {
             <div className="grid gap-4 md:grid-cols-2">
               <FormField id="reminder_type" label="Type">
                 <Select
-                  value={watch("reminder_type_id")}
+                  value={reminderTypeId}
                   onValueChange={(value) => setValue("reminder_type_id", value)}
                 >
                   <SelectTrigger>

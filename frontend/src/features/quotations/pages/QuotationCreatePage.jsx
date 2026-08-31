@@ -3,7 +3,7 @@
 
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { useForm, FormProvider } from "react-hook-form";
+import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import LeadSelect from "@/features/leads/components/LeadSelect";
@@ -15,12 +15,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
+import { useLeads } from "@/features/leads/hooks";
+
 export default function QuotationCreatePage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const presetLead = searchParams.get("lead") ?? "";
   const createQuotation = useCreateQuotation();
   const [leadId, setLeadId] = useState(presetLead);
+  const leadsQuery = useLeads({ page_size: 50 });
 
   const methods = useForm({
     resolver: zodResolver(createQuotationSchema),
@@ -36,11 +39,15 @@ export default function QuotationCreatePage() {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors },
   } = methods;
 
-  const effectiveLead = leadId || watch("lead_id");
+  const watchedLeadId = useWatch({ control, name: "lead_id" });
+  const effectiveLead = leadId || watchedLeadId;
+  const selectedLead = (leadsQuery.data?.results ?? []).find(
+    (l) => String(l.id) === String(effectiveLead),
+  );
 
   const onSubmit = async (values) => {
     try {
@@ -83,6 +90,27 @@ export default function QuotationCreatePage() {
                 }}
               />
             )}
+            {selectedLead ? (
+              <div className="mt-2 rounded-md border bg-muted/30 p-3 text-sm flex flex-col gap-1">
+                <span className="font-semibold text-xs text-muted-foreground uppercase tracking-wider">
+                  Selected Lead
+                </span>
+                <div>
+                  <span className="font-medium text-muted-foreground">Lead ID: </span>
+                  <span className="font-mono">{selectedLead.id}</span>
+                </div>
+                <div>
+                  <span className="font-medium text-muted-foreground">Lead Name: </span>
+                  <span className="font-medium">{selectedLead.name}</span>
+                </div>
+                {selectedLead.company_name ? (
+                  <div>
+                    <span className="font-medium text-muted-foreground">Company: </span>
+                    <span>{selectedLead.company_name}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </FormField>
 
           <FormField id="terms" label="Terms">

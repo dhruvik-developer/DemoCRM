@@ -6,7 +6,7 @@
 
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { MEETING_TYPES } from "@/utils/meetingMasterData";
@@ -35,7 +35,7 @@ export default function MeetingCreatePage() {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(createMeetingSchema),
@@ -52,6 +52,8 @@ export default function MeetingCreatePage() {
       manager: "",
     },
   });
+
+  const taskId = useWatch({ control, name: "task_id" });
 
   const onSubmit = async (values) => {
     try {
@@ -92,7 +94,7 @@ export default function MeetingCreatePage() {
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4" noValidate>
         <FormField id="task_id" label="Task ID" error={errors.task_id?.message}>
-          <TaskSelect value={watch("task_id")} onChange={(value) => setValue("task_id", value)} />
+          <TaskSelect value={taskId} onChange={(value) => setValue("task_id", value)} />
         </FormField>
 
         <FormField id="manager" label="Manager user UUID" error={errors.manager?.message}

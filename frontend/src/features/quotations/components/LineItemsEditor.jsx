@@ -45,10 +45,20 @@ export default function LineItemsEditor({ disabled = false }) {
                   step={1}
                   placeholder="Qty"
                   disabled={disabled}
+                  className={
+                    formState.errors.line_items?.[index]?.quantity
+                      ? "border-destructive focus-visible:ring-destructive"
+                      : ""
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "." || e.key === ",") {
+                      e.preventDefault();
+                    }
+                  }}
                   {...register(`line_items.${index}.quantity`)}
                 />
                 {formState.errors.line_items?.[index]?.quantity ? (
-                  <p className="text-xs text-destructive">
+                  <p role="alert" className="text-xs text-destructive font-medium">
                     {formState.errors.line_items[index].quantity.message}
                   </p>
                 ) : null}

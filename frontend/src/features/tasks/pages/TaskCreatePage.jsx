@@ -3,7 +3,7 @@
 // endpoints exist. Only Admin/Manager reach this page in practice.
 
 import { Link, useNavigate } from "react-router-dom";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import {
@@ -34,7 +34,7 @@ export default function TaskCreatePage() {
     register,
     handleSubmit,
     setValue,
-    watch,
+    control,
     setError,
     formState: { errors },
   } = useForm({
@@ -48,6 +48,11 @@ export default function TaskCreatePage() {
       category: String(TASK_CATEGORIES[0]?.id ?? ""),
     },
   });
+
+  const leadValue = useWatch({ control, name: "lead" });
+  const statusValue = useWatch({ control, name: "status" });
+  const priorityValue = useWatch({ control, name: "priority" });
+  const categoryValue = useWatch({ control, name: "category" });
 
   const onSubmit = async (values) => {
     try {
@@ -100,12 +105,12 @@ export default function TaskCreatePage() {
         </FormField>
 
         <FormField id="lead" label="Lead" error={errors.lead?.message} help="Every task belongs to a lead.">
-          <LeadSelect value={watch("lead")} onChange={(value) => setValue("lead", value)} />
+          <LeadSelect value={leadValue} onChange={(value) => setValue("lead", value)} />
         </FormField>
 
         <div className="grid gap-4 md:grid-cols-2">
           <FormField id="status" label="Status">
-            <Select value={watch("status")} onValueChange={(value) => setValue("status", value)}>
+            <Select value={statusValue} onValueChange={(value) => setValue("status", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -120,7 +125,7 @@ export default function TaskCreatePage() {
           </FormField>
 
           <FormField id="priority" label="Priority">
-            <Select value={watch("priority")} onValueChange={(value) => setValue("priority", value)}>
+            <Select value={priorityValue} onValueChange={(value) => setValue("priority", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
@@ -137,7 +142,7 @@ export default function TaskCreatePage() {
 
         <div className="grid gap-4 md:grid-cols-2">
           <FormField id="category" label="Category">
-            <Select value={watch("category")} onValueChange={(value) => setValue("category", value)}>
+            <Select value={categoryValue} onValueChange={(value) => setValue("category", value)}>
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
