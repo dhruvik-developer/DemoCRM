@@ -72,7 +72,7 @@ export default function MeetingsListPage() {
   const rows = meetingsQuery.data?.results ?? [];
   const count = meetingsQuery.data?.count ?? 0;
   // Only Manager or Admin can create/schedule meetings — Employee cannot
-  const canCreate = isManagerRole && hasPermission(resolved, "add_meeting");
+  const canCreate = hasPermission(resolved, "add_meeting");
 
   const findUserName = (userId) => {
     if (!userId) return "—";

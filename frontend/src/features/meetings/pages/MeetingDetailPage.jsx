@@ -58,6 +58,7 @@ export default function MeetingDetailPage() {
   const { meetingId } = useParams();
   const { user, resolved } = useAuth();
   const meetingQuery = useMeeting(meetingId);
+  const { data: users = [] } = useUsers();
 
   const decideApproval = useDecideApproval(meetingId);
   const reschedule = useRescheduleMeeting(meetingId);

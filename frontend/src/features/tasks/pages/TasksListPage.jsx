@@ -114,13 +114,12 @@ export default function TasksListPage() {
               header: "Title",
               sortable: true,
               render: (task) => {
-                const to = task.lead ? `/leads/${task.lead}` : `/tasks/${task.task_id}`;
                 const priority = taskPriorityName(task.priority);
                 const isHigh = priority?.toLowerCase() === "high";
                 return (
                   <div className="flex items-center gap-2">
                     {isHigh ? <span className="h-6 w-1 rounded bg-[#2563EB]" /> : null}
-                    <Link to={to} className="font-medium hover:underline">
+                    <Link to={`/tasks/${task.task_id}`} className="font-medium hover:underline">
                       {task.task_title}
                     </Link>
                     {task.lead ? <Badge variant="outline" className="text-[10px]">→ Workspace</Badge> : null}

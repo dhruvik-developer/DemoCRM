@@ -1610,12 +1610,11 @@ class MeetingCreateView(APIView):
                 else ""
             )
 
-            if not request.user.is_superuser and role_name != "manager":
+            if not request.user.is_superuser and role_name not in {"manager", "employee"}:
                 return Response(
                     {
                         "error": (
-                            "Only Managers can create meetings. "
-                            "Please contact your manager to schedule one."
+                            "Only Employees and Managers can create meetings."
                         )
                     },
                     status=status.HTTP_403_FORBIDDEN,

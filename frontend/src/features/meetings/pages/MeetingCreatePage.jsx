@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "@/hooks/useAuth";
+import { hasPermission } from "@/utils/permissions";
 import { MEETING_TYPES } from "@/utils/meetingMasterData";
 import { useCreateMeeting } from "../hooks";
 import { useUsers } from "@/features/admin/hooks";
@@ -34,11 +35,8 @@ export default function MeetingCreatePage() {
   const [typeId, setTypeId] = useState("1");
   const isOnline = typeId === "1";
 
-  // Only Manager or Admin can access this page
-  const isManagerOrAdmin =
-    resolved?.isAdmin ||
-    resolved?.roleName === "Manager" ||
-    String(resolved?.roleName || "").toLowerCase() === "manager";
+  const isManager = String(resolved?.roleName || "").toLowerCase() === "manager";
+  const canCreate = hasPermission(resolved, "add_meeting");
 
   const {
     register,
@@ -72,13 +70,16 @@ export default function MeetingCreatePage() {
   });
   // Fallback: show all users if no employee role found
   const displayEmployees = employeeOptions.length > 0 ? employeeOptions : users;
+  const managerOptions = users.filter((u) =>
+    String(u.role || u.role_name || "").toLowerCase().includes("manager"),
+  );
 
   // Pre-fill manager field with the logged-in manager's own user_id
   useEffect(() => {
-    if (user?.user_id) {
+    if (isManager && user?.user_id) {
       setValue("manager", String(user.user_id), { shouldValidate: true });
     }
-  }, [user, setValue]);
+  }, [isManager, user, setValue]);
 
   // Auto-populate from selected task
   useEffect(() => {
@@ -113,13 +114,12 @@ export default function MeetingCreatePage() {
     }
   };
 
-  // Employees cannot access this page
-  if (!isManagerOrAdmin) {
+  if (!canCreate) {
     return (
       <div className="mx-auto flex w-full max-w-2xl flex-col items-center gap-4 p-12 text-center">
         <h2 className="text-xl font-semibold">Access Restricted</h2>
         <p className="text-sm text-muted-foreground">
-          Only Managers can schedule meetings. Please contact your manager to arrange one.
+          You do not have permission to schedule meetings.
         </p>
         <Button asChild variant="outline">
           <Link to="/meetings">Back to Meetings</Link>
@@ -138,8 +138,9 @@ export default function MeetingCreatePage() {
       </div>
 
       <p className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200">
-        You are scheduling this meeting as <strong>Manager</strong>. Select the task and the
-        employee this meeting is for.{" "}
+        {isManager
+          ? "Select the task and the employee this meeting is for. "
+          : "Select the task and the manager who should approve this meeting. "}
         {isOnline
           ? "A Google Meet link is generated automatically."
           : "Office location is used if no location is provided."}
@@ -156,7 +157,7 @@ export default function MeetingCreatePage() {
         </FormField>
 
         {/* Employee — who is this meeting with */}
-        <FormField
+        {isManager ? <FormField
           id="employee"
           label="Employee (Meeting With)"
           help="Select the employee this meeting is scheduled for."
@@ -176,7 +177,25 @@ export default function MeetingCreatePage() {
               ))}
             </SelectContent>
           </Select>
-        </FormField>
+        </FormField> : (
+          <FormField id="manager" label="Approving Manager" error={errors.manager?.message} required>
+            <Select
+              value={watch("manager")}
+              onValueChange={(value) => setValue("manager", value, { shouldValidate: true })}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select manager…" />
+              </SelectTrigger>
+              <SelectContent>
+                {managerOptions.map((manager) => (
+                  <SelectItem key={manager.user_id} value={String(manager.user_id)}>
+                    {manager.full_name || manager.username}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+        )}
 
         {/* Title */}
         <FormField id="meeting_title" label="Meeting Title" error={errors.meeting_title?.message}>

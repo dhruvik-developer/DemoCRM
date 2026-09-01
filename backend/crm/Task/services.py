@@ -24,6 +24,7 @@ import os
 try:
     from googleapiclient.discovery import build
     from google.oauth2 import service_account
+    from google.oauth2.credentials import Credentials as OAuthCredentials
 
     HAS_GOOGLE_API = True
 except ImportError:
@@ -50,21 +51,38 @@ OFFICE_LOCATION = "123, Business Park, Ahmedabad, Gujarat - 380015"
 
 def generate_google_meet_link(meeting):
     try:
+        if not HAS_GOOGLE_API:
+            raise RuntimeError("Google API libraries are not installed")
+
+        scopes = ["https://www.googleapis.com/auth/calendar"]
+        credentials = None
+        client_id = os.environ.get("GOOGLE_OAUTH_CLIENT_ID")
+        client_secret = os.environ.get("GOOGLE_OAUTH_CLIENT_SECRET")
+        refresh_token = os.environ.get("GOOGLE_OAUTH_REFRESH_TOKEN")
         service_account_file = os.environ.get("GOOGLE_SERVICE_ACCOUNT_FILE")
 
-        if (
-            HAS_GOOGLE_API
-            and service_account_file
-            and os.path.exists(service_account_file)
-        ):
-            calendar_id = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
-            SCOPES = ["https://www.googleapis.com/auth/calendar"]
-
+        # OAuth refresh-token credentials work with personal Gmail and Google
+        # Workspace accounts because events are created as the authorized user.
+        if client_id and client_secret and refresh_token:
+            credentials = OAuthCredentials(
+                token=None,
+                refresh_token=refresh_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=scopes,
+            )
+        elif service_account_file and os.path.exists(service_account_file):
             credentials = service_account.Credentials.from_service_account_file(
                 service_account_file,
-                scopes=SCOPES,
+                scopes=scopes,
             )
+            impersonate_user = os.environ.get("GOOGLE_IMPERSONATE_USER")
+            if impersonate_user:
+                credentials = credentials.with_subject(impersonate_user)
 
+        if credentials:
+            calendar_id = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
             service = build("calendar", "v3", credentials=credentials)
 
             meeting_date = str(meeting.meeting_date)
@@ -111,21 +129,19 @@ def generate_google_meet_link(meeting):
 
     except Exception:
         logger.warning(
-            "Google Calendar API unavailable for meeting_id=%s, using fallback link generator",
+            "Google Calendar API could not create a Meet link for meeting_id=%s",
             getattr(meeting, "meeting_id", None),
+            exc_info=True,
         )
 
-    # Fallback standard Google Meet link
-    random_code = (
-        f"{uuid.uuid4().hex[:3]}-{uuid.uuid4().hex[:4]}-{uuid.uuid4().hex[:3]}"
-    )
-    meet_link = f"https://meet.google.com/{random_code}"
-    logger.info(
-        "Generated fallback Google Meet link: meeting_id=%s link=%s",
+    # Google Meet room codes cannot be invented locally. A usable link must be
+    # provisioned by the Google Calendar API (or supplied by the requester).
+    logger.warning(
+        "Google Meet link was not created for meeting_id=%s; configure "
+        "Google OAuth credentials or a Workspace service account, or provide a link",
         getattr(meeting, "meeting_id", None),
-        meet_link,
     )
-    return meet_link
+    return None
 
 
 # ======================================================
