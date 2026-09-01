@@ -33,7 +33,10 @@ import CallFormRulesPage, { AdhocProposalsPage } from "@/features/callforms/page
 import AdminRolesPage from "@/features/admin/pages/AdminRolesPage";
 import AdminLeadSourcesPage from "@/features/admin/pages/AdminLeadSourcesPage";
 import AdminPipelinesPage from "@/features/admin/pages/AdminPipelinesPage";
+import AuditLogsPage from "@/features/admin/pages/AuditLogsPage";
 import ProfilePage from "@/features/admin/pages/ProfilePage";
+import SettingsPage from "@/features/settings/pages/SettingsPage";
+import StitchPreview from "@/pages/StitchPreview";
 import RouteErrorBoundary from "@/pages/RouteErrorBoundary";
 
 export const router = createBrowserRouter([
@@ -84,7 +87,10 @@ export const router = createBrowserRouter([
           { path: "/admin/roles", element: <AdminRolesPage /> },
           { path: "/admin/sources", element: <AdminLeadSourcesPage /> },
           { path: "/admin/pipelines", element: <AdminPipelinesPage /> },
+          { path: "/admin/audit-logs", element: <AuditLogsPage /> },
           { path: "/profile", element: <ProfilePage /> },
+          { path: "/settings", element: <SettingsPage /> },
+          { path: "/stitch-preview", element: <StitchPreview /> },
           { path: "/reminders", element: <RemindersPage /> },
           // Remaining module routes land in Phases 13–15.
         ],

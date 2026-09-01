@@ -30,6 +30,7 @@ def _codename_set(prefixes):
 
 
 # Models the Manager role can fully manage.
+# Synced 2026-08-31 to close G23 — adds customer_management core.
 MANAGER_MODEL_PREFIXES = [
     "task",
     "taskstatus",
@@ -61,6 +62,16 @@ MANAGER_MODEL_PREFIXES = [
     "customer",
     "adhocfieldproposal",
     "indexedsubmissionvalue",
+    "lead",
+    "leadsource",
+    "pipeline",
+    "pipelinestage",
+    "quotation",
+    "quotationversion",
+    "quotationlineitem",
+    "quotationapproval",
+    "activity",
+    "auditlog",
 ]
 
 MANAGER_CODENAMES = _codename_set(MANAGER_MODEL_PREFIXES) | {
@@ -74,6 +85,20 @@ MANAGER_CODENAMES = _codename_set(MANAGER_MODEL_PREFIXES) | {
     "manage_stage_activity",
     "add_adhoc_field",
     "manage_adhoc_field",
+    "assign_lead",
+    "progress_lead",
+    "mark_lead_lost",
+    "reengage_lead",
+    "convert_lead",
+    "view_quotation",
+    "add_quotation",
+    "change_quotation",
+    "submit_quotation",
+    "approve_quotation",
+    "send_quotation",
+    "request_quotation_revision",
+    "accept_quotation",
+    "reject_quotation",
 }
 
 # Models the Employee role can read.
@@ -108,6 +133,15 @@ EMPLOYEE_MODEL_PREFIXES = [
     "customer",
     "adhocfieldproposal",
     "indexedsubmissionvalue",
+    "lead",
+    "leadsource",
+    "pipeline",
+    "pipelinestage",
+    "customer",
+    "quotation",
+    "activity",
+    "customeraccount",
+    "customercontact",
 ]
 
 EMPLOYEE_CODENAMES = {f"view_{prefix}" for prefix in EMPLOYEE_MODEL_PREFIXES} | {
@@ -127,6 +161,17 @@ EMPLOYEE_CODENAMES = {f"view_{prefix}" for prefix in EMPLOYEE_MODEL_PREFIXES} | 
     "add_formsubmission",
     "change_formsubmission",
     "add_adhoc_field",
+    "assign_lead",
+    "progress_lead",
+    "mark_lead_lost",
+    "reengage_lead",
+    "convert_lead",
+    "add_quotation",
+    "view_quotation",
+    "change_quotation",
+    "submit_quotation",
+    "send_quotation",
+    "request_quotation_revision",
 }
 
 DEFAULT_ROLE_PERMISSIONS = {

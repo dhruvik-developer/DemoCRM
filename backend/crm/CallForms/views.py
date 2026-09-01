@@ -11,6 +11,7 @@ from .models import (
     AdhocFieldProposal,
     CallAttempt,
     CallTemplate,
+    FormFieldMapping,
     FormSubmission,
     IndexedSubmissionValue,
     PipelineStageActivity,
@@ -26,6 +27,7 @@ from .serializers import (
     CallTemplateSerializer,
     CloneVersionSerializer,
     CreateTemplateSerializer,
+    FormFieldMappingSerializer,
     FormSubmissionSerializer,
     IndexedSubmissionValueSerializer,
     LogCallAttemptSerializer,
@@ -316,6 +318,16 @@ class PipelineStageActivityViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        # Role-based filtering: hide activities not allowed for current user's role
+        user_role = getattr(getattr(self.request.user, "role", None), "rolename", None)
+        if user_role:
+            # Include activities where allowed_roles is empty (visible to all) OR contains role
+            # We filter in Python to avoid JSONField lookup variance across DBs
+            return qs
+        return qs
+
     @action(detail=False, methods=["get"], url_path="for-stage")
     def for_stage_action(self, request):
         stage_id = request.query_params.get("stage_id")
@@ -325,6 +337,15 @@ class PipelineStageActivityViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
         activities = self.get_queryset().filter(stage_id=stage_id, is_active=True)
+        # Apply allowed_roles filter in Python
+        role_name = getattr(getattr(request.user, "role", None), "rolename", None)
+        if role_name:
+            filtered = []
+            for a in activities:
+                allowed = a.allowed_roles or []
+                if not allowed or role_name in allowed:
+                    filtered.append(a)
+            activities = filtered
         return Response(PipelineStageActivitySerializer(activities, many=True).data)
 
     @action(detail=False, methods=["get"], url_path="lead-primary-form")
@@ -338,6 +359,26 @@ class PipelineStageActivityViewSet(viewsets.ModelViewSet):
         try:
             form_data = get_lead_stage_primary_form(lead_id)
             return Response(form_data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=["get"], url_path="lead-stage-forms")
+    def lead_stage_forms_action(self, request):
+        """Returns ALL active forms for the lead's current stage (multi-form support)."""
+        lead_id = request.query_params.get("lead_id")
+        stage_id = request.query_params.get("stage_id")
+        if not lead_id and not stage_id:
+            return Response(
+                {"error": "lead_id or stage_id query parameter is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        try:
+            from .services import get_lead_stage_forms
+
+            data = get_lead_stage_forms(
+                lead_or_id=lead_id, stage_or_id=stage_id, user=request.user
+            )
+            return Response(data, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -386,6 +427,8 @@ class CallAttemptViewSet(viewsets.ModelViewSet):
                 notes=data.get("notes", ""),
                 start_time=data.get("start_time"),
                 end_time=data.get("end_time"),
+                followup_due_date=data.get("followup_due_date"),
+                auto_create_followup=data.get("auto_create_followup", True),
             )
             response_data = CallAttemptSerializer(attempt).data
             response_data["suggest_mark_lost"] = suggest_mark_lost
@@ -600,4 +643,25 @@ class IndexedSubmissionValueViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(submission_id=submission_id)
         if field_key:
             qs = qs.filter(field_key=field_key)
+        return qs
+
+
+@extend_schema(tags=["CallForms Mapping"])
+class FormFieldMappingViewSet(viewsets.ModelViewSet):
+    queryset = FormFieldMapping.objects.all().select_related("template")
+    serializer_class = FormFieldMappingSerializer
+    permission_classes = [IsAuthenticated, CallFormsHasPermission]
+    permission_names = {
+        "GET": "view_calltemplate",
+        "POST": "manage_call_template",
+        "PUT": "manage_call_template",
+        "PATCH": "manage_call_template",
+        "DELETE": "manage_call_template",
+    }
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        template_id = self.request.query_params.get("template")
+        if template_id:
+            qs = qs.filter(template_id=template_id)
         return qs

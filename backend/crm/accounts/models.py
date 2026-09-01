@@ -26,6 +26,7 @@ class CustomUser(AbstractUser):
     email = models.EmailField(unique=True, blank=False, null=False)
     phone_number = models.CharField(max_length=10, unique=True, blank=False, null=False)
     role = models.ForeignKey(Role, on_delete=models.SET_NULL, blank=True, null=True)
+    must_change_password = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     # passowrd field is coming from AbstractUser

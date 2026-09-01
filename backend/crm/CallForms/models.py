@@ -97,7 +97,11 @@ class FieldType(models.TextChoices):
     BOOLEAN = "boolean", "Boolean"
     DATE = "date", "Date"
     TIME = "time", "Time"
+    DATETIME = "datetime", "Date & Time"
     SELECT = "select", "Select"
+    RADIO = "radio", "Radio"
+    CHECKBOX = "checkbox", "Checkbox"
+    FILE = "file", "File Upload"
 
 
 class TemplateField(models.Model):
@@ -147,6 +151,37 @@ class TemplateField(models.Model):
         return f"{self.template_version} -> {self.label} ({self.field_key})"
 
 
+class FormFieldMapping(models.Model):
+    """Admin-configurable mapping from template field_key to Lead/Customer target field."""
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    template = models.ForeignKey(
+        CallTemplate, on_delete=models.CASCADE, related_name="field_mappings"
+    )
+    field_key = models.CharField(max_length=100)
+    target_model = models.CharField(
+        max_length=30,
+        choices=[
+            ("Lead", "Lead"),
+            ("Customer", "Customer"),
+            ("CustomerAccount", "CustomerAccount"),
+        ],
+        default="Lead",
+    )
+    target_field = models.CharField(
+        max_length=100,
+        help_text="e.g. gst_number, company_name, metadata.annual_revenue",
+    )
+
+    class Meta:
+        db_table = "form_field_mapping"
+        unique_together = [("template", "field_key")]
+        ordering = ["template", "field_key"]
+
+    def __str__(self):
+        return f"{self.template.name}:{self.field_key} -> {self.target_model}.{self.target_field}"
+
+
 # ======================================================
 # PIPELINE STAGE ACTIVITY
 # ======================================================
@@ -183,6 +218,26 @@ class PipelineStageActivity(models.Model):
     is_primary = models.BooleanField(default=False)
     display_order = models.PositiveIntegerField(default=1)
     is_active = models.BooleanField(default=True)
+    # Role-based visibility: which roles may see/fill this form.
+    # Empty list = visible to all authenticated users.
+    allowed_roles = models.JSONField(default=list, blank=True)
+    # Who may submit/edit (subset of allowed_roles). Empty = same as allowed_roles.
+    editable_roles = models.JSONField(default=list, blank=True)
+    # Form type for multi-form per stage tabs: CALL | PROPOSAL | OFFER | CONTRACT | CUSTOM
+    form_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("CALL", "Call"),
+            ("PROPOSAL", "Proposal"),
+            ("OFFER", "Offer"),
+            ("CONTRACT", "Contract"),
+            ("CUSTOM", "Custom"),
+        ],
+        default="CALL",
+    )
+    # Per-stage form config: auto_create_followup for NO_ANSWER/BUSY/CALLBACK
+    auto_create_followup = models.BooleanField(default=True)
+    followup_offset_days = models.PositiveIntegerField(default=1)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -204,6 +259,7 @@ class PipelineStageActivity(models.Model):
         ]
         permissions = [
             ("manage_stage_activity", "Can manage stage activity"),
+            ("manage_pipeline_stage_form", "Can manage pipeline stage form"),
         ]
 
     def __str__(self):
@@ -220,6 +276,8 @@ class OutcomeChoice(models.TextChoices):
     BUSY = "BUSY", "Busy"
     CONNECTED = "CONNECTED", "Connected"
     CALLBACK = "CALLBACK", "Callback Scheduled"
+    WRONG_NUMBER = "WRONG_NUMBER", "Wrong Number"
+    DO_NOT_CALL = "DO_NOT_CALL", "Do Not Call"
     COMPLETED = "COMPLETED", "Form Completed"
     LOST_SUGGESTED = "LOST_SUGGESTED", "Threshold Reached - Mark Lost Suggested"
 
@@ -278,6 +336,9 @@ class CallAttempt(models.Model):
     class Meta:
         db_table = "call_attempt"
         ordering = ["lead", "-attempt_number", "-created_at"]
+        permissions = [
+            ("can_create_followup", "Can create followup from call"),
+        ]
 
     @property
     def duration_seconds(self):

@@ -153,6 +153,20 @@ services:
       redis:
         condition: service_healthy
 
+  # ==========================================================
+  # FRONTEND (nginx)
+  # ==========================================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: crm_frontend
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - web
+
 
 # ==========================================================
 # PERSISTENT DATABASE STORAGE

@@ -18,8 +18,11 @@ import {
   useCallTemplate,
   useCloneVersion,
   useCreateField,
+  useCreateFieldMapping,
   useCreateVersion,
   useDeleteField,
+  useDeleteFieldMapping,
+  useFieldMappings,
   useFields,
   useReorderFields,
   useSetPrimaryVersion,
@@ -42,7 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-const FIELD_TYPES = ["text", "textarea", "number", "boolean", "date", "time", "select"];
+const FIELD_TYPES = ["text", "textarea", "number", "boolean", "date", "time", "datetime", "select", "radio", "checkbox", "file"];
 
 const EMPTY_FIELD_FORM = {
   field_key: "",
@@ -51,6 +54,9 @@ const EMPTY_FIELD_FORM = {
   is_required: false,
   help_text: "",
   options_text: "",
+  file_types: "",
+  max_files: 3,
+  auto_select: false,
 };
 
 function FieldEditor({ version }) {
@@ -115,6 +121,7 @@ function FieldEditor({ version }) {
     }
 
     try {
+      const wantsOptions = ["select", "radio", "checkbox"].includes(candidate.field_type);
       await createField.mutateAsync({
         template_version: version.id,
         field_key: candidate.field_key,
@@ -122,13 +129,17 @@ function FieldEditor({ version }) {
         field_type: candidate.field_type,
         is_required: candidate.is_required,
         help_text: candidate.help_text || undefined,
-        options:
-          candidate.field_type === "select"
-            ? candidate.options_text
-                .split(",")
-                .map((option) => option.trim())
-                .filter(Boolean)
-            : undefined,
+        options: wantsOptions
+          ? candidate.options_text
+              .split(",")
+              .map((option) => option.trim())
+              .filter(Boolean)
+          : undefined,
+        validation_rules: {
+          ...(candidate.file_types ? { file_types: candidate.file_types } : {}),
+          ...(candidate.field_type === "file" && candidate.max_files ? { max_files: Number(candidate.max_files) } : {}),
+          ...(candidate.auto_select ? { auto_select: true } : {}),
+        },
       });
       setForm(EMPTY_FIELD_FORM);
       setFieldErrors({});
@@ -235,14 +246,14 @@ function FieldEditor({ version }) {
                 </SelectContent>
               </Select>
             </FormField>
-            <FormField id="f_options" label="Options (select only)" error={fieldErrors.options_text}>
+            <FormField id="f_options" label="Options (select/radio/checkbox)" error={fieldErrors.options_text}>
               <Input
                 id="f_options"
                 placeholder="a,b,c"
                 className={fieldErrors.options_text ? "border-destructive" : ""}
                 value={form.options_text}
                 onChange={(e) => setForm({ ...form, options_text: e.target.value })}
-                disabled={form.field_type !== "select"}
+                disabled={!["select", "radio", "checkbox"].includes(form.field_type)}
               />
             </FormField>
             <label className="mt-6 flex items-center gap-2 text-sm">
@@ -257,6 +268,16 @@ function FieldEditor({ version }) {
             <Button type="submit" className="self-end" disabled={createField.isPending}>
               {createField.isPending ? "Adding…" : "Add field"}
             </Button>
+            <FormField id="f_file_types" label="File types (file only)" error={fieldErrors.file_types} help="e.g. pdf,docx,jpg">
+              <Input id="f_file_types" placeholder="pdf,docx,jpg" value={form.file_types} onChange={(e) => setForm({ ...form, file_types: e.target.value })} disabled={form.field_type !== "file"} />
+            </FormField>
+            <FormField id="f_max_files" label="Max files" error={fieldErrors.max_files}>
+              <Input id="f_max_files" type="number" min="1" max="10" value={form.max_files} onChange={(e) => setForm({ ...form, max_files: e.target.value })} disabled={form.field_type !== "file"} />
+            </FormField>
+            <label className="mt-6 flex items-center gap-2 text-sm md:col-span-2">
+              <input type="checkbox" className="h-4 w-4" checked={form.auto_select} onChange={(e) => setForm({ ...form, auto_select: e.target.checked })} disabled={!["select", "radio", "checkbox"].includes(form.field_type)} />
+              Auto-select first option
+            </label>
 
             {generalError ? (
               <p role="alert" className="text-sm text-destructive md:col-span-6">
@@ -265,6 +286,43 @@ function FieldEditor({ version }) {
             ) : null}
           </form>
         ) : null}
+      </CardContent>
+    </Card>
+  );
+}
+
+function FieldMappingEditor({ templateId }) {
+  const mappingsQ = useFieldMappings(templateId);
+  const create = useCreateFieldMapping();
+  const del = useDeleteFieldMapping();
+  const [form, setForm] = useState({ field_key: "", target_model: "Lead", target_field: "" });
+  const onAdd = async (e) => {
+    e.preventDefault();
+    if (!form.field_key || !form.target_field) return;
+    await create.mutateAsync({ template: templateId, field_key: form.field_key.toLowerCase().replace(/[^a-z0-9_]/g, "_"), target_model: form.target_model, target_field: form.target_field });
+    setForm({ field_key: "", target_model: "Lead", target_field: "" });
+  };
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Field → Lead/Customer Mapping (Admin)</CardTitle></CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <p className="text-xs text-muted-foreground">Map template field_key to Lead/Customer field. e.g. <code>gst_number → Lead.metadata.gst_number</code> or <code>company_name → Lead.company_name</code>. On submit, values are upserted via <code>PATCH /leads/&#123;id&#125;/</code> semantics (fill-if-blank for direct columns).</p>
+        {(mappingsQ.data ?? []).length === 0 ? <p className="text-xs text-muted-foreground">No mappings yet — defaults (name/email/phone/company) still apply.</p> : (
+          <div className="flex flex-col gap-1">
+            {(mappingsQ.data ?? []).map((m) => (
+              <div key={m.id} className="flex items-center gap-2 rounded border px-2 py-1 text-xs">
+                <span className="font-mono">{m.field_key}</span><span>→</span><Badge variant="outline">{m.target_model}.{m.target_field}</Badge>
+                <Button size="sm" variant="ghost" className="ml-auto h-6 text-destructive" onClick={() => del.mutateAsync(m.id)}>Remove</Button>
+              </div>
+            ))}
+          </div>
+        )}
+        <form onSubmit={onAdd} className="grid gap-2 md:grid-cols-4">
+          <Input placeholder="field_key" value={form.field_key} onChange={(e) => setForm({ ...form, field_key: e.target.value })} />
+          <Select value={form.target_model} onValueChange={(v) => setForm({ ...form, target_model: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Lead">Lead</SelectItem><SelectItem value="Customer">Customer</SelectItem><SelectItem value="CustomerAccount">CustomerAccount</SelectItem></SelectContent></Select>
+          <Input placeholder="target_field e.g. metadata.annual_revenue or company_name" value={form.target_field} onChange={(e) => setForm({ ...form, target_field: e.target.value })} />
+          <Button type="submit" disabled={create.isPending}>Add mapping</Button>
+        </form>
       </CardContent>
     </Card>
   );
@@ -400,6 +458,7 @@ export default function CallTemplateDetailPage() {
           </div>
 
           {selected ? <FieldEditor key={selected.id} version={selected} /> : null}
+          <FieldMappingEditor templateId={template.id} />
           {selected ? <VersionAnalytics versionId={selected.id} /> : null}
         </>
       )}

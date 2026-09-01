@@ -7,7 +7,7 @@ from rest_framework import status
 
 from accounts.models import Role
 from Task.models import TaskStatus, TaskPriority, TaskCategory
-from Task.services import seed_task_master_data
+from CallForms.services import ensure_canonical_task_master_data
 from customer_management.models import (
     Lead,
     LeadSource,
@@ -45,7 +45,7 @@ User = get_user_model()
 class CallFormsPhase1Tests(TestCase):
     def setUp(self):
         # Seed Task master data
-        seed_task_master_data()
+        ensure_canonical_task_master_data()
 
         # Create test users
         self.manager_role, _ = Role.objects.get_or_create(rolename="Manager")
@@ -278,7 +278,7 @@ class CallFormsPhase1Tests(TestCase):
 
 class CallFormsPhase2APITests(APITestCase):
     def setUp(self):
-        seed_task_master_data()
+        ensure_canonical_task_master_data()
 
         self.manager_role, _ = Role.objects.get_or_create(rolename="Manager")
         self.employee_role, _ = Role.objects.get_or_create(rolename="Employee")
@@ -468,7 +468,7 @@ class CallFormsPhase2APITests(APITestCase):
 
 class CallFormsPhase3APITests(APITestCase):
     def setUp(self):
-        seed_task_master_data()
+        ensure_canonical_task_master_data()
 
         self.manager_role, _ = Role.objects.get_or_create(rolename="Manager")
         self.employee_role, _ = Role.objects.get_or_create(rolename="Employee")
@@ -618,7 +618,7 @@ class CallFormsPhase3APITests(APITestCase):
 
 class CallFormsPhase4APITests(APITestCase):
     def setUp(self):
-        seed_task_master_data()
+        ensure_canonical_task_master_data()
 
         self.manager_role, _ = Role.objects.get_or_create(rolename="Manager")
         self.employee_role, _ = Role.objects.get_or_create(rolename="Employee")
@@ -818,7 +818,7 @@ class CallFormsPhase4APITests(APITestCase):
 
 class CallFormsPhase5APITests(APITestCase):
     def setUp(self):
-        seed_task_master_data()
+        ensure_canonical_task_master_data()
 
         self.manager_role, _ = Role.objects.get_or_create(rolename="Manager")
         self.employee_role, _ = Role.objects.get_or_create(rolename="Employee")
@@ -976,7 +976,7 @@ class CallFormsPhase5APITests(APITestCase):
 
 class CallFormsPhase6APITests(APITestCase):
     def setUp(self):
-        seed_task_master_data()
+        ensure_canonical_task_master_data()
 
         self.manager_role, _ = Role.objects.get_or_create(rolename="Manager")
         self.employee_role, _ = Role.objects.get_or_create(rolename="Employee")
@@ -1180,7 +1180,7 @@ class ScenarioWorkflowTests(APITestCase):
     """Rigorous tests covering all 10 end-to-end workflow scenarios mandated by Section 27 of the approved spec."""
 
     def setUp(self):
-        seed_task_master_data()
+        ensure_canonical_task_master_data()
 
         self.manager_role, _ = Role.objects.get_or_create(rolename="Manager")
         self.employee_role, _ = Role.objects.get_or_create(rolename="Employee")
@@ -1529,7 +1529,7 @@ class SubmissionSideEffectsTests(APITestCase):
     """
 
     def setUp(self):
-        seed_task_master_data()
+        ensure_canonical_task_master_data()
 
         self.employee_role, _ = Role.objects.get_or_create(rolename="Employee")
         self.agent = User.objects.create_user(

@@ -14,13 +14,16 @@ export const callFieldSchema = z
       .trim()
       .regex(/^[a-z0-9_]+$/, "Lowercase letters, digits and underscores only."),
     label: z.string().trim().min(1, "Label is required."),
-    field_type: z.enum(["text", "textarea", "number", "boolean", "date", "time", "select"]),
+    field_type: z.enum(["text", "textarea", "number", "boolean", "date", "time", "datetime", "select", "radio", "checkbox", "file"]),
     is_required: z.boolean(),
     help_text: z.string().trim().optional().or(z.literal("")),
     options_text: z.string().optional().or(z.literal("")),
+    file_types: z.string().optional().or(z.literal("")),
+    max_files: z.coerce.number().int().min(1).max(10).optional(),
+    auto_select: z.boolean().optional(),
   })
-  .refine((values) => values.field_type !== "select" || (values.options_text ?? "").trim() !== "", {
-    message: "SELECT fields need at least one option.",
+  .refine((values) => !["select", "radio", "checkbox"].includes(values.field_type) || (values.options_text ?? "").trim() !== "", {
+    message: "SELECT/RADIO/CHECKBOX fields need at least one option.",
     path: ["options_text"],
   });
 
