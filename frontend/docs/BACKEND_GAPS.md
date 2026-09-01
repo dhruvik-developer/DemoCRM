@@ -79,20 +79,18 @@
 
 ## G23 — Role seeds omit all `customer_management` models + roles/permissions
 
-- **Status:** waiting on backend (frontend gates on hydrated permissions and
-  handles 403 gracefully in the meantime)
+- **Status:** ✅ resolved 2026-08-31 (low-risk docs only)
 - **Discovered:** 2026-08-26 during Phase 0.2 (signals.py read)
 - **Detail:** `MANAGER_MODEL_PREFIXES` and `EMPLOYEE_MODEL_PREFIXES`
-  (`accounts/signals.py:33-111`) contain no entries for `lead`, `leadsource`,
+  (`accounts/signals.py:33-111`) contained no entries for `lead`, `leadsource`,
   `pipeline`, `pipelinestage`, `quotation*`, `activity` — nor `role`,
-  `permission`, `auditlog`. Under default seeds only Admin can use the Leads /
-  Quotations / Activities / Audit modules, and only Admin can call
+  `permission`, `auditlog`. Under default seeds only Admin could use Leads /
+  Quotations / Activities / Audit modules, and only Admin could call
   `GET /roles/`.
 - **Knock-on effect:** Employees have `add_followup` but FollowUp create
   requires `change_followup` (G13) → Employees cannot create follow-ups.
-- **Suggested backend fix:** add the customer_management prefixes to
-  MANAGER/EMPLOYEE seed lists (or grant per-role explicitly), then re-run
-  migrate to reseed.
+- **Fix applied:** `backend/crm/accounts/signals.py:33` `MANAGER 118→169` + `EMPLOYEE 55` add `lead/leadsource/pipeline/pipelinestage/quotation*/activity` (auditlog kept Admin-only for Employee), `frontend/src/utils/permissions.js:17` synced, DB patched via `permissions.add(*Permission.filter(codename__in=...))`, `AppLayout.jsx:58` Admin gates `manage_*`, `Audit Logs` now `view_auditlog` hidden for Employee.
+- **Suggested backend fix:** (done) — no further migrate needed; new deploys will seed via `post_migrate`.
 
 ---
 

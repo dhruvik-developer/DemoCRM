@@ -127,6 +127,7 @@ export const endpoints = {
       `/callforms/stage-activities/${stageActivityId}/set-primary/`,
     stageActivitiesForStage: "/callforms/stage-activities/for-stage/",
     leadPrimaryForm: "/callforms/stage-activities/lead-primary-form/",
+    leadStageForms: "/callforms/stage-activities/lead-stage-forms/",
 
     attempts: "/callforms/attempts/",
     attemptDetail: (attemptId) => `/callforms/attempts/${attemptId}/`,
@@ -146,5 +147,8 @@ export const endpoints = {
       `/callforms/adhoc-proposals/${proposalId}/review/`,
 
     indexedValues: "/callforms/indexed-values/",
+
+    fieldMappings: "/callforms/field-mappings/",
+    fieldMappingDetail: (id) => `/callforms/field-mappings/${id}/`,
   },
 };

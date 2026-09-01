@@ -139,7 +139,7 @@ function ProgressDialog({ lead, open, onOpenChange }) {
       for (const field of formData.fields) if (field.is_required && !formValues[field.field_key]) errors[field.field_key] = `${field.label} is required.`;
       if (Object.keys(errors).length) { setFieldErrors(errors); return; }
       try {
-        await submitForm.mutateAsync({ lead_id: lead.id, template_version_id: formData.template_version_id || formData.id, form_data: formValues });
+        await submitForm.mutateAsync({ lead_id: lead.id, template_version_id: formData.template_version_id || formData.id, data: formValues });
       } catch { return; }
     }
     await progressLead.mutateAsync(selected);

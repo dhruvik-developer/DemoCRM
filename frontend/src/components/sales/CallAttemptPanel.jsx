@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLogAttempt, useLeadTimeline } from "@/features/callforms/hooks";
+import { useLogAttempt, useAttemptHistory } from "@/features/callforms/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,13 +9,13 @@ import { Textarea } from "@/components/ui/textarea";
 const OUTCOMES = ["CONNECTED", "NO_ANSWER", "BUSY", "CALLBACK", "COMPLETED", "LOST_SUGGESTED"];
 
 export default function CallAttemptPanel({ leadId, stageId, activityId, templateVersionId }) {
-  const timelineQ = useLeadTimeline({ lead_id: leadId });
+  const attemptsQ = useAttemptHistory(leadId);
   const logAttempt = useLogAttempt();
   const [outcome, setOutcome] = useState("CONNECTED");
   const [notes, setNotes] = useState("");
 
-  const attempts = (timelineQ.data?.call_attempts ?? timelineQ.data?.attempts ?? timelineQ.data ?? []).filter(Boolean);
-  // timeline endpoint returns mixed submissions/attempts; fallback to separate history if needed
+  const rawAttempts = attemptsQ.data ?? [];
+  const attempts = (Array.isArray(rawAttempts) ? rawAttempts : rawAttempts?.results ?? []).filter(Boolean);
 
   return (
     <Card className="rounded-xl">
@@ -49,7 +49,7 @@ export default function CallAttemptPanel({ leadId, stageId, activityId, template
           </Button>
         </div>
 
-        {timelineQ.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : attempts.length ? (
+        {attemptsQ.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : attempts.length ? (
           <div className="flex flex-col gap-1.5">
             {attempts.slice(0,5).map((a, i) => (
               <div key={a.id ?? i} className="flex items-center justify-between rounded border px-3 py-1.5 text-sm">

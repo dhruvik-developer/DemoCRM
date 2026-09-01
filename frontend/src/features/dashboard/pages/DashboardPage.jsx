@@ -15,7 +15,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Users, CheckSquare, FileText, Bell, Activity } from "lucide-react";
-import ChangePasswordPage from "@/features/auth/pages/ChangePasswordPage";
 
 function Stat({ title, value, desc, icon: Icon, to, loading }) {
   return (
@@ -133,11 +132,6 @@ export default function DashboardPage() {
             </div>
           ) : <p className="text-sm text-muted-foreground">No activity yet. Log calls and activities from a lead workspace.</p>}
         </CardContent>
-      </Card>
-
-      <Card className="rounded-xl">
-        <CardHeader><CardTitle className="text-sm">Change password</CardTitle><CardDescription>Update your account password.</CardDescription></CardHeader>
-        <CardContent><ChangePasswordPage /></CardContent>
       </Card>
     </div>
   );

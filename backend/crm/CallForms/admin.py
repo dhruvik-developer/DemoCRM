@@ -1,6 +1,7 @@
 from django.contrib import admin
 from .models import (
     CallTemplate,
+    FormFieldMapping,
     TemplateVersion,
     TemplateField,
     PipelineStageActivity,
@@ -49,12 +50,22 @@ class PipelineStageActivityAdmin(admin.ModelAdmin):
         "stage",
         "name",
         "activity_type",
+        "form_type",
         "call_template",
         "is_primary",
         "is_active",
+        "auto_create_followup",
+        "followup_offset_days",
     )
-    list_filter = ("activity_type", "is_primary", "is_active")
+    list_filter = (
+        "activity_type",
+        "form_type",
+        "is_primary",
+        "is_active",
+        "auto_create_followup",
+    )
     search_fields = ("name",)
+    list_editable = ("auto_create_followup", "followup_offset_days")
 
 
 @admin.register(CallAttempt)
@@ -74,3 +85,10 @@ class CallAttemptAdmin(admin.ModelAdmin):
 class FormSubmissionAdmin(admin.ModelAdmin):
     list_display = ("lead", "template_version", "submitted_by", "created_at")
     search_fields = ("lead__name",)
+
+
+@admin.register(FormFieldMapping)
+class FormFieldMappingAdmin(admin.ModelAdmin):
+    list_display = ("template", "field_key", "target_model", "target_field")
+    list_filter = ("target_model",)
+    search_fields = ("field_key", "target_field")

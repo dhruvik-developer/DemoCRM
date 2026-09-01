@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { FormProvider, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useLead } from "@/features/leads/hooks";
 
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -77,6 +78,14 @@ export default function QuotationDetailPage() {
     resolver: zodResolver(sendEmailSchema),
     defaultValues: { recipient_email: "", subject: "", body: "" },
   });
+  const leadIdForEmail = quotationQuery.data?.lead ?? quotationQuery.data?.lead_id;
+  const leadForEmailQ = useLead(leadIdForEmail);
+  useEffect(() => {
+    if (emailOpen && leadForEmailQ.data?.email && !emailForm.getValues("recipient_email")) {
+      emailForm.setValue("recipient_email", leadForEmailQ.data.email);
+      if (!emailForm.getValues("subject")) emailForm.setValue("subject", `Quotation ${quotationQuery.data?.quotation_number ?? ""} from CRM`);
+    }
+  }, [emailOpen, leadForEmailQ.data, emailForm, quotationQuery.data]);
 
   if (quotationQuery.isLoading) return <PageLoader label="Loading quotation…" />;
   if (quotationQuery.isError) {

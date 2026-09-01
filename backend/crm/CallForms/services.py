@@ -334,7 +334,10 @@ def get_lead_stage_primary_form(lead_or_id):
                 "id": str(primary_activity.id),
                 "name": primary_activity.name,
                 "activity_type": primary_activity.activity_type,
+                "form_type": primary_activity.form_type,
                 "is_primary": primary_activity.is_primary,
+                "allowed_roles": primary_activity.allowed_roles,
+                "editable_roles": primary_activity.editable_roles,
             },
             "call_template": None,
             "template_version": None,
@@ -374,7 +377,10 @@ def get_lead_stage_primary_form(lead_or_id):
             "id": str(primary_activity.id),
             "name": primary_activity.name,
             "activity_type": primary_activity.activity_type,
+            "form_type": primary_activity.form_type,
             "is_primary": primary_activity.is_primary,
+            "allowed_roles": primary_activity.allowed_roles,
+            "editable_roles": primary_activity.editable_roles,
         },
         "call_template": {
             "id": str(template.id),
@@ -395,6 +401,204 @@ def get_lead_stage_primary_form(lead_or_id):
     }
 
 
+def get_lead_stage_forms(lead_or_id=None, stage_or_id=None, user=None):
+    """Returns ALL active PipelineStageActivity forms for a lead's stage (multi-form per stage)."""
+    from customer_management.models import Lead, PipelineStage
+
+    stage = None
+    lead = None
+    if lead_or_id:
+        lead = (
+            lead_or_id
+            if isinstance(lead_or_id, Lead)
+            else Lead.objects.get(pk=lead_or_id)
+        )
+        stage = lead.current_stage
+    elif stage_or_id:
+        stage = (
+            stage_or_id
+            if isinstance(stage_or_id, PipelineStage)
+            else PipelineStage.objects.get(pk=stage_or_id)
+        )
+
+    if not stage:
+        raise ValidationError("No stage found for this lead.")
+
+    activities = stage.activities.filter(is_active=True).order_by(
+        "display_order", "name"
+    )
+    role_name = getattr(getattr(user, "role", None), "rolename", None)
+
+    forms = []
+    for act in activities:
+        # Role filter
+        allowed = act.allowed_roles or []
+        if role_name and allowed and role_name not in allowed:
+            continue
+        template = act.call_template
+        version = None
+        fields_data = []
+        if template and template.is_active:
+            version = (
+                template.versions.filter(is_primary=True, is_active=True).first()
+                or template.versions.filter(is_active=True).first()
+            )
+            if version:
+                for f in version.fields.all():
+                    fields_data.append(
+                        {
+                            "id": str(f.id),
+                            "field_key": f.field_key,
+                            "label": f.label,
+                            "field_type": f.field_type,
+                            "is_required": f.is_required,
+                            "display_order": f.display_order,
+                            "help_text": f.help_text,
+                            "options": f.options,
+                            "validation_rules": f.validation_rules,
+                        }
+                    )
+        forms.append(
+            {
+                "activity": {
+                    "id": str(act.id),
+                    "name": act.name,
+                    "activity_type": act.activity_type,
+                    "form_type": act.form_type,
+                    "is_primary": act.is_primary,
+                    "display_order": act.display_order,
+                    "allowed_roles": act.allowed_roles,
+                    "editable_roles": act.editable_roles,
+                },
+                "call_template": (
+                    {
+                        "id": str(template.id),
+                        "name": template.name,
+                        "description": template.description,
+                    }
+                    if template
+                    else None
+                ),
+                "template_version": (
+                    {
+                        "id": str(version.id),
+                        "version_number": version.version_number,
+                        "version_label": version.version_label,
+                        "is_locked": version.is_locked,
+                    }
+                    if version
+                    else None
+                ),
+                "fields": fields_data,
+            }
+        )
+
+    return {
+        "lead_id": str(lead.id) if lead else None,
+        "lead_name": getattr(lead, "name", None),
+        "stage_id": str(stage.id),
+        "stage_name": stage.name,
+        "forms": forms,
+    }
+
+
+def _create_auto_followup_for_attempt(
+    *, attempt, lead, agent, due_date=None, offset_days=1
+):
+    """Creates a Task+Followup+Reminder for a failed/busy/callback attempt."""
+    from Task.models import (
+        Task,
+        TaskStatus,
+        TaskPriority,
+        Reminder,
+        ReminderType,
+        ReminderStatus,
+    )
+    from FollowUp.models import Followup, FollowUpStatus, FollowUpTypes
+
+    canonical = ensure_canonical_task_master_data()
+    due = due_date
+    if due is None:
+        due = timezone.now() + timezone.timedelta(days=offset_days)
+    else:
+        if timezone.is_naive(due):
+            due = timezone.make_aware(due)
+    if due <= timezone.now():
+        due = timezone.now() + timezone.timedelta(days=offset_days)
+
+    title = f"Callback: {lead.name} ({attempt.get_outcome_display()})"
+    category = canonical["category_general"]
+    priority = (
+        TaskPriority.objects.filter(priority_name="High").first()
+        or canonical["priority_high"]
+    )
+    status_pending = (
+        TaskStatus.objects.filter(status_name="Pending").first()
+        or canonical["status_pending"]
+    )
+
+    task = Task.objects.create(
+        assigned_to=agent,
+        created_by=agent,
+        lead=lead,
+        task_title=title,
+        description=f"Auto follow-up from call attempt #{attempt.attempt_number} — {attempt.get_outcome_display()}. Notes: {attempt.notes or ''}",
+        due_date=due,
+        status=status_pending,
+        priority=priority,
+        category=category,
+    )
+    fu_status = FollowUpStatus.objects.filter(
+        is_active=True
+    ).first() or FollowUpStatus.objects.create(status_name="Pending")
+    fu_type = FollowUpTypes.objects.filter(
+        is_active=True
+    ).first() or FollowUpTypes.objects.create(type_name="Call Followup")
+    Followup.objects.create(
+        task_id=task,
+        followup_status=fu_status,
+        followup_type=fu_type,
+        followup_date=due,
+        decription=title,
+        created_by=agent,
+    )
+    try:
+        reminder_type = ReminderType.objects.filter(
+            is_active=True
+        ).first() or ReminderType.objects.create(type_name="Notification")
+        reminder_status = ReminderStatus.objects.filter(
+            is_active=True
+        ).first() or ReminderStatus.objects.create(status_name="Pending")
+        reminder_time = due - timezone.timedelta(minutes=30)
+        if reminder_time > timezone.now():
+            Reminder.objects.create(
+                task_id=task,
+                reminder_for=agent,
+                reminder_type_id=reminder_type,
+                reminder_status_id=reminder_status,
+                reminder_datetime=reminder_time,
+                message=f"Reminder: {title}",
+                created_by=agent,
+            )
+    except Exception:
+        pass
+    # Notify assignee
+    try:
+        trigger_notification_event(
+            event_type=NotificationEventType.TASK_ASSIGNED,
+            recipient=agent,
+            context={
+                "user_name": agent.get_full_name() or agent.username,
+                "employee_name": agent.get_full_name() or agent.username,
+                "task_title": title,
+                "due_date": str(due),
+            },
+        )
+    except Exception:
+        pass
+    return task
+
+
 def log_call_attempt(
     lead_or_id,
     agent,
@@ -406,6 +610,8 @@ def log_call_attempt(
     start_time=None,
     end_time=None,
     threshold=None,
+    followup_due_date=None,
+    auto_create_followup=True,
 ):
     """
     Logs a phone call attempt for a lead, calculating sequential attempt_number
@@ -520,12 +726,39 @@ def log_call_attempt(
                 },
             )
 
+        # Auto-create follow-up Task for BUSY/NO_ANSWER/CALLBACK if requested
+        auto_task = None
+        if auto_create_followup and attempt.outcome in [
+            OutcomeChoice.NO_ANSWER,
+            OutcomeChoice.BUSY,
+            OutcomeChoice.CALLBACK,
+        ]:
+            # Respect stage activity setting if present
+            offset_days = 1
+            if activity and hasattr(activity, "followup_offset_days"):
+                offset_days = activity.followup_offset_days or 1
+                # If activity disables auto followup, skip — unless explicit due_date given
+                if activity.auto_create_followup is False and followup_due_date is None:
+                    offset_days = None
+            if offset_days is not None:
+                try:
+                    auto_task = _create_auto_followup_for_attempt(
+                        attempt=attempt,
+                        lead=lead,
+                        agent=agent,
+                        due_date=followup_due_date,
+                        offset_days=offset_days,
+                    )
+                except Exception as e:
+                    logger.warning("Auto followup creation failed: %s", e)
+
         logger.info(
-            "Logged CallAttempt #%s for Lead %s (outcome=%s, suggest_mark_lost=%s)",
+            "Logged CallAttempt #%s for Lead %s (outcome=%s, suggest_mark_lost=%s, auto_task=%s)",
             attempt.attempt_number,
             lead.id,
             attempt.outcome,
             suggest_mark_lost,
+            getattr(auto_task, "id", None),
         )
         return attempt, suggest_mark_lost
 
@@ -533,7 +766,7 @@ def log_call_attempt(
 def validate_submission_data(template_version, form_data):
     """
     Validates submitted JSON data dictionary against TemplateVersion fields schema.
-    Raises ValidationError if required fields are missing or select values are invalid.
+    Raises ValidationError if required fields are missing or select/radio/checkbox/file values are invalid.
     """
     errors = {}
     fields = template_version.fields.all()
@@ -549,12 +782,63 @@ def validate_submission_data(template_version, form_data):
             errors[key] = f"'{field.label}' is required."
             continue
 
-        # Check select option choices
-        if field.field_type == FieldType.SELECT and val is not None and val != "":
-            if field.options and val not in field.options:
+        if val is None or val == "":
+            continue
+
+        # Check option choices for select/radio/checkbox
+        if (
+            field.field_type in (FieldType.SELECT, FieldType.RADIO)
+            and val is not None
+            and val != ""
+        ):
+            if field.options and str(val) not in [str(o) for o in field.options]:
                 errors[key] = (
                     f"Invalid choice '{val}'. Allowed choices are: {field.options}"
                 )
+        if field.field_type == FieldType.CHECKBOX and val is not None:
+            vals = val if isinstance(val, list) else [val]
+            if field.options:
+                allowed = [str(o) for o in field.options]
+                invalid = [v for v in vals if str(v) not in allowed]
+                if invalid:
+                    errors[key] = (
+                        f"Invalid choice(s) {invalid}. Allowed: {field.options}"
+                    )
+
+        # Number validation
+        if field.field_type == FieldType.NUMBER and val not in (None, ""):
+            try:
+                Decimal(str(val))
+            except Exception:
+                errors[key] = f"'{field.label}' must be a valid number."
+
+        # File validation: expect string URL or list of URLs, check extensions if configured
+        if field.field_type == FieldType.FILE and val not in (None, ""):
+            rules = field.validation_rules or {}
+            allowed_exts = rules.get("file_types", "")
+            max_files = rules.get("max_files")
+            vals = val if isinstance(val, list) else [val]
+            if max_files is not None:
+                try:
+                    max_n = int(max_files)
+                    if len(vals) > max_n:
+                        errors[key] = f"Too many files: {len(vals)} > max {max_n}."
+                        continue
+                except Exception:
+                    pass
+            if allowed_exts:
+                exts = [
+                    e.strip().lower().lstrip(".")
+                    for e in str(allowed_exts).split(",")
+                    if e.strip()
+                ]
+                for v in vals:
+                    ext = str(v).split(".")[-1].lower() if "." in str(v) else ""
+                    if exts and ext not in exts:
+                        errors[key] = (
+                            f"File extension '.{ext}' not allowed. Allowed: {allowed_exts}"
+                        )
+                        break
 
     if errors:
         raise ValidationError(errors)
@@ -564,21 +848,26 @@ def validate_submission_data(template_version, form_data):
 
 def sync_submission_to_lead(submission):
     """
-    Writes basic-information form answers back onto the Lead so the data lives
-    in the lead record (and therefore flows into Customer on conversion).
+    Writes form answers back onto the Lead so the data lives in the lead
+    record (and therefore flows into Customer on conversion).
 
-    Reserved field keys are mapped to Lead columns and applied
-    *fill-if-blank only*: identity data already on the lead is never
-    overwritten (it participates in customer-identity matching).
+    Direct columns are mapped fill-if-blank; everything else goes into
+    Lead.metadata (overwrites on re-submit so latest form data is reflected).
+    Also syncs GST/company details into CustomerAccount when present.
 
     Mapping:
         name / full_name   -> Lead.name          (only if blank)
         email              -> Lead.email         (only if blank)
         phone / mobile     -> Lead.phone         (only if blank)
         company_name / company -> Lead.company_name  (only if blank)
+        gst_number / gst   -> Lead.metadata.gst_number (+ CustomerAccount)
+        pan_number / pan   -> Lead.metadata.pan_number
+        address / billing_address -> Lead.metadata.address
+        annual_revenue / revenue -> Lead.metadata.annual_revenue
+        * any other key    -> Lead.metadata.<key>
     """
 
-    KEY_MAP = {
+    DIRECT_MAP = {
         "name": "name",
         "full_name": "name",
         "email": "email",
@@ -587,35 +876,101 @@ def sync_submission_to_lead(submission):
         "company_name": "company_name",
         "company": "company_name",
     }
+    # Admin-configurable overrides per template
+    try:
+        from .models import FormFieldMapping
+
+        mappings = {
+            m.field_key.lower(): (m.target_model, m.target_field)
+            for m in FormFieldMapping.objects.filter(
+                template=submission.template_version.template
+            )
+        }
+    except Exception:
+        mappings = {}
 
     lead = submission.lead
     if not lead:
         return []
 
     data = submission.data or {}
-    updates = {}
+    direct_updates = {}
+    metadata_updates = {}
 
     for raw_key, value in data.items():
-        lead_field = KEY_MAP.get(str(raw_key).strip().lower())
-        if not lead_field or value in (None, ""):
+        if value in (None, ""):
             continue
+        norm = str(raw_key).strip().lower()
+        # Check admin mapping first
+        if norm in mappings:
+            tgt_model, tgt_field = mappings[norm]
+            if tgt_model == "Lead":
+                if "." in tgt_field:
+                    # e.g. metadata.annual_revenue
+                    _, meta_key = tgt_field.split(".", 1)
+                    metadata_updates[meta_key] = value
+                else:
+                    current = getattr(lead, tgt_field, None)
+                    if current in (None, ""):
+                        direct_updates[tgt_field] = (
+                            str(value).strip() if isinstance(value, str) else value
+                        )
+                    metadata_updates[raw_key] = value
+            else:
+                # For Customer/CustomerAccount we just store in metadata for now; sync on convert will handle
+                metadata_updates[raw_key] = value
+            continue
+        direct_field = DIRECT_MAP.get(norm)
+        if direct_field:
+            current = getattr(lead, direct_field, None)
+            if current in (None, ""):
+                direct_updates[direct_field] = str(value).strip()
+            # also mirror into metadata for visibility
+            metadata_updates[raw_key] = value
+        else:
+            # Skip internal file blobs that are not scalar – still store
+            metadata_updates[raw_key] = value
 
-        current = getattr(lead, lead_field, None)
-        if current in (None, ""):
-            updates[lead_field] = str(value).strip()
+    # Merge into Lead.metadata
+    if metadata_updates:
+        meta = dict(lead.metadata or {})
+        meta.update(metadata_updates)
+        lead.metadata = meta
 
-    if updates:
-        for field, value in updates.items():
+    fields_to_save = []
+    if direct_updates:
+        for field, value in direct_updates.items():
             setattr(lead, field, value)
-        lead.save(update_fields=list(updates.keys()) + ["updated_at"])
+        fields_to_save.extend(list(direct_updates.keys()))
+    if metadata_updates:
+        fields_to_save.append("metadata")
+    if fields_to_save:
+        fields_to_save.append("updated_at")
+        lead.save(update_fields=list(set(fields_to_save)))
         logger.info(
-            "Synced submission %s fields %s into Lead %s",
+            "Synced submission %s fields %s (+ metadata %s) into Lead %s",
             submission.id,
-            sorted(updates.keys()),
+            sorted(direct_updates.keys()),
+            sorted(metadata_updates.keys()),
             lead.id,
         )
+        # If GST/company present, also ensure CustomerAccount linkage reflects it
+        try:
+            gst = (
+                metadata_updates.get("gst_number")
+                or metadata_updates.get("gst")
+                or lead.metadata.get("gst_number")
+            )
+            if gst and lead.customer_account:
+                if not lead.customer_account.gst_number:
+                    lead.customer_account.gst_number = str(gst).strip()
+                    lead.customer_account.save(
+                        update_fields=["gst_number", "updated_at"]
+                    )
+        except Exception:
+            pass
 
-    return sorted(updates.keys())
+    return sorted(set(list(direct_updates.keys()) + list(metadata_updates.keys())))
 
 
 def submit_call_form(
@@ -647,6 +1002,26 @@ def submit_call_form(
         else:
             template_version = TemplateVersion.objects.get(pk=template_version_or_id)
 
+        # Enforce editable_roles for stage activity if configured
+        if lead.current_stage_id:
+            try:
+                act = PipelineStageActivity.objects.filter(
+                    stage_id=lead.current_stage_id,
+                    call_template=template_version.template,
+                    is_active=True,
+                ).first()
+                if act and act.editable_roles:
+                    role_name = getattr(getattr(agent, "role", None), "rolename", None)
+                    if role_name and role_name not in act.editable_roles:
+                        raise ValidationError(
+                            {
+                                "permission": f"Role '{role_name}' is not allowed to submit this form (editable_roles={act.editable_roles})."
+                            }
+                        )
+            except ValidationError:
+                raise
+            except Exception:
+                pass
         # Validate form_data against template schema
         validate_submission_data(template_version, form_data)
 
@@ -1144,7 +1519,7 @@ def ensure_canonical_task_master_data():
     Ensures deterministic existence of canonical Task master rows:
     Status: Pending, Completed
     Priority: High
-    Category: General
+    Category: General (+ legacy Call for backward-compat)
     """
     from Task.models import TaskStatus, TaskPriority, TaskCategory
 
@@ -1160,6 +1535,10 @@ def ensure_canonical_task_master_data():
     )
     category_general, _ = TaskCategory.objects.get_or_create(
         category_name="General", defaults={"is_active": True}
+    )
+    # Legacy alias expected by Phase 1 tests — keep both available.
+    TaskCategory.objects.get_or_create(
+        category_name="Call", defaults={"is_active": True}
     )
 
     return {

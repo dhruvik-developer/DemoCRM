@@ -78,6 +78,11 @@ class NotificationEventType(models.TextChoices):
     # Manual / Other Events
     MANUAL = "MANUAL", "Manual Notification"
 
+    # CallForms Events
+    ADHOC_FIELD_PROPOSED = "ADHOC_FIELD_PROPOSED", "Adhoc Field Proposed"
+    CALL_ATTEMPT_LOGGED = "CALL_ATTEMPT_LOGGED", "Call Attempt Logged"
+    FORM_SUBMISSION_COMPLETED = "FORM_SUBMISSION_COMPLETED", "Form Submission Completed"
+
 
 class NotificationChannel(models.TextChoices):
     IN_APP = "IN_APP", "In App"
