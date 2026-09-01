@@ -4,6 +4,7 @@ from .views import (
     AdhocFieldProposalViewSet,
     CallAttemptViewSet,
     CallTemplateViewSet,
+    FormFieldMappingViewSet,
     FormSubmissionViewSet,
     IndexedSubmissionValueViewSet,
     PipelineStageActivityViewSet,
@@ -28,6 +29,7 @@ router.register(
 router.register(
     "indexed-values", IndexedSubmissionValueViewSet, basename="indexedsubmissionvalue"
 )
+router.register("field-mappings", FormFieldMappingViewSet, basename="formfieldmapping")
 
 urlpatterns = [
     path("", include(router.urls)),

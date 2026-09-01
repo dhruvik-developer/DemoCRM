@@ -1079,10 +1079,7 @@ class TaskAssignView(APIView):
 # ==========================================================
 class TaskStatusUpdateView(APIView):
     permission_classes = [CanCommunicateWithLead]
-
-    permission_names = {
-        "PATCH": "change_taskstatus",
-    }
+    permission_names = {}
 
     @extend_schema(
         tags=["Tasks"],

@@ -63,10 +63,24 @@ export const getStageActivitiesForStage = async (stageId) =>
       params: { stage_id: stageId },
     })
   ).data;
+export const createStageActivity = async (values) =>
+  (await apiClient.post(endpoints.callforms.stageActivities, values)).data;
+export const updateStageActivity = async (id, partial) =>
+  (await apiClient.patch(endpoints.callforms.stageActivityDetail(id), partial)).data;
+export const deleteStageActivity = async (id) =>
+  (await apiClient.delete(endpoints.callforms.stageActivityDetail(id))).data;
+export const setPrimaryStageActivity = async (id) =>
+  (await apiClient.post(endpoints.callforms.stageActivitySetPrimary(id), {})).data;
 export const getLeadPrimaryForm = async (leadId) =>
   (
     await apiClient.get(endpoints.callforms.leadPrimaryForm, {
       params: { lead_id: leadId },
+    })
+  ).data;
+export const getLeadStageForms = async (leadId, stageId) =>
+  (
+    await apiClient.get(endpoints.callforms.leadStageForms, {
+      params: { lead_id: leadId, stage_id: stageId },
     })
   ).data;
 
@@ -109,3 +123,9 @@ export const reviewAdhocProposal = async (proposalId, payload) =>
   (
     await apiClient.post(endpoints.callforms.adhocProposalReview(proposalId), payload)
   ).data;
+
+// ── Field Mappings ───────────────────────────────────────
+export const getFieldMappings = async (params) => unwrap((await apiClient.get(endpoints.callforms.fieldMappings, { params })).data);
+export const createFieldMapping = async (values) => (await apiClient.post(endpoints.callforms.fieldMappings, values)).data;
+export const updateFieldMapping = async (id, partial) => (await apiClient.patch(endpoints.callforms.fieldMappingDetail(id), partial)).data;
+export const deleteFieldMapping = async (id) => (await apiClient.delete(endpoints.callforms.fieldMappingDetail(id))).data;

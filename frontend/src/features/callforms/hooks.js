@@ -88,11 +88,25 @@ export const useStageActivitiesForStage = (stageId) =>
     queryFn: () => api.getStageActivitiesForStage(stageId),
     enabled: Boolean(stageId),
   });
+export const useCreateStageActivity = () =>
+  useCallFormsMutation(api.createStageActivity, "Form linked to stage.");
+export const useUpdateStageActivity = () =>
+  useCallFormsMutation(({ id, ...partial }) => api.updateStageActivity(id, partial), "Stage activity updated.");
+export const useDeleteStageActivity = () =>
+  useCallFormsMutation((id) => api.deleteStageActivity(id), "Stage activity removed.");
+export const useSetPrimaryStageActivity = () =>
+  useCallFormsMutation((id) => api.setPrimaryStageActivity(id), "Primary activity set.");
 export const useLeadPrimaryForm = (leadId) =>
   useQuery({
     queryKey: ["callforms", "lead-primary-form", leadId],
     queryFn: () => api.getLeadPrimaryForm(leadId),
     enabled: Boolean(leadId),
+  });
+export const useLeadStageForms = (leadId, stageId) =>
+  useQuery({
+    queryKey: ["callforms", "lead-stage-forms", leadId, stageId],
+    queryFn: () => api.getLeadStageForms(leadId, stageId),
+    enabled: Boolean(leadId || stageId),
   });
 
 // Attempts / submissions
@@ -105,6 +119,12 @@ export const useLeadTimeline = (params) =>
     queryKey: ["callforms", "timeline", params],
     queryFn: () => api.getLeadTimeline(params ?? {}),
     enabled: Boolean(params?.lead_id),
+  });
+export const useAttemptHistory = (leadId) =>
+  useQuery({
+    queryKey: ["callforms", "attempt-history", leadId],
+    queryFn: () => api.getAttemptHistory(leadId),
+    enabled: Boolean(leadId),
   });
 
 // Analytics
@@ -136,3 +156,10 @@ export const useReviewAdhocProposal = () =>
     ({ proposalId, ...payload }) => api.reviewAdhocProposal(proposalId, payload),
     "Review recorded.",
   );
+
+// Field mappings (ADMINISTRATION → Form Templates → Mapping)
+export const useFieldMappings = (templateId) =>
+  useQuery({ queryKey: ["callforms", "field-mappings", templateId], queryFn: () => api.getFieldMappings(templateId ? { template: templateId } : {}), enabled: Boolean(templateId) });
+export const useCreateFieldMapping = () => useCallFormsMutation(api.createFieldMapping, "Mapping created.");
+export const useUpdateFieldMapping = () => useCallFormsMutation(({ id, ...partial }) => api.updateFieldMapping(id, partial), "Mapping updated.");
+export const useDeleteFieldMapping = () => useCallFormsMutation((id) => api.deleteFieldMapping(id), "Mapping removed.");

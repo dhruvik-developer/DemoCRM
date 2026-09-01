@@ -18,10 +18,12 @@ import {
   LogOut,
   Menu,
   PhoneCall,
+  Settings,
   ShieldCheck,
   Users,
 } from "lucide-react";
 import { useState } from "react";
+import Breadcrumbs from "@/components/common/Breadcrumbs";
 import { Toaster } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -66,10 +68,11 @@ const NAV_GROUPS = [
     label: "Administration",
     items: [
       { to: "/admin/roles", label: "Users / Roles", icon: ShieldCheck, codename: "view_role" },
-      { to: "/admin/sources", label: "Lead Sources", icon: Database, codename: "view_leadsource" },
-      { to: "/admin/pipelines", label: "Pipelines", icon: GitBranch, codename: "view_pipeline" },
+      { to: "/admin/sources", label: "Lead Sources", icon: Database, codename: "manage_lead_source" },
+      { to: "/admin/pipelines", label: "Pipelines", icon: GitBranch, codename: "manage_pipeline" },
       { to: "/callforms", label: "Form Templates", icon: ClipboardList, codename: "manage_calltemplate" },
-      { to: "/notifications/templates", label: "Notification Templates", icon: Bell, codename: "view_notificationtemplate" },
+      { to: "/notifications/templates", label: "Notification Templates", icon: Bell, codename: "manage_notificationtemplate" },
+      { to: "/admin/audit-logs", label: "Audit Logs", icon: Database, codename: "view_auditlog" },
     ],
   },
 ];
@@ -177,15 +180,31 @@ export default function AppLayout() {
               </div>
             );
           })}
+          <div className="mt-auto border-t pt-2">
+            <NavLink
+              to="/settings"
+              className={({ isActive }) =>
+                [
+                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                  isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                ].join(" ")
+              }
+            >
+              <Settings className="h-4 w-4" /> Settings
+              {user?.must_change_password ? <Badge variant="destructive" className="ml-auto text-[10px]">action</Badge> : null}
+            </NavLink>
+          </div>
         </nav>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center justify-between border-b px-4">
-          <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
-            <Menu className="h-5 w-5" />
-          </Button>
-          <span className="hidden md:block" />
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
+              <Menu className="h-5 w-5" />
+            </Button>
+            <Breadcrumbs />
+          </div>
           <div className="flex items-center gap-1">
             <NotificationBell />
             <DropdownMenu>
@@ -201,6 +220,9 @@ export default function AppLayout() {
                 <DropdownMenuLabel>
                   <span className="block max-w-52 truncate">{user?.email}</span>
                 </DropdownMenuLabel>
+                <DropdownMenuItem asChild>
+                  <Link to="/settings"><Settings className="mr-2 h-4 w-4" /> Settings</Link>
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout}>
                   <LogOut className="mr-2 h-4 w-4" />

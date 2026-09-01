@@ -1,12 +1,18 @@
-import { useLeadTimeline } from "@/features/callforms/hooks";
+import { useLeadTimeline, useLeadPrimaryForm } from "@/features/callforms/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { useState } from "react";
 
 export default function FormResponseHistory({ leadId }) {
   const q = useLeadTimeline({ lead_id: leadId });
+  const primary = useLeadPrimaryForm(leadId);
   const items = q.data ?? [];
   // API returns timeline feed newest-first already; normalize
   const submissions = Array.isArray(items) ? items : items.results ?? [];
+  const labelMap = Object.fromEntries((primary.data?.fields ?? []).map((f) => [f.field_key, f.label]));
+  const [openId, setOpenId] = useState(null);
 
   if (q.isLoading) return <div className="text-sm text-muted-foreground">Loading history…</div>;
   if (!submissions.length) {
@@ -38,13 +44,17 @@ export default function FormResponseHistory({ leadId }) {
             <div className="mt-2 grid gap-1 text-sm">
               {row.data ? Object.entries(row.data).map(([k,v]) => (
                 <div key={k} className="flex justify-between gap-2">
-                  <span className="font-medium text-muted-foreground">{k}</span>
+                  <span className="font-medium text-muted-foreground">{labelMap[k] ?? k.replace(/_/g, " ")}</span>
                   <span className="font-medium">{String(v ?? "—")}</span>
                 </div>
               )) : (
                 <Badge variant="secondary">No field data</Badge>
               )}
             </div>
+            <Button variant="ghost" size="sm" className="mt-2 h-6 text-xs" onClick={() => setOpenId(row.id ?? row.submission_id)}>View full response</Button>
+            <Dialog open={openId === (row.id ?? row.submission_id)} onOpenChange={(o) => !o && setOpenId(null)}>
+              <DialogContent><DialogHeader><DialogTitle>Full response</DialogTitle></DialogHeader><pre className="text-xs bg-muted p-2 rounded overflow-auto">{JSON.stringify(row.data ?? row, null, 2)}</pre></DialogContent>
+            </Dialog>
           </div>
         ))}
       </CardContent>

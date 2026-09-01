@@ -14,6 +14,7 @@ export const ROLES = {
 };
 
 // Mirrors MANAGER_MODEL_PREFIXES + extras in backend/crm/accounts/signals.py.
+// Synced 2026-08-31 to close G23 — adds customer_management core.
 const MANAGER_MODEL_PREFIXES = [
   "task", "taskstatus", "taskpriority", "taskcategory",
   "meeting", "meetingstatus", "meetingtype", "meetingparticipant",
@@ -24,15 +25,25 @@ const MANAGER_MODEL_PREFIXES = [
   "pipelinestageactivity", "callattempt", "formsubmission",
   "tasktriggerrule", "customeraccount", "customercontact", "customer",
   "adhocfieldproposal", "indexedsubmissionvalue",
+  // customer_management core (G23 fix)
+  "lead", "leadsource", "pipeline", "pipelinestage",
+  "quotation", "quotationversion", "quotationlineitem", "quotationapproval",
+  "activity", "auditlog",
 ];
 
 const MANAGER_EXTRA_CODENAMES = [
   "assign_task", "send_notification",
   "manage_call_template", "manage_template_version", "manage_template_field",
   "manage_stage_activity", "add_adhoc_field", "manage_adhoc_field",
+  // lead workflow (backend custom perms)
+  "assign_lead", "progress_lead", "mark_lead_lost", "reengage_lead", "convert_lead",
+  "view_quotation", "add_quotation", "change_quotation", "submit_quotation",
+  "approve_quotation", "send_quotation", "request_quotation_revision",
+  "accept_quotation", "reject_quotation",
 ];
 
 // Mirrors EMPLOYEE_MODEL_PREFIXES + extras in accounts/signals.py.
+// Synced 2026-08-31 to close G23 — adds customer_management core.
 const EMPLOYEE_MODEL_PREFIXES = [
   "task", "taskstatus", "taskpriority", "taskcategory",
   "meeting", "meetingstatus", "meetingtype", "meetingparticipant",
@@ -43,6 +54,10 @@ const EMPLOYEE_MODEL_PREFIXES = [
   "pipelinestageactivity", "callattempt", "formsubmission",
   "tasktriggerrule", "customeraccount", "customercontact", "customer",
   "adhocfieldproposal", "indexedsubmissionvalue",
+  // customer_management core (G23 fix) — auditlog stays Admin-only
+  "lead", "leadsource", "pipeline", "pipelinestage",
+  "quotation", "quotationversion", "quotationlineitem", "quotationapproval",
+  "activity",
 ];
 
 const EMPLOYEE_EXTRA_CODENAMES = [
@@ -51,6 +66,10 @@ const EMPLOYEE_EXTRA_CODENAMES = [
   "delete_reminder", "add_followup", "add_followupnote",
   "change_notification", "add_callattempt", "change_callattempt",
   "add_formsubmission", "change_formsubmission", "add_adhoc_field",
+  // Employee also needs change_followup (G13) not add_followup, plus workflow + quotation draft
+  "change_followup", "change_followupstatus", "view_followup",
+  "assign_lead", "progress_lead", "mark_lead_lost", "reengage_lead", "convert_lead",
+  "add_quotation", "view_quotation", "change_quotation", "submit_quotation", "send_quotation", "request_quotation_revision",
 ];
 
 const ACTIONS = ["view", "add", "change", "delete"];

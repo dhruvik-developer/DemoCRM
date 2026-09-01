@@ -22,6 +22,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             password=validated_data["password"],
             role=employee_role,
         )
+        # GitLab-style invite: new users must change temp password on first login
+        user.must_change_password = True
+        user.save(update_fields=["must_change_password"])
 
         return user
 
@@ -65,6 +68,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "phone_number",
             "role",
             "role_name",
+            "must_change_password",
             "created_at",
             "updated_at",
         ]
