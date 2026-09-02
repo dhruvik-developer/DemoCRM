@@ -21,6 +21,7 @@ from .models import (
     CustomerContact,
     Lead,
     LeadSource,
+    Payment,
     Pipeline,
     PipelineStage,
     Quotation,
@@ -35,6 +36,7 @@ from .serializers import (
     CustomerSerializer,
     LeadSerializer,
     LeadSourceSerializer,
+    PaymentSerializer,
     PipelineSerializer,
     PipelineStageSerializer,
     QuotationIntegrationEventSerializer,
@@ -888,6 +890,20 @@ class CustomerListCreateView(generics.ListCreateAPIView):
         "POST": "add_customer",
     }
 
+    def get_queryset(self):
+        qs = super().get_queryset()
+        search = self.request.query_params.get("search")
+        if search:
+            from django.db.models import Q
+
+            qs = qs.filter(
+                Q(name__icontains=search)
+                | Q(email__icontains=search)
+                | Q(phone__icontains=search)
+                | Q(company_name__icontains=search)
+            )
+        return qs
+
     @extend_schema(
         summary="List all customers",
         description="Retrieve a list of all customers. Requires view_customer permission.",
@@ -1092,10 +1108,10 @@ class QuotationListCreateView(APIView):
         notes = request.data.get("notes")
         line_items = request.data.get("line_items")
         if line_items is None:
-            # Absent line items stay None: the service deliberately allows
-            # item-less draft quotations. Only an explicitly empty list is
-            # rejected by the service.
             line_items = request.data.get("items")
+        discount_type = request.data.get("discount_type")
+        discount_value = request.data.get("discount_value")
+        gst_rate = request.data.get("gst_rate")
 
         try:
             quotation = QuotationService.create_quotation(
@@ -1104,6 +1120,9 @@ class QuotationListCreateView(APIView):
                 terms=terms,
                 notes=notes,
                 line_items=line_items,
+                discount_type=discount_type,
+                discount_value=discount_value,
+                gst_rate=gst_rate,
             )
         except DjangoValidationError as exc:
             return Response(
@@ -1122,6 +1141,7 @@ class QuotationDetailView(APIView):
     permission_classes = [CRMHasPermission]
     permission_names = {
         "GET": "view_quotation",
+        "DELETE": "delete_quotation",
     }
 
     @extend_schema(
@@ -1150,6 +1170,79 @@ class QuotationDetailView(APIView):
         )
         serializer = QuotationSerializer(quotation)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @extend_schema(
+        summary="Delete a draft quotation",
+        description="Delete a draft quotation. Only DRAFT quotations can be deleted; sent/accepted/rejected quotations are preserved for audit. Requires delete_quotation permission or ownership.",
+        operation_id="quotation_delete",
+        parameters=[
+            OpenApiParameter(name="pk", type=str, description="Quotation UUID"),
+        ],
+        responses={
+            204: None,
+            400: inline_serializer(
+                "QuotationDeleteErrorResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+            404: inline_serializer(
+                "QuotationDeleteNotFoundResponse",
+                fields={"detail": serializers.CharField()},
+            ),
+        },
+    )
+    def delete(self, request, pk):
+        quotation = get_object_or_404(Quotation, pk=pk)
+        # Only DRAFT can be deleted — preserve audit trail for sent/accepted
+        if quotation.status != "DRAFT" or (
+            quotation.current_version and quotation.current_version.status != "DRAFT"
+        ):
+            return Response(
+                {
+                    "detail": "Only draft quotations can be deleted. Sent/accepted quotations are preserved for audit."
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        # Check delete permission via role (has_perm does not check role)
+        role = getattr(request.user, "role", None)
+        has_delete = (
+            role and role.permissions.filter(codename="delete_quotation").exists()
+        )
+        has_change = (
+            role and role.permissions.filter(codename="change_quotation").exists()
+        )
+        is_owner = quotation.created_by_id == request.user.user_id
+        if not is_owner and not request.user.is_superuser and not has_delete:
+            # Fallback: allow if user has change_quotation (draft editor)
+            if not has_change:
+                return Response(
+                    {
+                        "detail": "You do not have permission to delete this quotation. Ask admin to grant 'delete_quotation' in Roles & permissions → Employee → Save."
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+        qnum = quotation.quotation_number
+        # Unlink protected Activity.quotation (PROTECT) so draft can be deleted — keep lead/customer history
+        try:
+            from audit_log.models import Activity
+
+            Activity.objects.filter(quotation=quotation).update(quotation=None)
+        except Exception:
+            pass
+        quotation.delete()
+        # Audit
+        try:
+            from crm.services import CRMService
+
+            CRMService.create_audit_log(
+                user=request.user,
+                entity_type="Quotation",
+                entity_id=pk,
+                action="QUOTATION_DELETED",
+                metadata={"quotation_number": qnum},
+            )
+        except Exception:
+            pass
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 @extend_schema(tags=["Quotations"])
@@ -1201,6 +1294,9 @@ class QuotationUpdateDraftView(APIView):
         terms = request.data.get("terms")
         notes = request.data.get("notes")
         line_items = request.data.get("line_items")
+        discount_type = request.data.get("discount_type")
+        discount_value = request.data.get("discount_value")
+        gst_rate = request.data.get("gst_rate")
 
         try:
             quotation = QuotationService.update_draft_quotation(
@@ -1209,6 +1305,9 @@ class QuotationUpdateDraftView(APIView):
                 terms=terms,
                 notes=notes,
                 line_items=line_items,
+                discount_type=discount_type,
+                discount_value=discount_value,
+                gst_rate=gst_rate,
             )
         except DjangoValidationError as exc:
             return Response(
@@ -1469,6 +1568,9 @@ class QuotationRevisionView(APIView):
         revision_reason = request.data.get("revision_reason") or request.data.get(
             "reason"
         )
+        discount_type = request.data.get("discount_type")
+        discount_value = request.data.get("discount_value")
+        gst_rate = request.data.get("gst_rate")
 
         try:
             quotation = QuotationService.create_revision(
@@ -1478,6 +1580,9 @@ class QuotationRevisionView(APIView):
                 notes=notes,
                 line_items=line_items,
                 revision_reason=revision_reason,
+                discount_type=discount_type,
+                discount_value=discount_value,
+                gst_rate=gst_rate,
             )
         except DjangoValidationError as exc:
             return Response(
@@ -1807,6 +1912,174 @@ class QuotationSendEmailView(APIView):
                 "quotation": QuotationSerializer(quotation).data,
             },
             status=status.HTTP_200_OK,
+        )
+
+
+@extend_schema(tags=["Payments"])
+class PaymentListView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {"GET": "view_payment"}
+
+    @extend_schema(
+        summary="List payments",
+        description="List manual payment entries. Filter by ?lead=<uuid>&customer=<uuid>. Requires view_payment.",
+        parameters=[
+            OpenApiParameter(
+                name="lead", type=str, required=False, description="Lead UUID"
+            ),
+            OpenApiParameter(
+                name="customer", type=str, required=False, description="Customer UUID"
+            ),
+        ],
+    )
+    def get(self, request):
+        qs = Payment.objects.select_related("lead", "customer", "created_by").all()
+        lead_id = request.query_params.get("lead")
+        customer_id = request.query_params.get("customer")
+        if lead_id:
+            qs = qs.filter(lead_id=lead_id)
+        if customer_id:
+            qs = qs.filter(customer_id=customer_id)
+        serializer = PaymentSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+@extend_schema(tags=["Payments"])
+class LeadRecordPaymentView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {"POST": "record_payment"}
+
+    @extend_schema(
+        summary="Record payment for a lead",
+        description="Manual payment entry — updates paid_amount/due_amount/financial_status. Requires record_payment. Amount must not exceed due.",
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=str,
+                location=OpenApiParameter.PATH,
+                description="Lead UUID",
+            )
+        ],
+        request=inline_serializer(
+            "LeadPaymentRequest",
+            fields={
+                "amount": serializers.DecimalField(max_digits=12, decimal_places=2),
+                "payment_date": serializers.DateField(required=False),
+                "method": serializers.CharField(required=False),
+                "reference": serializers.CharField(required=False, allow_blank=True),
+                "notes": serializers.CharField(required=False, allow_blank=True),
+            },
+        ),
+    )
+    def post(self, request, pk):
+        lead = get_object_or_404(Lead, pk=pk)
+        from decimal import Decimal
+
+        amount = request.data.get("amount")
+        try:
+            amount = Decimal(str(amount))
+        except Exception:
+            return Response(
+                {"amount": ["Invalid amount."]}, status=status.HTTP_400_BAD_REQUEST
+            )
+        payment_date = request.data.get("payment_date")
+        if payment_date:
+            from django.utils.dateparse import parse_date
+
+            try:
+                payment_date = parse_date(str(payment_date))
+            except Exception:
+                payment_date = None
+        method = request.data.get("method", "CASH")
+        reference = request.data.get("reference")
+        notes = request.data.get("notes")
+        try:
+            payment, updated_lead = CRMService.record_payment(
+                user=request.user,
+                lead=lead,
+                amount=amount,
+                payment_date=payment_date,
+                method=method,
+                reference=reference,
+                notes=notes,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            {
+                "payment": PaymentSerializer(payment).data,
+                "lead": LeadSerializer(updated_lead).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
+
+
+@extend_schema(tags=["Payments"])
+class CustomerRecordPaymentView(APIView):
+    permission_classes = [CRMHasPermission]
+    permission_names = {"POST": "record_payment"}
+
+    @extend_schema(
+        summary="Record payment for a customer",
+        description="Manual payment entry via customer. Resolved to its lead. Requires record_payment.",
+        parameters=[
+            OpenApiParameter(
+                name="pk",
+                type=str,
+                location=OpenApiParameter.PATH,
+                description="Customer UUID",
+            )
+        ],
+        request=inline_serializer(
+            "CustomerPaymentRequest",
+            fields={
+                "amount": serializers.DecimalField(max_digits=12, decimal_places=2),
+                "payment_date": serializers.DateField(required=False),
+                "method": serializers.CharField(required=False),
+                "reference": serializers.CharField(required=False, allow_blank=True),
+                "notes": serializers.CharField(required=False, allow_blank=True),
+            },
+        ),
+    )
+    def post(self, request, pk):
+        customer = get_object_or_404(Customer, pk=pk)
+        from decimal import Decimal
+
+        amount = request.data.get("amount")
+        try:
+            amount = Decimal(str(amount))
+        except Exception:
+            return Response(
+                {"amount": ["Invalid amount."]}, status=status.HTTP_400_BAD_REQUEST
+            )
+        payment_date = request.data.get("payment_date")
+        if payment_date:
+            from django.utils.dateparse import parse_date
+
+            try:
+                payment_date = parse_date(str(payment_date))
+            except Exception:
+                payment_date = None
+        method = request.data.get("method", "CASH")
+        reference = request.data.get("reference")
+        notes = request.data.get("notes")
+        try:
+            payment, updated_lead = CRMService.record_payment(
+                user=request.user,
+                customer=customer,
+                amount=amount,
+                payment_date=payment_date,
+                method=method,
+                reference=reference,
+                notes=notes,
+            )
+        except DjangoValidationError as exc:
+            return Response({"detail": exc.message}, status=status.HTTP_400_BAD_REQUEST)
+        # Refresh customer lead data via smart lookup? Return payment + lead
+        lead_data = LeadSerializer(updated_lead).data if updated_lead else None
+        return Response(
+            {"payment": PaymentSerializer(payment).data, "lead": lead_data},
+            status=status.HTTP_201_CREATED,
         )
 
 

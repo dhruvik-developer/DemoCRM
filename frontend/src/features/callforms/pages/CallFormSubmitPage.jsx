@@ -3,7 +3,7 @@
 // dynamically (radio/checkbox/file/datetime) → submit. Supports multiple
 // forms per stage via tabs and role-filtered visibility.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useLeadPrimaryForm,
   useLeadStageForms,
@@ -126,7 +126,7 @@ export default function CallFormSubmitPage() {
   const hasMultiForms = stageForms.length > 1;
   // Prefer multi-form list; fallback to primary single form
   const form = hasMultiForms ? stageForms[activeFormIdx] : primaryFormQuery.data;
-  const fields = hasMultiForms ? (form?.fields ?? []) : (form?.fields ?? []);
+  const fields = useMemo(() => (hasMultiForms ? (form?.fields ?? []) : (form?.fields ?? [])), [form, hasMultiForms]);
   const versionLocked = Boolean(form?.template_version?.is_locked);
   const displayForm = hasMultiForms ? form : primaryFormQuery.data;
 
@@ -216,33 +216,18 @@ export default function CallFormSubmitPage() {
         </CardContent>
       </Card>
 
-      {hasMultiForms ? (
-        <div className="flex gap-2 overflow-x-auto">
-          {stageForms.map((f, idx) => (
-            <Button key={f.activity.id} size="sm" variant={idx === activeFormIdx ? "default" : "outline"} onClick={() => { setActiveFormIdx(idx); setSubmitted(false); setDynamicData({}); }}>{f.activity.name}</Button>
-          ))}
-        </div>
-      ) : null}
-
-      {displayForm ? (
+      {displayForm && !hasMultiForms ? (
         <>
           <Card>
             <CardHeader><CardTitle className="text-base">2. Call — outcome & duration</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-4">
               <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Call outcome">
                 {ATTEMPT_OUTCOMES.map((outcome) => (
-                  <Button
-                    key={outcome}
-                    type="button"
-                    size="sm"
-                    variant={attemptOutcome === outcome ? "default" : "outline"}
-                    onClick={() => setAttemptOutcome(outcome)}
-                  >
+                  <Button key={outcome} type="button" size="sm" role="radio" aria-checked={attemptOutcome === outcome} aria-label={outcome.replaceAll("_", " ")} variant={attemptOutcome === outcome ? "default" : "outline"} onClick={() => setAttemptOutcome(outcome)}>
                     {outcome.replaceAll("_", " ").toLowerCase()}
                   </Button>
                 ))}
               </div>
-
               <div className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2">
                 <span className="text-sm font-mono font-semibold">{formatDuration(elapsedSec)}</span>
                 <span className="text-xs text-muted-foreground">{timerRunning ? "● recording" : "idle"}</span>
@@ -251,9 +236,7 @@ export default function CallFormSubmitPage() {
                   <Button size="sm" variant="ghost" onClick={() => { setTimerRunning(false); setElapsedSec(0); setStartTime(null); }}>Reset</Button>
                 </div>
               </div>
-
               <Textarea placeholder="Call notes (optional)" value={callNotes} onChange={(e) => setCallNotes(e.target.value)} rows={2} />
-
               {needsCallback ? (
                 <div className="flex flex-col gap-2 rounded-md border bg-amber-50 p-3 dark:bg-amber-950">
                   <label className="flex items-center gap-2 text-sm font-medium">
@@ -268,9 +251,8 @@ export default function CallFormSubmitPage() {
                   ) : null}
                 </div>
               ) : null}
-
               {!attemptId ? (
-                <Button className="w-fit" disabled={logAttempt.isPending || versionLocked} onClick={onLogAttempt}>
+                <Button className="w-fit" disabled={logAttempt.isPending || Boolean(primaryFormQuery.data?.template_version?.is_locked)} onClick={onLogAttempt}>
                   {logAttempt.isPending ? "Logging…" : `Log call${needsCallback && autoFollowup ? " & schedule follow-up" : ""}`}
                 </Button>
               ) : (
@@ -286,22 +268,112 @@ export default function CallFormSubmitPage() {
               ) : null}
             </CardContent>
           </Card>
-
           <Card>
-            <CardHeader><CardTitle className="text-base">3. Form{hasMultiForms ? ` — ${displayForm.activity.name}` : ""}</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">3. Form</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-4">
               <DynamicFormFields fields={fields} values={dynamicData} errors={fieldErrors} onChange={setDynamicData} />
               {submitted ? (
                 <p className="rounded-md border border-green-300 bg-green-50 px-3 py-2 text-xs text-green-900">Submitted. Attempt marked COMPLETED and lead data synced.</p>
               ) : (
-                <Button className="w-fit" disabled={!attemptId || versionLocked || submitForm.isPending} onClick={onSubmitForm}>
+                <Button className="w-fit" disabled={!attemptId || Boolean(primaryFormQuery.data?.template_version?.is_locked) || submitForm.isPending} onClick={onSubmitForm}>
                   {submitForm.isPending ? "Submitting…" : "Submit form"}
                 </Button>
               )}
               {!attemptId ? <p className="text-xs text-muted-foreground">Log a call above before submitting the form.</p> : null}
             </CardContent>
           </Card>
+          <AttemptHistory leadId={leadId} />
+          <Timeline leadId={leadId} />
+        </>
+      ) : null}
 
+      {hasMultiForms ? (
+        <>
+          <Card>
+            <CardHeader><CardTitle className="text-base">2. Call — outcome & duration</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Call outcome">
+                {ATTEMPT_OUTCOMES.map((outcome) => (
+                  <Button key={outcome} type="button" size="sm" role="radio" aria-checked={attemptOutcome === outcome} aria-label={outcome.replaceAll("_", " ")} variant={attemptOutcome === outcome ? "default" : "outline"} onClick={() => setAttemptOutcome(outcome)}>
+                    {outcome.replaceAll("_", " ").toLowerCase()}
+                  </Button>
+                ))}
+              </div>
+              <div className="flex items-center gap-3 rounded-md border bg-muted/30 px-3 py-2">
+                <span className="text-sm font-mono font-semibold">{formatDuration(elapsedSec)}</span>
+                <span className="text-xs text-muted-foreground">{timerRunning ? "● recording" : "idle"}</span>
+                <div className="ml-auto flex gap-2">
+                  {!timerRunning ? <Button size="sm" variant="outline" onClick={startCall}>Start</Button> : <Button size="sm" variant="outline" onClick={endCall}>Stop</Button>}
+                  <Button size="sm" variant="ghost" onClick={() => { setTimerRunning(false); setElapsedSec(0); setStartTime(null); }}>Reset</Button>
+                </div>
+              </div>
+              <Textarea placeholder="Call notes (optional)" value={callNotes} onChange={(e) => setCallNotes(e.target.value)} rows={2} />
+              {needsCallback ? (
+                <div className="flex flex-col gap-2 rounded-md border bg-amber-50 p-3 dark:bg-amber-950">
+                  <label className="flex items-center gap-2 text-sm font-medium">
+                    <input type="checkbox" checked={autoFollowup} onChange={(e) => setAutoFollowup(e.target.checked)} className="h-4 w-4" />
+                    Auto-create follow-up / callback task
+                  </label>
+                  {autoFollowup ? (
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-muted-foreground">Callback date & time (optional — defaults to next business day)</label>
+                      <Input type="datetime-local" value={callbackDate} onChange={(e) => setCallbackDate(e.target.value)} />
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+              {!attemptId ? (
+                <Button className="w-fit" disabled={logAttempt.isPending} onClick={onLogAttempt}>
+                  {logAttempt.isPending ? "Logging…" : `Log call${needsCallback && autoFollowup ? " & schedule follow-up" : ""}`}
+                </Button>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary">Attempt #{attemptId.slice(0, 8)} logged — {formatDuration(elapsedSec)}</Badge>
+                  <Button size="sm" variant="ghost" onClick={() => { setAttemptId(null); setSuggestLost(false); }}>Log another</Button>
+                </div>
+              )}
+              {suggestLost ? (
+                <p role="alert" className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-900 dark:border-red-800 dark:bg-red-950 dark:text-red-200">
+                  Multiple consecutive failed attempts — consider marking this lead lost (threshold reached).
+                </p>
+              ) : null}
+            </CardContent>
+          </Card>
+          <div className="flex flex-col gap-4">
+            {stageForms.map((sf) => {
+              const sfFields = sf.fields ?? [];
+              const sfLocked = Boolean(sf.template_version?.is_locked);
+              const sfErrors = sf.template_version?.id === displayForm?.template_version?.id ? fieldErrors : {};
+              const handleSfSubmit = async () => {
+                const errs = validateDynamicData(sfFields, dynamicData);
+                setFieldErrors(errs);
+                if (Object.keys(errs).length) return;
+                if (!sf.template_version?.id) return;
+                try {
+                  await submitForm.mutateAsync({ lead_id: leadId, template_version_id: sf.template_version.id, call_attempt_id: attemptId ?? undefined, data: dynamicData });
+                  setSubmitted(true);
+                } catch {
+                  // handled by toast
+                }
+              };
+              return (
+                <Card key={sf.activity.id}>
+                  <CardHeader><CardTitle className="text-base">Form — {sf.activity.name} <Badge variant="secondary" className="ml-2">{sf.activity.form_type ?? "CALL"}</Badge> {sf.call_template?.name ? <span className="text-xs font-normal text-muted-foreground ml-2">Template: {sf.call_template.name} {sf.template_version?.version_label} {sfLocked ? "🔒" : ""}</span> : null}</CardTitle></CardHeader>
+                  <CardContent className="flex flex-col gap-4">
+                    <DynamicFormFields fields={sfFields} values={dynamicData} errors={sfErrors} onChange={setDynamicData} />
+                    {submitted ? (
+                      <p className="rounded-md border border-green-300 bg-green-50 px-3 py-2 text-xs text-green-900">Submitted.</p>
+                    ) : (
+                      <Button className="w-fit" disabled={!attemptId || sfLocked || submitForm.isPending} onClick={handleSfSubmit}>
+                        {submitForm.isPending ? "Submitting…" : `Submit ${sf.activity.name}`}
+                      </Button>
+                    )}
+                    {!attemptId ? <p className="text-xs text-muted-foreground">Log a call above before submitting.</p> : null}
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
           <AttemptHistory leadId={leadId} />
           <Timeline leadId={leadId} />
         </>

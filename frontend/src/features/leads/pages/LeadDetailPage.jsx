@@ -3,7 +3,7 @@
 // Uses reusable workflow engine + Stitch DESIGN.md styling (rounded-xl, #2563EB).
 
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -28,7 +28,6 @@ import StatusBadge from "@/components/common/StatusBadge";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import FormField from "@/components/forms/FormField";
 import PipelineStepper from "@/components/workflow/PipelineStepper";
-import LeadHeader from "@/components/sales/LeadHeader";
 import LeadSummary, { TaskSummary } from "@/components/sales/LeadSummary";
 import DynamicStageForm from "@/components/sales/DynamicStageForm";
 import FormResponseHistory from "@/components/sales/FormResponseHistory";
@@ -210,12 +209,16 @@ function LostDialog({ lead, open, onOpenChange }) {
 }
 
 function ConvertDialog({ lead, open, onOpenChange }) {
+  const navigate = useNavigate();
   const convertLead = useConvertLead(lead.id);
   const { register, handleSubmit, formState: { errors } } = useForm({
     resolver: zodResolver(convertLeadSchema),
     defaultValues: { name: lead.name ?? "", email: lead.email ?? "", phone: lead.phone ?? "", company_name: lead.company_name ?? "", gst_number: "" },
   });
-  const onSubmit = (values) => convertLead.mutateAsync({ name: values.name, email: values.email, phone: values.phone, company_name: values.company_name || undefined, gst_number: values.gst_number || undefined }).then(() => onOpenChange(false));
+  const onSubmit = (values) => convertLead.mutateAsync({ name: values.name, email: values.email, phone: values.phone, company_name: values.company_name || undefined, gst_number: values.gst_number || undefined }).then((customer) => {
+    onOpenChange(false);
+    if (customer?.id) navigate(`/customers/${customer.id}`);
+  });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto">
@@ -276,46 +279,78 @@ export default function LeadDetailPage() {
   })();
 
   return (
-    <div className="mx-auto flex w-full max-w-[1440px] flex-col gap-6 p-6">
-      <LeadHeader lead={lead} pipelineName={masterData.pipelineName(lead.pipeline)} stageName={masterData.stageName(lead.current_stage)} sourceName={masterData.sourceName(lead.source)} />
-
-      <Card className="rounded-xl">
-        <CardContent className="p-4">
-          <PipelineStepper stages={stages} currentStageId={lead.current_stage} />
+    <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5 p-6 lg:px-7 lg:py-6">
+      {/* Hero Card — single composite like sample hero-card:258 */}
+      <Card className="rounded-[14px] border-[#E2E8F0] shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
+        <CardContent className="p-0">
+          <div className="p-[22px_26px]">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold text-muted-foreground">
+                  <span>{masterData.pipelineName(lead.pipeline) ? `Pipeline: ${masterData.pipelineName(lead.pipeline)}` : "Pipeline"}</span>
+                  <span>•</span>
+                  <StatusBadge status={lead.status} />
+                  {masterData.stageName(lead.current_stage) ? <Badge className="bg-[#EEF2FF] text-[#4F46E5] border-[#C7D2FE] text-[11px] font-bold">{masterData.stageName(lead.current_stage)}</Badge> : null}
+                </div>
+                <h1 className="mt-1 truncate text-[24px] font-extrabold tracking-[-0.03em] text-[#0F172A]">{lead.name}</h1>
+                <div className="mt-1.5 flex flex-wrap items-center gap-3.5 text-[13px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">👤 {lead.company_name ?? "—"}</span>
+                  <span className="inline-flex items-center gap-1.5">✉️ {lead.email ?? "—"}</span>
+                  <span className="inline-flex items-center gap-1.5">📞 {lead.phone ?? "—"}</span>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4 lg:hidden">
+                  <Field label="Pipeline" value={masterData.pipelineName(lead.pipeline)} />
+                  <Field label="Current stage" value={masterData.stageName(lead.current_stage)} />
+                  <Field label="Source" value={masterData.sourceName(lead.source)} />
+                  <Field label="Assigned" value={assignedLabel ?? "—"} />
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
+                {caps.canMarkLost ? <Button variant="ghost" size="sm" className="text-[#DC2626] hover:bg-[#FEF2F2] font-semibold" onClick={() => setDialog("lost")}>Mark Lost</Button> : null}
+                {caps.canProgress ? <Button size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8] font-semibold" onClick={() => setDialog("progress")}>Submit & Move →</Button> : caps.canConvert ? <Button size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8] font-semibold" onClick={() => setDialog("convert")}>Convert 🚀</Button> : null}
+                {caps.canAssign ? <Button variant="outline" size="sm" className="font-semibold" onClick={() => setDialog("assign")}>Assign</Button> : null}
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-[#F1F5F9] px-6 py-2">
+            <PipelineStepper stages={stages} currentStageId={lead.current_stage} stageEnteredAt={lead.updated_at ?? lead.created_at} />
+          </div>
         </CardContent>
       </Card>
 
       <div className="flex flex-wrap items-center gap-2">
-        {caps.canAssign ? <Button variant="outline" size="sm" onClick={() => setDialog("assign")}>Assign</Button> : null}
-        {caps.canProgress ? <Button size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8]" onClick={() => setDialog("progress")}>Progress</Button> : null}
-        {caps.canConvert ? <Button size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8]" onClick={() => setDialog("convert")}>Convert</Button> : null}
-        {caps.canMarkLost ? <Button variant="destructive" size="sm" onClick={() => setDialog("lost")}>Mark lost</Button> : null}
         {caps.canReengage ? <Button variant="outline" size="sm" onClick={() => setReengageOpen(true)}>Re-engage</Button> : null}
-        <StatusBadge status={lead.status} />
-        {lead.status === "LOST" && lead.lost_reason ? <Badge variant="outline">{lead.lost_reason}</Badge> : null}
-        {caps.requiresQuotation ? <Badge className="bg-amber-50 text-amber-700 border-amber-200">Quotation required</Badge> : null}
+        {lead.status === "LOST" && lead.lost_reason ? <Badge variant="outline" className="max-w-[260px] truncate">{lead.lost_reason}</Badge> : null}
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-5 lg:grid-cols-2">
         <LeadSummary lead={lead} sourceName={masterData.sourceName(lead.source)} pipelineName={masterData.pipelineName(lead.pipeline)} assignedLabel={assignedLabel} />
         <TaskSummary task={currentTask} />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-        <div className="flex flex-col gap-6">
+      <div className="grid gap-5 lg:grid-cols-[1.85fr_0.95fr]">
+        <div className="flex flex-col gap-5">
           <CallAttemptPanel leadId={lead.id} stageId={lead.current_stage} templateVersionId={currentForm?.template_version_id ?? currentForm?.id} />
           <DynamicStageForm lead={lead} />
           <FormResponseHistory leadId={lead.id} />
           <SalesTimeline leadId={lead.id} />
         </div>
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-5">
           <QuotationPanel leadId={lead.id} requiresQuotation={caps.requiresQuotation} />
+          <Card className="rounded-[14px] border-[#E2E8F0] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <CardHeader className="pb-3"><CardTitle className="text-sm font-bold">Quick Operations</CardTitle></CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              <Button variant="outline" className="justify-start font-medium" onClick={() => setDialog("assign")}>📅 Schedule Review Meeting</Button>
+              <Button variant="outline" className="justify-start font-medium" asChild><Link to={`/tasks/new?lead=${lead.id}`}>🔔 Set Follow-up Reminder</Link></Button>
+              <Button variant="outline" className="justify-start font-medium" asChild><Link to={`/quotations/new?lead=${lead.id}`}>💬 Send Quotation</Link></Button>
+            </CardContent>
+          </Card>
           <ActivitiesCard leadId={lead.id} blocked={lead.status === "CONVERTED"} />
         </div>
       </div>
 
-      <Card className="rounded-xl">
-        <CardHeader><CardTitle className="text-sm">Details</CardTitle></CardHeader>
+      <Card className="rounded-[14px] border-[#E2E8F0]">
+        <CardHeader><CardTitle className="text-sm font-bold">Details</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
           <Field label="Email" value={lead.email} />
           <Field label="Phone" value={lead.phone} />

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 
 import {
@@ -54,10 +55,13 @@ export default function AdminRolesPage() {
   const [assignUserId, setAssignUserId] = useState("");
   const [assignRoleId, setAssignRoleId] = useState("");
 
+  const navigate = useNavigate();
   const createForm = useForm({
     defaultValues: { rolename: "", description: "" },
   });
   const [editingPermissions, setEditingPermissions] = useState(null); // {role, selected:Set}
+  const [permSearch, setPermSearch] = useState("");
+  const [expandedRoleId, setExpandedRoleId] = useState(null);
 
   if (rolesQuery.isLoading || permissionsQuery.isLoading) {
     return <PageLoader label="Loading roles & permissions…" />;
@@ -70,11 +74,18 @@ export default function AdminRolesPage() {
   const permissions = permissionsQuery.data ?? [];
 
   const getPermissionObj = (id) =>
-    permissions.find((permission) => permission.id === id);
+    permissions.find((permission) => String(permission.id) === String(id));
 
   const editingRoleId = editingPermissions?.role?.role_id ?? null;
   const editingRoleName = editingPermissions?.role?.rolename ?? "";
   const selectedPermissionIds = editingPermissions?.selected ?? new Set();
+  const dialogFiltered = permissions.filter((p) => {
+    if (!permSearch.trim()) return true;
+    const q = permSearch.toLowerCase().replace(/[_-]+/g, " ").trim();
+    const nameNorm = (p.name || "").toLowerCase().replace(/[_-]+/g, " ");
+    const codeNorm = (p.codename || "").toLowerCase().replace(/[_-]+/g, " ");
+    return nameNorm.includes(q) || codeNorm.includes(q) || p.codename?.toLowerCase().includes(permSearch.toLowerCase()) || p.name?.toLowerCase().includes(permSearch.toLowerCase());
+  });
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
@@ -88,14 +99,14 @@ export default function AdminRolesPage() {
         <Button onClick={() => setCreateOpen(true)}>New role</Button>
       </div>
 
-      {/* Role cards */}
+      {/* Role cards — Stitch: neutral border, subtle shadow, generous whitespace */}
       <div className="grid gap-4 md:grid-cols-2">
         {roles.map((role) => {
           const roleName = role?.rolename ?? "Unknown";
           const isProtected = PROTECTED_ROLES.includes(roleName);
           const assignedPerms = role.permissions ?? [];
           return (
-            <Card key={role.role_id}>
+            <Card key={role.role_id} className="rounded-[14px] border-[#E5E7EB] bg-white shadow-sm overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-base font-semibold">{role.rolename}</CardTitle>
                 {!isProtected ? (
@@ -116,48 +127,57 @@ export default function AdminRolesPage() {
                   <p className="text-sm text-muted-foreground">{role.description}</p>
                 ) : null}
                 <div>
-                  <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-1 block">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#94A3B8] mb-1.5 block">
                     Assigned Permissions ({assignedPerms.length})
                   </span>
-                  <div className="flex flex-wrap gap-1 max-h-36 overflow-y-auto pr-1">
-                    {assignedPerms.slice(0, 10).map((id) => {
-                      const perm = getPermissionObj(id);
-                      return (
-                        <Badge
-                          key={id}
-                          variant="outline"
-                          className="text-[11px] px-2 py-0.5"
-                          title={perm?.codename ? `Codename: ${perm.codename}` : undefined}
-                        >
-                          {perm?.name ?? perm?.codename ?? `#${id}`}
-                        </Badge>
-                      );
-                    })}
-                    {assignedPerms.length > 10 ? (
-                      <Badge variant="secondary" className="text-[11px]">
-                        +{assignedPerms.length - 10} more
-                      </Badge>
-                    ) : null}
-                    {assignedPerms.length === 0 ? (
-                      <span className="text-sm text-muted-foreground">No permissions assigned.</span>
-                    ) : null}
-                  </div>
+                  {(() => {
+                    const isExpanded = expandedRoleId === role.role_id;
+                    const displayPerms = isExpanded ? assignedPerms : assignedPerms.slice(0, 12);
+                    return (
+                      <>
+                        <div className={`flex flex-wrap gap-1.5 pr-1 ${isExpanded ? "max-h-64 overflow-y-auto" : "max-h-36 overflow-y-auto"}`}>
+                          {displayPerms.map((id) => {
+                            const perm = getPermissionObj(id);
+                            const label = perm?.name || perm?.codename || `#${id}`;
+                            return (
+                              <Badge
+                                key={id}
+                                variant="outline"
+                                className="text-[11px] px-2 py-0.5 bg-white border-[#E2E8F0] font-medium"
+                                title={perm ? `${perm.name} — ${perm.codename}` : `#${id}`}
+                              >
+                                {label}
+                              </Badge>
+                            );
+                          })}
+                          {!isExpanded && assignedPerms.length > 12 ? (
+                            <Badge variant="secondary" className="text-[11px] bg-[#F1F5F9] text-[#475569]">+{assignedPerms.length - 12} more</Badge>
+                          ) : null}
+                          {assignedPerms.length === 0 ? (
+                            <span className="text-sm text-muted-foreground">No permissions assigned.</span>
+                          ) : null}
+                        </div>
+                        {assignedPerms.length > 12 && (
+                          <button
+                            type="button"
+                            className="mt-1.5 text-xs font-semibold text-[#2563EB] hover:underline"
+                            onClick={() => setExpandedRoleId(isExpanded ? null : role.role_id)}
+                          >
+                            {isExpanded ? "Show less ↑" : `View all (${assignedPerms.length}) →`}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
-                {!isProtected ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-fit mt-1"
-                    onClick={() =>
-                      setEditingPermissions({
-                        role,
-                        selected: new Set(role.permissions ?? []),
-                      })
-                    }
-                  >
-                    Manage permissions
-                  </Button>
-                ) : null}
+                <Button
+                  variant={isProtected ? "outline" : "outline"}
+                  size="sm"
+                  className={`w-fit mt-2 ${isProtected ? "border-amber-200 text-amber-700 hover:bg-amber-50" : ""}`}
+                  onClick={() => navigate(`/admin/roles/${role.role_id}`)}
+                >
+                  {isProtected ? "Edit protected permissions" : "Manage permissions"}
+                </Button>
               </CardContent>
             </Card>
           );
@@ -264,18 +284,29 @@ export default function AdminRolesPage() {
       {/* Edit permissions dialog */}
       <Dialog
         open={Boolean(editingPermissions)}
-        onOpenChange={(open) => !open && setEditingPermissions(null)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setEditingPermissions(null);
+            setPermSearch("");
+          }
+        }}
       >
         <DialogContent className="max-h-[85vh] max-w-3xl overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Permissions — {editingRoleName}</DialogTitle>
           </DialogHeader>
           <p className="text-xs text-muted-foreground">
-            Check permissions to assign them to this role. Permission names and codenames are loaded directly from the system backend.
+            Check permissions to assign them to this role. Permission names and codenames are loaded directly from the system backend. Search to filter (e.g. “delete_quotation”, “view_lead”).
           </p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 mt-2">
-            {permissions.map((permission) => {
-              const checked = selectedPermissionIds.has(permission.id);
+          <Input placeholder="Search permissions by name or codename..." value={permSearch} onChange={(e) => setPermSearch(e.target.value)} className="mt-2" />
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 mt-2 max-h-[50vh] overflow-y-auto pr-1">
+            {dialogFiltered.length === 0 ? (
+              <div className="col-span-2 py-8 text-center text-sm text-muted-foreground">
+                No permissions match “{permSearch}”. Try “delete_quotation” or “view lead”.
+              </div>
+            ) : (
+              dialogFiltered.map((permission) => {
+                const checked = selectedPermissionIds.has(permission.id);
               return (
                 <label
                   key={permission.id}
@@ -312,7 +343,8 @@ export default function AdminRolesPage() {
                   </div>
                 </label>
               );
-            })}
+              })
+            )}
           </div>
           <DialogFooter className="mt-4">
             <Button variant="outline" onClick={() => setEditingPermissions(null)}>

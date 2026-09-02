@@ -73,6 +73,9 @@ class Activity(models.Model):
         QUOTATION_PDF_GENERATED = "QUOTATION_PDF_GENERATED", "Quotation PDF Generated"
         QUOTATION_EMAIL_SENT = "QUOTATION_EMAIL_SENT", "Quotation Email Sent"
 
+        # Payment Events
+        PAYMENT = "PAYMENT", "Payment"
+
         # Task Events
         TASK_CREATED = "TASK_CREATED", "Task Created"
         TASK_UPDATED = "TASK_UPDATED", "Task Updated"

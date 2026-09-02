@@ -87,8 +87,9 @@ function InviteEmployee() {
 }
 
 export default function SettingsPage() {
-  const { user } = useAuth();
+  const { user, resolved } = useAuth();
   const mustChange = user?.must_change_password;
+  const isAdmin = resolved?.isAdmin;
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-6">
       <div>
@@ -105,7 +106,7 @@ export default function SettingsPage() {
         <TabsList>
           <TabsTrigger value="account">Account</TabsTrigger>
           <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="team">Team</TabsTrigger>
+          {isAdmin ? <TabsTrigger value="team">Team</TabsTrigger> : null}
         </TabsList>
         <TabsContent value="account">
           <Card className="rounded-xl"><CardHeader><CardTitle className="text-sm">Profile</CardTitle><CardDescription>{user?.email} · {user?.role_name ?? "No role"} · {user?.user_id?.slice(0,8)}</CardDescription></CardHeader><CardContent><p className="text-sm text-muted-foreground">Profile details from <code>GET /profile/&lt;id&gt;/</code>. Role shown from `role_name`.</p></CardContent></Card>
@@ -113,10 +114,12 @@ export default function SettingsPage() {
         <TabsContent value="security">
           <Card className="rounded-xl"><CardHeader><CardTitle className="text-sm">Change password</CardTitle><CardDescription>Update your account password. After first-login change, you will see the dashboard.</CardDescription></CardHeader><CardContent><ChangePasswordPage /></CardContent></Card>
         </TabsContent>
-        <TabsContent value="team">
-          <Card className="rounded-xl"><CardHeader><CardTitle className="text-sm">Invite employee</CardTitle><CardDescription>Admin creates account with temp password — employee logs in with email + temp password, forced to change once.</CardDescription></CardHeader><CardContent><InviteEmployee /></CardContent></Card>
-          <p className="mt-4 text-xs text-muted-foreground"><a href="/stitch-preview" className="text-[#2563EB] hover:underline">Open Stitch Design Preview</a> — pixel-exact snapshot of the target workspace look.</p>
-        </TabsContent>
+        {isAdmin ? (
+          <TabsContent value="team">
+            <Card className="rounded-xl"><CardHeader><CardTitle className="text-sm">Invite employee</CardTitle><CardDescription>Admin creates account with temp password — employee logs in with email + temp password, forced to change once.</CardDescription></CardHeader><CardContent><InviteEmployee /></CardContent></Card>
+            <p className="mt-4 text-xs text-muted-foreground"><a href="/stitch-preview" className="text-[#2563EB] hover:underline">Open Stitch Design Preview</a> — pixel-exact snapshot of the target workspace look.</p>
+          </TabsContent>
+        ) : null}
       </Tabs>
     </div>
   );

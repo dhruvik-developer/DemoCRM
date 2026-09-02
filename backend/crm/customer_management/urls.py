@@ -8,6 +8,7 @@ from .views import (
     CustomerContactListCreateView,
     CustomerDetailView,
     CustomerListCreateView,
+    CustomerRecordPaymentView,
     LeadAssignView,
     LeadConvertView,
     LeadDetailView,
@@ -15,8 +16,10 @@ from .views import (
     LeadLostView,
     LeadProgressView,
     LeadReengageView,
+    LeadRecordPaymentView,
     LeadSourceDetailView,
     LeadSourceListCreateView,
+    PaymentListView,
     PipelineDetailView,
     PipelineListCreateView,
     PipelineStageDetailView,
@@ -152,6 +155,17 @@ urlpatterns = [
         CustomerActivityListView.as_view(),
         name="customer-activity-list",
     ),
+    path(
+        "customers/<uuid:pk>/record-payment/",
+        CustomerRecordPaymentView.as_view(),
+        name="customer-record-payment",
+    ),
+    path(
+        "leads/<uuid:pk>/record-payment/",
+        LeadRecordPaymentView.as_view(),
+        name="lead-record-payment",
+    ),
+    path("payments/", PaymentListView.as_view(), name="payment-list"),
     # Quotations
     path(
         "quotations/",

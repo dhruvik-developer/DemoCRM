@@ -70,6 +70,7 @@ MANAGER_MODEL_PREFIXES = [
     "quotationversion",
     "quotationlineitem",
     "quotationapproval",
+    "payment",
     "activity",
     "auditlog",
 ]
@@ -90,6 +91,7 @@ MANAGER_CODENAMES = _codename_set(MANAGER_MODEL_PREFIXES) | {
     "mark_lead_lost",
     "reengage_lead",
     "convert_lead",
+    "record_payment",
     "view_quotation",
     "add_quotation",
     "change_quotation",
@@ -99,9 +101,13 @@ MANAGER_CODENAMES = _codename_set(MANAGER_MODEL_PREFIXES) | {
     "request_quotation_revision",
     "accept_quotation",
     "reject_quotation",
+    "manage_pipeline",
+    "manage_pipeline_stage",
+    "manage_lead_source",
 }
 
 # Models the Employee role can read.
+# NOTE: pipeline/pipelinestage deliberately excluded — Employee must not see Pipeline nav.
 EMPLOYEE_MODEL_PREFIXES = [
     "task",
     "taskstatus",
@@ -135,13 +141,8 @@ EMPLOYEE_MODEL_PREFIXES = [
     "indexedsubmissionvalue",
     "lead",
     "leadsource",
-    "pipeline",
-    "pipelinestage",
-    "customer",
     "quotation",
     "activity",
-    "customeraccount",
-    "customercontact",
 ]
 
 EMPLOYEE_CODENAMES = {f"view_{prefix}" for prefix in EMPLOYEE_MODEL_PREFIXES} | {

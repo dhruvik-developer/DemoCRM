@@ -21,6 +21,7 @@ from .models import (
     CustomerContact,
     Lead,
     LeadSource,
+    Payment,
     Pipeline,
     PipelineStage,
     Quotation,
@@ -1001,6 +1002,31 @@ class CRMService:
             "recent_engagements": recent_engagements,
         }
 
+    @staticmethod
+    @transaction.atomic
+    def record_payment(
+        *,
+        user,
+        lead=None,
+        customer=None,
+        amount,
+        payment_date=None,
+        method="CASH",
+        reference=None,
+        notes=None,
+    ):
+        # Manual payment entry — delegates to QuotationService for single source of truth
+        return QuotationService.record_payment(
+            user=user,
+            lead=lead,
+            customer=customer,
+            amount=amount,
+            payment_date=payment_date,
+            method=method,
+            reference=reference,
+            notes=notes,
+        )
+
 
 class QuotationService:
     @staticmethod
@@ -1023,6 +1049,9 @@ class QuotationService:
         notes=None,
         line_items=None,
         assigned_to=None,
+        discount_type="FLAT",
+        discount_value=None,
+        gst_rate=None,
     ):
         if lead.status != Lead.Status.ACTIVE:
             raise ValidationError("Cannot create a quotation for a non-active Lead.")
@@ -1040,6 +1069,21 @@ class QuotationService:
             status=QuotationStatus.DRAFT,
         )
 
+        # Normalize discount/gst inputs (per-revision optional)
+        dt = (
+            (discount_type or "FLAT").upper()
+            if isinstance(discount_type, str)
+            else "FLAT"
+        )
+        if dt not in ("FLAT", "PERCENT"):
+            dt = "FLAT"
+        dv = (
+            Decimal(str(discount_value))
+            if discount_value not in (None, "")
+            else Decimal("0.00")
+        )
+        gr = Decimal(str(gst_rate)) if gst_rate not in (None, "") else Decimal("0.00")
+
         version = QuotationVersion.objects.create(
             quotation=quotation,
             version_number=1,
@@ -1051,10 +1095,14 @@ class QuotationService:
             approval_required=approval_required,
             terms=terms,
             notes=notes,
+            discount_type=dt,
+            discount_value=dv,
+            gst_rate=gr,
+            subtotal_amount=Decimal("0.00"),
             total_amount=Decimal("0.00"),
         )
 
-        total = Decimal("0.00")
+        subtotal = Decimal("0.00")
         if line_items is not None:
             if isinstance(line_items, str):
                 import json
@@ -1078,18 +1126,54 @@ class QuotationService:
                 if not isinstance(item, dict):
                     continue
                 desc = item.get("description", "").strip()
+                hsn = (item.get("hsn_code") or item.get("hsn") or "").strip()
                 qty = int(item.get("quantity", 1))
                 price = Decimal(str(item.get("unit_price", "0.00")))
+                g_rate = (
+                    Decimal(str(item.get("gst_rate", 18)))
+                    if item.get("gst_rate") not in (None, "")
+                    else Decimal("18.00")
+                )
+                d_pct = (
+                    Decimal(str(item.get("discount_percent", 0)))
+                    if item.get("discount_percent") not in (None, "")
+                    else Decimal("0.00")
+                )
                 li = QuotationLineItem.objects.create(
                     version=version,
                     description=desc,
+                    hsn_code=hsn,
                     quantity=qty,
                     unit_price=price,
+                    gst_rate=g_rate,
+                    discount_percent=d_pct,
                 )
-                total += li.amount
+                line_net = (
+                    li.quantity
+                    * li.unit_price
+                    * (Decimal("1") - d_pct / Decimal("100"))
+                ).quantize(Decimal("0.01"))
+                subtotal += line_net
 
+        version.subtotal_amount = subtotal.quantize(Decimal("0.01"))
+        # version-level discount
+        disc_amt = Decimal("0.00")
+        if dv != 0:
+            if dt == "PERCENT":
+                disc_amt = (subtotal * dv / Decimal("100")).quantize(Decimal("0.01"))
+            else:
+                disc_amt = dv
+        taxable = (subtotal - disc_amt).quantize(Decimal("0.01"))
+        if taxable < 0:
+            taxable = Decimal("0.00")
+        gst_amt = (
+            (taxable * gr / Decimal("100")).quantize(Decimal("0.01"))
+            if gr
+            else Decimal("0.00")
+        )
+        total = (taxable + gst_amt).quantize(Decimal("0.01"))
         version.total_amount = total
-        version.save(update_fields=["total_amount", "updated_at"])
+        version.save(update_fields=["subtotal_amount", "total_amount", "updated_at"])
 
         quotation.current_version = version
         quotation.status = QuotationStatus.DRAFT
@@ -1149,6 +1233,9 @@ class QuotationService:
         terms=None,
         notes=None,
         line_items=None,
+        discount_type=None,
+        discount_value=None,
+        gst_rate=None,
     ):
         version = quotation.current_version
         if not version or version.status != QuotationStatus.DRAFT:
@@ -1160,6 +1247,25 @@ class QuotationService:
             version.terms = terms
         if notes is not None:
             version.notes = notes
+        # Update revision-level discount/GST if provided (per-revision optional)
+        if discount_type is not None:
+            dt = (
+                (discount_type or "FLAT").upper()
+                if isinstance(discount_type, str)
+                else "FLAT"
+            )
+            if dt in ("FLAT", "PERCENT"):
+                version.discount_type = dt
+        if discount_value is not None:
+            version.discount_value = (
+                Decimal(str(discount_value))
+                if str(discount_value) != ""
+                else Decimal("0.00")
+            )
+        if gst_rate is not None:
+            version.gst_rate = (
+                Decimal(str(gst_rate)) if str(gst_rate) != "" else Decimal("0.00")
+            )
 
         if line_items is not None:
             if isinstance(line_items, str):
@@ -1174,7 +1280,6 @@ class QuotationService:
             if isinstance(line_items, list) and len(line_items) == 0:
                 raise ValidationError("Line items cannot be empty.")
             version.line_items.all().delete()
-            total = Decimal("0.00")
             for item in line_items:
                 if isinstance(item, str):
                     import json
@@ -1186,15 +1291,66 @@ class QuotationService:
                 if not isinstance(item, dict):
                     continue
                 desc = item.get("description", "").strip()
+                hsn = (item.get("hsn_code") or item.get("hsn") or "").strip()
                 qty = int(item.get("quantity", 1))
                 price = Decimal(str(item.get("unit_price", "0.00")))
-                li = QuotationLineItem.objects.create(
+                g_rate = (
+                    Decimal(str(item.get("gst_rate", 18)))
+                    if item.get("gst_rate") not in (None, "")
+                    else Decimal("18.00")
+                )
+                d_pct = (
+                    Decimal(str(item.get("discount_percent", 0)))
+                    if item.get("discount_percent") not in (None, "")
+                    else Decimal("0.00")
+                )
+                QuotationLineItem.objects.create(
                     version=version,
                     description=desc,
+                    hsn_code=hsn,
                     quantity=qty,
                     unit_price=price,
+                    gst_rate=g_rate,
+                    discount_percent=d_pct,
                 )
-                total += li.amount
+
+        # Recompute totals whenever line items or discount/gst changed
+        if (
+            line_items is not None
+            or discount_type is not None
+            or discount_value is not None
+            or gst_rate is not None
+        ):
+            subtotal = (
+                sum(
+                    (
+                        li.quantity
+                        * li.unit_price
+                        * (Decimal("1") - li.discount_percent / Decimal("100"))
+                    ).quantize(Decimal("0.01"))
+                    for li in version.line_items.all()
+                )
+                if version.line_items.exists()
+                else Decimal("0.00")
+            )
+            version.subtotal_amount = subtotal.quantize(Decimal("0.01"))
+            disc_amt = Decimal("0.00")
+            if version.discount_value and version.discount_value != 0:
+                if version.discount_type == "PERCENT":
+                    disc_amt = (
+                        subtotal * version.discount_value / Decimal("100")
+                    ).quantize(Decimal("0.01"))
+                else:
+                    disc_amt = version.discount_value
+            taxable = (subtotal - disc_amt).quantize(Decimal("0.01"))
+            if taxable < 0:
+                taxable = Decimal("0.00")
+            gst_amt = (
+                (taxable * version.gst_rate / Decimal("100")).quantize(Decimal("0.01"))
+                if version.gst_rate
+                else Decimal("0.00")
+            )
+            total = (taxable + gst_amt).quantize(Decimal("0.01"))
             version.total_amount = total
 
         version.save()
@@ -1612,6 +1768,9 @@ class QuotationService:
         notes=None,
         line_items=None,
         revision_reason=None,
+        discount_type=None,
+        discount_value=None,
+        gst_rate=None,
     ):
         current_version = quotation.current_version
         if not current_version:
@@ -1637,6 +1796,27 @@ class QuotationService:
             and quotation.lead.current_stage.quotation_approval_required
         )
 
+        # Per-revision discount/GST — if not provided, copy from current_version (v1 may have none, v2 can add)
+        dt = (
+            (discount_type or current_version.discount_type)
+            if discount_type is not None
+            else current_version.discount_type
+        )
+        dv = (
+            Decimal(str(discount_value))
+            if discount_value not in (None, "")
+            else current_version.discount_value
+        )
+        gr = (
+            Decimal(str(gst_rate))
+            if gst_rate not in (None, "")
+            else current_version.gst_rate
+        )
+        if isinstance(dt, str):
+            dt = dt.upper()
+            if dt not in ("FLAT", "PERCENT"):
+                dt = "FLAT"
+
         new_version = QuotationVersion.objects.create(
             quotation=quotation,
             version_number=new_version_num,
@@ -1649,10 +1829,14 @@ class QuotationService:
             terms=terms if terms is not None else current_version.terms,
             notes=notes if notes is not None else current_version.notes,
             revision_reason=revision_reason,
+            discount_type=dt,
+            discount_value=dv,
+            gst_rate=gr,
+            subtotal_amount=Decimal("0.00"),
             total_amount=Decimal("0.00"),
         )
 
-        total = Decimal("0.00")
+        subtotal = Decimal("0.00")
         if line_items is not None:
             if isinstance(line_items, str):
                 import json
@@ -1672,27 +1856,72 @@ class QuotationService:
                 if not isinstance(item, dict):
                     continue
                 desc = item.get("description", "").strip()
+                hsn = (item.get("hsn_code") or item.get("hsn") or "").strip()
                 qty = int(item.get("quantity", 1))
                 price = Decimal(str(item.get("unit_price", "0.00")))
+                g_rate = (
+                    Decimal(str(item.get("gst_rate", 18)))
+                    if item.get("gst_rate") not in (None, "")
+                    else Decimal("18.00")
+                )
+                d_pct = (
+                    Decimal(str(item.get("discount_percent", 0)))
+                    if item.get("discount_percent") not in (None, "")
+                    else Decimal("0.00")
+                )
                 li = QuotationLineItem.objects.create(
                     version=new_version,
                     description=desc,
+                    hsn_code=hsn,
                     quantity=qty,
                     unit_price=price,
+                    gst_rate=g_rate,
+                    discount_percent=d_pct,
                 )
-                total += li.amount
+                line_net = (
+                    li.quantity
+                    * li.unit_price
+                    * (Decimal("1") - d_pct / Decimal("100"))
+                ).quantize(Decimal("0.01"))
+                subtotal += line_net
         else:
             for item in current_version.line_items.all():
                 li = QuotationLineItem.objects.create(
                     version=new_version,
                     description=item.description,
+                    hsn_code=item.hsn_code,
                     quantity=item.quantity,
                     unit_price=item.unit_price,
+                    gst_rate=item.gst_rate,
+                    discount_percent=item.discount_percent,
                 )
-                total += li.amount
+                line_net = (
+                    li.quantity
+                    * li.unit_price
+                    * (Decimal("1") - item.discount_percent / Decimal("100"))
+                ).quantize(Decimal("0.01"))
+                subtotal += line_net
 
+        new_version.subtotal_amount = subtotal.quantize(Decimal("0.01"))
+        disc_amt = Decimal("0.00")
+        if dv and dv != 0:
+            if dt == "PERCENT":
+                disc_amt = (subtotal * dv / Decimal("100")).quantize(Decimal("0.01"))
+            else:
+                disc_amt = dv
+        taxable = (subtotal - disc_amt).quantize(Decimal("0.01"))
+        if taxable < 0:
+            taxable = Decimal("0.00")
+        gst_amt = (
+            (taxable * gr / Decimal("100")).quantize(Decimal("0.01"))
+            if gr
+            else Decimal("0.00")
+        )
+        total = (taxable + gst_amt).quantize(Decimal("0.01"))
         new_version.total_amount = total
-        new_version.save(update_fields=["total_amount", "updated_at"])
+        new_version.save(
+            update_fields=["subtotal_amount", "total_amount", "updated_at"]
+        )
 
         quotation.current_version = new_version
         quotation.status = QuotationStatus.DRAFT
@@ -1810,7 +2039,148 @@ class QuotationService:
             quotation.customer = customer
             quotation.save(update_fields=["customer", "updated_at"])
 
+        # Sync financials from accepted quotation to lead/customer account portfolio.
+        # smart_customer_lookup aggregates lead.due_amount/total_value, so keep them in sync.
+        try:
+            if quotation.lead and version.total_amount is not None:
+                lead_for_fin = Lead.objects.select_for_update().get(
+                    pk=quotation.lead_id
+                )
+                amt = version.total_amount or Decimal("0.00")
+                lead_for_fin.total_value = amt
+                # If no payments recorded yet, whole amount is due.
+                # Keep paid_amount as-is (0 if not set), due = total - paid
+                paid = lead_for_fin.paid_amount or Decimal("0.00")
+                lead_for_fin.due_amount = (
+                    (amt - paid).quantize(Decimal("0.01")) if amt else Decimal("0.00")
+                )
+                if lead_for_fin.due_amount > 0:
+                    lead_for_fin.financial_status = Lead.FinancialStatus.PARTIALLY_PAID
+                else:
+                    lead_for_fin.financial_status = Lead.FinancialStatus.NO_DUES
+                lead_for_fin.save(
+                    update_fields=[
+                        "total_value",
+                        "due_amount",
+                        "financial_status",
+                        "updated_at",
+                    ]
+                )
+        except Exception as fin_err:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                "Failed to sync lead financials after quotation accept: %s", fin_err
+            )
+
         return quotation, customer
+
+    @staticmethod
+    @transaction.atomic
+    def record_payment(
+        *,
+        user,
+        lead=None,
+        customer=None,
+        amount,
+        payment_date=None,
+        method="CASH",
+        reference=None,
+        notes=None,
+    ):
+        """
+        Manual payment entry. Updates Lead financials (paid/due + status) and creates Payment row.
+        Lead is resolved from customer.lead if customer given.
+        """
+        if not lead and not customer:
+            raise ValidationError("Either lead or customer must be provided.")
+        # Resolve lead from customer if needed
+        if customer and not lead:
+            lead = customer.lead
+            if not lead:
+                # Fallback: try to find lead via customer id linkage (customer.lead is OneToOne)
+                raise ValidationError(
+                    "Customer has no linked lead to record payment against."
+                )
+        if lead:
+            lead = Lead.objects.select_for_update().get(pk=lead.pk)
+            # Ensure lead has a total to pay against
+            if lead.total_value is None or lead.total_value == Decimal("0.00"):
+                raise ValidationError(
+                    "Lead has no total amount to record payment against. Accept a quotation first."
+                )
+            if amount <= Decimal("0.00"):
+                raise ValidationError("Amount must be greater than 0.")
+            if amount > lead.due_amount:
+                raise ValidationError(
+                    f"Amount ₹{amount} exceeds outstanding due ₹{lead.due_amount}."
+                )
+            payment = Payment.objects.create(
+                lead=lead,
+                customer=customer or getattr(lead, "customer", None),
+                amount=amount,
+                payment_date=payment_date or timezone.now().date(),
+                method=method,
+                reference=reference,
+                notes=notes,
+                created_by=user,
+            )
+            lead.paid_amount = (lead.paid_amount or Decimal("0.00")) + amount
+            lead.due_amount = (lead.total_value - lead.paid_amount).quantize(
+                Decimal("0.01")
+            )
+            if lead.due_amount <= Decimal("0.00"):
+                lead.due_amount = Decimal("0.00")
+                lead.financial_status = Lead.FinancialStatus.NO_DUES
+            elif lead.paid_amount > Decimal("0.00"):
+                lead.financial_status = Lead.FinancialStatus.PARTIALLY_PAID
+            else:
+                lead.financial_status = Lead.FinancialStatus.PAYMENT_OVERDUE
+            lead.save(
+                update_fields=[
+                    "paid_amount",
+                    "due_amount",
+                    "financial_status",
+                    "updated_at",
+                ]
+            )
+
+            CRMService.create_audit_log(
+                user=user,
+                entity_type="Lead",
+                entity_id=lead.id,
+                action="PAYMENT_RECORDED",
+                new_value={
+                    "payment_id": str(payment.id),
+                    "amount": float(amount),
+                    "paid_amount": float(lead.paid_amount),
+                    "due_amount": float(lead.due_amount),
+                    "financial_status": lead.financial_status,
+                },
+            )
+            CRMService.create_activity(
+                user=user,
+                activity_type=Activity.ActivityType.PAYMENT,
+                outcome=f"Payment of ₹{amount} recorded ({method})",
+                lead=lead if lead.status != Lead.Status.CONVERTED else None,
+                customer=customer
+                or (lead.customer if lead.status == Lead.Status.CONVERTED else None),
+                notes=notes or f"Reference: {reference or '—'}",
+            )
+            return payment, lead
+        else:
+            # Customer-only payment without lead (rare)
+            payment = Payment.objects.create(
+                lead=None,
+                customer=customer,
+                amount=amount,
+                payment_date=payment_date or timezone.now().date(),
+                method=method,
+                reference=reference,
+                notes=notes,
+                created_by=user,
+            )
+            return payment, None
 
     @staticmethod
     @transaction.atomic
