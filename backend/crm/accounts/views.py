@@ -329,7 +329,8 @@ class ChangePasswordAPIView(APIView):
 
             try:
                 user.set_password(new_password)
-                user.save()
+                user.must_change_password = False
+                user.save(update_fields=["password", "must_change_password"])
             except Exception:
                 logger.exception("Password change failed for user %s", request.user)
                 return Response(

@@ -1,7 +1,8 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 // Draft creation. Backend rule: quotations are created from ACTIVE leads
 // (400 otherwise). The approval requirement comes from the lead's stage.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm, FormProvider, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -28,7 +29,7 @@ export default function QuotationCreatePage() {
   const methods = useForm({
     resolver: zodResolver(createQuotationSchema),
     defaultValues: {
-      lead_id: "",
+      lead_id: presetLead || "",
       terms: "",
       notes: "",
       line_items: [{ description: "", quantity: 1, unit_price: "" }],
@@ -45,6 +46,13 @@ export default function QuotationCreatePage() {
 
   const watchedLeadId = useWatch({ control, name: "lead_id" });
   const effectiveLead = leadId || watchedLeadId;
+
+  useEffect(() => {
+    if (presetLead) {
+      setValue("lead_id", presetLead);
+      setLeadId(presetLead);
+    }
+  }, [presetLead, setValue]);
   const selectedLead = (leadsQuery.data?.results ?? []).find(
     (l) => String(l.id) === String(effectiveLead),
   );
@@ -52,7 +60,7 @@ export default function QuotationCreatePage() {
   const onSubmit = async (values) => {
     try {
       const quotation = await createQuotation.mutateAsync({
-        lead_id: values.lead_id,
+        lead_id: effectiveLead || values.lead_id,
         terms: values.terms || undefined,
         notes: values.notes || undefined,
         line_items: values.line_items.length

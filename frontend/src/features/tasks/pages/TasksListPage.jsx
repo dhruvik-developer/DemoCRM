@@ -28,7 +28,7 @@ export default function TasksListPage() {
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
   const ordering = searchParams.get("ordering") ?? "";
-  const inbox = searchParams.get("inbox") ?? "all"; // all | overdue | today | upcoming
+  const inbox = searchParams.get("inbox") ?? "all"; // all | overdue | today | upcoming | completed
 
   const updateParam = (key, value) => {
     setSearchParams(
@@ -62,9 +62,10 @@ export default function TasksListPage() {
   const now = new Date();
   const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  if (inbox === "overdue") rows = rows.filter((t) => t.due_date && new Date(t.due_date) < now);
+  if (inbox === "overdue") rows = rows.filter((t) => t.due_date && new Date(t.due_date) < now && taskStatusName(t.status)?.toLowerCase() !== "completed");
   else if (inbox === "today") rows = rows.filter((t) => t.due_date && new Date(t.due_date) >= startToday && new Date(t.due_date) < endToday);
   else if (inbox === "upcoming") rows = rows.filter((t) => t.due_date && new Date(t.due_date) >= endToday);
+  else if (inbox === "completed") rows = rows.filter((t) => taskStatusName(t.status)?.toLowerCase() === "completed");
 
   const findUserName = (assignee) => {
     if (!assignee) return "Unassigned";
@@ -94,6 +95,7 @@ export default function TasksListPage() {
           ["overdue", "Overdue"],
           ["today", "Today"],
           ["upcoming", "Upcoming"],
+          ["completed", "Completed"],
         ].map(([key, label]) => (
           <Button key={key} variant={inbox === key ? "default" : "outline"} size="sm" onClick={() => updateParam("inbox", key === "all" ? "" : key)} className={inbox === key ? "bg-[#2563EB] hover:bg-[#1D4ED8]" : ""}>
             {label}

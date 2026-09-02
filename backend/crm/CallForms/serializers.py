@@ -5,6 +5,7 @@ from .models import (
     CallAttempt,
     CallTemplate,
     FieldType,
+    FormFieldMapping,
     FormSubmission,
     IndexedSubmissionValue,
     OutcomeChoice,
@@ -45,10 +46,26 @@ class TemplateFieldSerializer(serializers.ModelSerializer):
         )
         options = attrs.get("options", getattr(self.instance, "options", []))
 
-        if field_type == FieldType.SELECT and not options:
+        if (
+            field_type in (FieldType.SELECT, FieldType.RADIO, FieldType.CHECKBOX)
+            and not options
+        ):
             raise serializers.ValidationError(
-                {"options": "Select field type requires a non-empty list of options."}
+                {
+                    "options": f"{field_type} field type requires a non-empty list of options."
+                }
             )
+        if field_type == FieldType.FILE:
+            rules = attrs.get(
+                "validation_rules", getattr(self.instance, "validation_rules", {})
+            )
+            # file_types like "pdf,docx,jpg,png" is optional but if provided must be non-empty
+            if rules and rules.get("file_types") == "":
+                raise serializers.ValidationError(
+                    {
+                        "validation_rules": "file_types cannot be empty string; omit or provide extensions."
+                    }
+                )
 
         template_version = attrs.get(
             "template_version", getattr(self.instance, "template_version", None)
@@ -173,11 +190,16 @@ class PipelineStageActivitySerializer(serializers.ModelSerializer):
             "name",
             "description",
             "activity_type",
+            "form_type",
             "call_template",
             "call_template_name",
             "is_primary",
             "display_order",
             "is_active",
+            "allowed_roles",
+            "editable_roles",
+            "auto_create_followup",
+            "followup_offset_days",
             "created_by",
             "created_at",
             "updated_at",
@@ -200,6 +222,7 @@ class CallAttemptSerializer(serializers.ModelSerializer):
     outcome_display = serializers.CharField(
         source="get_outcome_display", read_only=True
     )
+    duration_seconds = serializers.SerializerMethodField()
 
     class Meta:
         model = CallAttempt
@@ -218,6 +241,7 @@ class CallAttemptSerializer(serializers.ModelSerializer):
             "notes",
             "start_time",
             "end_time",
+            "duration_seconds",
             "is_form_submitted",
             "suggest_mark_lost",
             "created_at",
@@ -229,6 +253,9 @@ class CallAttemptSerializer(serializers.ModelSerializer):
             "is_form_submitted",
             "created_at",
         ]
+
+    def get_duration_seconds(self, obj):
+        return obj.duration_seconds
 
 
 class LogCallAttemptSerializer(serializers.Serializer):
@@ -242,6 +269,8 @@ class LogCallAttemptSerializer(serializers.Serializer):
     notes = serializers.CharField(required=False, allow_blank=True, default="")
     start_time = serializers.DateTimeField(required=False, allow_null=True)
     end_time = serializers.DateTimeField(required=False, allow_null=True)
+    followup_due_date = serializers.DateTimeField(required=False, allow_null=True)
+    auto_create_followup = serializers.BooleanField(required=False, default=True)
 
 
 class FormSubmissionSerializer(serializers.ModelSerializer):
@@ -398,3 +427,17 @@ class IndexedSubmissionValueSerializer(serializers.ModelSerializer):
             "created_at",
         ]
         read_only_fields = ["id", "created_at"]
+
+
+class FormFieldMappingSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FormFieldMapping
+        fields = ["id", "template", "field_key", "target_model", "target_field"]
+        read_only_fields = ["id"]
+
+    def validate_field_key(self, value):
+        if not re.match(r"^[a-z0-9_]+$", value.lower()):
+            raise serializers.ValidationError(
+                "field_key must be lowercase alphanumeric + underscores."
+            )
+        return value.lower()

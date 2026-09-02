@@ -13,9 +13,9 @@ function FullScreenSpinner() {
   );
 }
 
-/** Allows only authenticated users; remembers the attempted location. */
+/** Allows only authenticated users; remembers the attempted location. GitLab-style: if must_change_password, force Settings. */
 export function ProtectedRoute() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -23,6 +23,9 @@ export function ProtectedRoute() {
   }
   if (!isAuthenticated) {
     return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+  if (user?.must_change_password && location.pathname !== "/settings") {
+    return <Navigate to="/settings" replace />;
   }
   return <Outlet />;
 }
