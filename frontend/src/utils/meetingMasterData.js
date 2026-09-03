@@ -9,6 +9,7 @@
 export const MEETING_TYPES = [
   { id: 1, name: "Online" },
   { id: 2, name: "Offline" },
+  { id: 3, name: "Custom" },
 ];
 
 export const MEETING_STATUSES = [

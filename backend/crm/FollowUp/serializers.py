@@ -3,6 +3,7 @@ from .models import (
     Followup,
     FollowUpStatus,
     FollowUpTypes,
+    RecordNote,
 )
 from django.utils import timezone
 
@@ -75,4 +76,23 @@ class FollowUpStatusUpdateSerializer(serializers.Serializer):
         ).exists():
             raise serializers.ValidationError("Invalid or inactive follow-up status.")
 
+        return value
+
+
+class RecordNoteSerializer(serializers.ModelSerializer):
+    author_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = RecordNote
+        fields = ("note_id", "entity_type", "entity_id", "body", "created_by", "author_name", "created_at")
+        read_only_fields = ("note_id", "created_by", "author_name", "created_at")
+
+    def get_author_name(self, note):
+        user = note.created_by
+        return user.get_full_name() or user.username or user.email
+
+    def validate_body(self, value):
+        value = value.strip()
+        if not value:
+            raise serializers.ValidationError("Note cannot be empty.")
         return value

@@ -8,6 +8,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { useAuth } from "@/hooks/useAuth";
+import { hasPermission } from "@/utils/permissions";
 import { useWorkflowCapabilities } from "@/hooks/useWorkflowCapabilities";
 import { useMasterDataMaps, usePipelineStages } from "@/features/crm/hooks";
 import {
@@ -56,6 +57,104 @@ import { Separator } from "@/components/ui/separator";
 import { useUsers } from "@/features/admin/hooks";
 import { useQuotations } from "@/features/quotations/hooks";
 import { useTasks } from "@/features/tasks/hooks";
+import { useFollowUps } from "@/features/followups/hooks";
+import { useMeetings } from "@/features/meetings/hooks";
+import { followUpStatusName, followUpTypeName } from "@/utils/followUpMasterData";
+
+function FollowUpsPanel({ query, taskId, canSchedule }) {
+  const rows = query.data?.results ?? [];
+  return (
+    <Card className="rounded-xl">
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-sm">Follow-ups</CardTitle>
+        <Badge variant="outline">{query.data?.count ?? rows.length}</Badge>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {query.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+        {!query.isLoading && rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No follow-ups for this lead.</p>
+        ) : null}
+        {rows.slice(0, 3).map((followUp) => (
+          <div key={followUp.followup_id} className="flex items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{followUpTypeName(followUp.followup_type) || "Follow-up"}</p>
+              <p className="text-xs text-muted-foreground">
+                {followUp.followup_date ? new Date(followUp.followup_date).toLocaleString() : "Date not set"}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Badge variant="outline">{followUpStatusName(followUp.followup_status)}</Badge>
+              {followUp.task_id ? (
+                <Button asChild size="sm">
+                  <Link to={`/tasks/${followUp.task_id}`}>Take follow-up</Link>
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/followups">View follow-ups</Link>
+          </Button>
+          {canSchedule && taskId ? (
+            <Button asChild size="sm">
+              <Link to={`/followups?create=1&task_id=${taskId}`}>Schedule follow-up</Link>
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MeetingsPanel({ query, taskId, canSchedule, currentUserId }) {
+  const rows = query.data?.results ?? [];
+  return (
+    <Card className="rounded-xl">
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-sm">Meetings</CardTitle>
+        <Badge variant="outline">{query.data?.count ?? rows.length}</Badge>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {query.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+        {!query.isLoading && rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No meetings for this lead.</p>
+        ) : null}
+        {rows.slice(0, 3).map((meeting) => (
+          <div key={meeting.meeting_id} className="flex items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
+            <div className="min-w-0">
+              <Link to={`/meetings/${meeting.meeting_id}`} className="truncate text-sm font-medium hover:underline">
+                {meeting.meeting_title}
+              </Link>
+              <p className="text-xs text-muted-foreground">
+                {meeting.meeting_date || "Date not set"}{meeting.start_time ? ` · ${meeting.start_time.slice(0, 5)}` : ""}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <StatusBadge status={meeting.approval_status} />
+              {String(meeting.approval_status).toUpperCase() === "REJECTED" &&
+              String(meeting.created_by?.user_id ?? meeting.created_by ?? "") === String(currentUserId) ? (
+                <Button asChild size="sm" variant="destructive">
+                  <Link to={`/meetings/${meeting.meeting_id}`}>Reschedule meeting</Link>
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/meetings">View meetings</Link>
+          </Button>
+          {canSchedule && taskId ? (
+            <Button asChild size="sm">
+              <Link to={`/meetings/new?task_id=${taskId}`}>Schedule meeting</Link>
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function Field({ label, value }) {
   return (
@@ -246,7 +345,7 @@ function ConvertDialog({ lead, open, onOpenChange }) {
 
 export default function LeadDetailPage() {
   const { leadId } = useParams();
-  const { resolved } = useAuth();
+  const { user, resolved } = useAuth();
   const leadQuery = useLead(leadId);
   const usersQuery = useUsers();
   const masterData = useMasterDataMaps();
@@ -254,6 +353,8 @@ export default function LeadDetailPage() {
   const primaryFormQuery = useLeadPrimaryForm(leadId);
   const quotationsQuery = useQuotations({ lead: leadId });
   const tasksQuery = useTasks({ lead: leadId });
+  const followUpsQuery = useFollowUps({ lead: leadId, page_size: 3 });
+  const meetingsQuery = useMeetings({ lead: leadId, page_size: 3 });
 
   const [dialog, setDialog] = useState(null);
   const [reengageOpen, setReengageOpen] = useState(false);

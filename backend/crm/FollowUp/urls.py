@@ -1,8 +1,9 @@
 from django.urls import path
 
-from .views import FollowUpListCreateView, FollowUpDetailView, FollowUpStatusUpdateView
+from .views import FollowUpListCreateView, FollowUpDetailView, FollowUpStatusUpdateView, RecordNoteListCreateView
 
 urlpatterns = [
+    path("notes/", RecordNoteListCreateView.as_view(), name="record-note-list-create"),
     # ======================================================
     # FOLLOWUP
     # ======================================================

@@ -6,9 +6,10 @@ from rest_framework import status
 from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated
 from drf_spectacular.utils import extend_schema
-from .models import FollowUpStatus, Followup
-from .serializers import FollowupSerializer, FollowUpStatusUpdateSerializer
+from .models import FollowUpStatus, Followup, RecordNote
+from .serializers import FollowupSerializer, FollowUpStatusUpdateSerializer, RecordNoteSerializer
 from django.db.models import Q
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
@@ -19,7 +20,54 @@ from audit_log.models import Activity
 
 logger = logging.getLogger(__name__)
 
-from Task.models import Task
+from Task.models import Task, Meeting
+
+
+def _note_target_for_user(user, entity_type, entity_id):
+    if entity_type == "task":
+        target = get_object_or_404(Task, task_id=entity_id, is_active=True)
+        assigned_user_id = target.assigned_to_id
+        extra_user_ids = {target.created_by_id}
+    elif entity_type == "followup":
+        target = get_object_or_404(Followup.objects.select_related("task_id"), followup_id=entity_id, is_active=True)
+        assigned_user_id = target.task_id.assigned_to_id
+        extra_user_ids = {target.created_by_id}
+    elif entity_type == "meeting":
+        target = get_object_or_404(Meeting.objects.select_related("task_id"), meeting_id=entity_id, is_active=True)
+        assigned_user_id = target.task_id.assigned_to_id
+        extra_user_ids = {target.created_by_id, target.manager_id}
+    else:
+        raise Http404
+
+    role_name = getattr(getattr(user, "role", None), "rolename", "").strip().lower()
+    if not (user.is_superuser or role_name in ("admin", "manager") or user.pk == assigned_user_id or user.pk in extra_user_ids):
+        return None
+    return target
+
+
+@extend_schema(tags=["Notes"])
+class RecordNoteListCreateView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        entity_type = request.query_params.get("entity_type", "").lower()
+        entity_id = request.query_params.get("entity_id")
+        if not entity_id or not str(entity_id).isdigit():
+            return Response({"detail": "entity_type and entity_id are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if _note_target_for_user(request.user, entity_type, int(entity_id)) is None:
+            return Response({"detail": "You do not have access to this record."}, status=status.HTTP_403_FORBIDDEN)
+        notes = RecordNote.objects.filter(entity_type=entity_type, entity_id=entity_id).select_related("created_by")
+        return Response(RecordNoteSerializer(notes, many=True).data)
+
+    def post(self, request):
+        serializer = RecordNoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        entity_type = serializer.validated_data["entity_type"]
+        entity_id = serializer.validated_data["entity_id"]
+        if _note_target_for_user(request.user, entity_type, entity_id) is None:
+            return Response({"detail": "You do not have access to this record."}, status=status.HTTP_403_FORBIDDEN)
+        note = serializer.save(created_by=request.user)
+        return Response(RecordNoteSerializer(note).data, status=status.HTTP_201_CREATED)
 
 
 # ==========================================================
@@ -74,6 +122,7 @@ class FollowUpListCreateView(APIView):
             followup_status_id = request.query_params.get("followup_status")
             followup_type_id = request.query_params.get("followup_type")
             task_id = request.query_params.get("task_id")
+            lead_id = request.query_params.get("lead")
             created_by_id = request.query_params.get("created_by")
 
             if followup_status_id:
@@ -84,6 +133,9 @@ class FollowUpListCreateView(APIView):
 
             if task_id:
                 followups = followups.filter(task_id=task_id)
+
+            if lead_id:
+                followups = followups.filter(task_id__lead_id=lead_id)
 
             # Only Admin/Manager can filter by another user's created_by
             if created_by_id:

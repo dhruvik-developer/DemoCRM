@@ -3,7 +3,7 @@
 // The manager field is auto-set to the logged-in manager's own user_id.
 
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
@@ -11,14 +11,21 @@ import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
 import { MEETING_TYPES } from "@/utils/meetingMasterData";
 import { useCreateMeeting } from "../hooks";
+import { addMeetingParticipant } from "../api";
 import { useUsers } from "@/features/admin/hooks";
 import { useTask } from "@/features/tasks/hooks";
 import TaskSelect from "@/features/tasks/components/TaskSelect";
+import { useCallTemplates, useFields } from "@/features/callforms/hooks";
+import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
+import { MEETING_TEMPLATE_MARKER } from "./MeetingTemplatesPage";
 import { createMeetingSchema } from "@/schemas/meeting.schema";
 import FormField from "@/components/forms/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Plus, Search, Users } from "lucide-react";
+import { toast } from "sonner";
 import {
   Select,
   SelectContent,
@@ -27,13 +34,55 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
+function ParticipantPicker({ open, onOpenChange, users, selected, onChange }) {
+  const [search, setSearch] = useState("");
+  const visibleUsers = users.filter((person) => `${person.full_name || ""} ${person.username || ""} ${person.email || ""}`.toLowerCase().includes(search.toLowerCase()));
+  const toggle = (userId) => {
+    const id = String(userId);
+    onChange(selected.includes(id) ? selected.filter((value) => value !== id) : [...selected, id]);
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[80vh] overflow-hidden p-0 sm:max-w-lg">
+        <DialogHeader className="border-b px-5 py-4"><DialogTitle>Add Participants</DialogTitle></DialogHeader>
+        <div className="px-5 pt-4">
+          <div className="relative"><Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search users" className="pl-9" /></div>
+          <div className="mt-3 flex justify-between text-sm"><span>CRM users</span><span className="text-primary">Selected ({selected.length})</span></div>
+        </div>
+        <div className="max-h-80 overflow-y-auto px-5">
+          {visibleUsers.map((person) => <label key={person.user_id} className="flex cursor-pointer items-start gap-3 border-b py-3 last:border-0"><input type="checkbox" className="mt-1 size-4 accent-blue-600" checked={selected.includes(String(person.user_id))} onChange={() => toggle(person.user_id)} /><span className="min-w-0"><strong className="block text-sm font-medium">{person.full_name || person.username}</strong><span className="block truncate text-xs text-muted-foreground">{person.email || "No email address"}</span></span></label>)}
+          {!visibleUsers.length ? <p className="py-10 text-center text-sm text-muted-foreground">No users found.</p> : null}
+        </div>
+        <DialogFooter><Button type="button" onClick={() => onOpenChange(false)}>Done</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function MeetingCreatePage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const initialTaskId = searchParams.get("task_id") ?? "";
   const { user, resolved } = useAuth();
   const createMeeting = useCreateMeeting();
   const { data: users = [] } = useUsers();
   const [typeId, setTypeId] = useState("1");
+  const [templateId, setTemplateId] = useState("");
+  const [dynamicValues, setDynamicValues] = useState({});
+  const [dynamicErrors, setDynamicErrors] = useState({});
+  const [participantOpen, setParticipantOpen] = useState(false);
+  const [participantIds, setParticipantIds] = useState([]);
   const isOnline = typeId === "1";
+  const templatesQuery = useCallTemplates();
+  const meetingTemplates = (templatesQuery.data ?? []).filter(
+    (template) => template?.description === MEETING_TEMPLATE_MARKER && template.is_active,
+  );
+  const selectedTemplate = meetingTemplates.find(
+    (template) => String(template.id) === templateId,
+  );
+  const primaryVersionId = selectedTemplate?.primary_version?.id ?? selectedTemplate?.primary_version;
+  const fieldsQuery = useFields(primaryVersionId);
+  const dynamicFields = fieldsQuery.data ?? [];
 
   const isManager = String(resolved?.roleName || "").toLowerCase() === "manager";
   const canCreate = hasPermission(resolved, "add_meeting");
@@ -41,13 +90,14 @@ export default function MeetingCreatePage() {
   const {
     register,
     handleSubmit,
+    getValues,
     setValue,
     watch,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(createMeetingSchema),
     defaultValues: {
-      task_id: "",
+      task_id: initialTaskId,
       lead: "",
       meeting_title: "",
       meeting_date: "",
@@ -87,13 +137,27 @@ export default function MeetingCreatePage() {
       if (taskData.lead) {
         setValue("lead", String(taskData.lead));
       }
-      if (!watch("meeting_title")) {
+      if (!getValues("meeting_title")) {
         setValue("meeting_title", `Meeting: ${taskData.task_title}`);
       }
     }
-  }, [taskData, setValue]);
+  }, [taskData, getValues, setValue]);
 
   const onSubmit = async (values) => {
+    const nextErrors = {};
+    dynamicFields.forEach((field) => {
+      const value = dynamicValues[field.field_key];
+      if (
+        field.is_required &&
+        (value === undefined || value === null || value === "" ||
+          (Array.isArray(value) && value.length === 0))
+      ) {
+        nextErrors[field.field_key] = `${field.label} is required.`;
+      }
+    });
+    setDynamicErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
     try {
       const meeting = await createMeeting.mutateAsync({
         task_id: values.task_id,
@@ -107,7 +171,17 @@ export default function MeetingCreatePage() {
         location: values.location || undefined,
         description: values.description || undefined,
         manager: values.manager, // auto-set to logged-in manager
+        extra_fields: templateId
+          ? {
+              template_id: templateId,
+              template_name: selectedTemplate?.name,
+              values: dynamicValues,
+            }
+          : {},
       });
+      const results = await Promise.allSettled(participantIds.map((userId) => addMeetingParticipant(meeting.meeting_id, { user_id: userId, participant_role: "Attendee", is_required: true })));
+      const failed = results.filter((result) => result.status === "rejected").length;
+      if (failed) toast.warning(`Meeting created, but ${failed} participant${failed === 1 ? "" : "s"} could not be added.`);
       navigate(`/meetings/${meeting.meeting_id}`);
     } catch {
       // Errors are toasted by the mutation; keep the form filled for retry.
@@ -129,13 +203,16 @@ export default function MeetingCreatePage() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight">Schedule Meeting</h1>
-        <Button variant="ghost" asChild>
+    <div className="fixed inset-0 z-40 flex items-start justify-center overflow-y-auto bg-black/45 p-4 pt-10 backdrop-blur-[1px]">
+      <div className="w-full max-w-2xl overflow-hidden rounded-xl border bg-background shadow-2xl">
+      <div className="flex items-center justify-between border-b px-6 py-5">
+        <h1 className="text-xl font-semibold tracking-tight">Meeting Information</h1>
+        <Button variant="ghost" size="sm" asChild>
           <Link to="/meetings">Cancel</Link>
         </Button>
       </div>
+
+      <div className="max-h-[calc(100vh-10rem)] overflow-y-auto px-6 py-5">
 
       <p className="rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-xs text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200">
         {isManager
@@ -196,6 +273,13 @@ export default function MeetingCreatePage() {
             </Select>
           </FormField>
         )}
+
+        <FormField id="participants" label="Participants">
+          <div className="flex min-h-9 items-center justify-between rounded-lg border px-3 py-1.5">
+            <div className="flex min-w-0 items-center gap-2 text-sm"><Users className="size-4 text-muted-foreground" /><span className="truncate">{participantIds.length ? `${participantIds.length} participant${participantIds.length === 1 ? "" : "s"} selected` : "None"}</span></div>
+            <Button type="button" variant="ghost" size="sm" className="text-primary" onClick={() => setParticipantOpen(true)}><Plus /> Add</Button>
+          </div>
+        </FormField>
 
         {/* Title */}
         <FormField id="meeting_title" label="Meeting Title" error={errors.meeting_title?.message}>
@@ -263,14 +347,66 @@ export default function MeetingCreatePage() {
           />
         </FormField>
 
+        <FormField
+          id="meeting_template"
+          label="Meeting Template"
+          help="Choose a template to display its custom fields for this meeting."
+        >
+          <Select
+            value={templateId || "none"}
+            onValueChange={(value) => {
+              setTemplateId(value === "none" ? "" : value);
+              setDynamicValues({});
+              setDynamicErrors({});
+            }}
+          >
+            <SelectTrigger id="meeting_template">
+              <SelectValue placeholder="No custom template" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">No custom template</SelectItem>
+              {meetingTemplates.map((template) => (
+                <SelectItem key={template.id} value={String(template.id)}>
+                  {template.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormField>
+
+        {templateId ? (
+          <div className="rounded-xl border bg-muted/20 p-4">
+            <h2 className="mb-3 font-medium">
+              {selectedTemplate?.name ?? "Custom meeting fields"}
+            </h2>
+            {fieldsQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Loading template fields…</p>
+            ) : (
+              <DynamicFormFields
+                fields={dynamicFields}
+                values={dynamicValues}
+                errors={dynamicErrors}
+                onChange={(nextValues) => {
+                  setDynamicValues(nextValues);
+                  setDynamicErrors({});
+                }}
+                stepView={false}
+              />
+            )}
+          </div>
+        ) : null}
+
         <Button
           type="submit"
           disabled={createMeeting.isPending}
-          className="self-start bg-[#2563EB] hover:bg-[#1D4ED8]"
+          className="sticky -bottom-5 self-end bg-[#2563EB] hover:bg-[#1D4ED8]"
         >
           {createMeeting.isPending ? "Scheduling…" : "Schedule Meeting"}
         </Button>
       </form>
+      </div>
+      </div>
+      <ParticipantPicker open={participantOpen} onOpenChange={setParticipantOpen} users={users.filter((person) => String(person.user_id) !== String(user?.user_id))} selected={participantIds} onChange={setParticipantIds} />
     </div>
   );
 }

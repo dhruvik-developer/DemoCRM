@@ -26,6 +26,7 @@ export default function CallAttemptPanel({ leadId, stageId, activityId, template
 
   const rawAttempts = attemptsQ.data ?? [];
   const attempts = (Array.isArray(rawAttempts) ? rawAttempts : rawAttempts?.results ?? []).filter(Boolean);
+  // timeline endpoint returns mixed submissions/attempts; fallback to separate history if needed
 
   useEffect(() => {
     if (isLive) {

@@ -3,7 +3,7 @@
 // is disabled with a banner (the backend 400s mutations anyway).
 
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   Bar,
   BarChart,
@@ -428,6 +428,8 @@ function VersionAnalytics({ versionId }) {
 
 export default function CallTemplateDetailPage() {
   const { templateId } = useParams();
+  const location = useLocation();
+  const isMeetingTemplate = location.pathname.startsWith("/meeting-templates/");
   const templateQuery = useCallTemplate(templateId);
   const versionsQuery = useVersions(templateId);
   const createVersion = useCreateVersion();
@@ -485,7 +487,9 @@ export default function CallTemplateDetailPage() {
             </>
           ) : null}
           <Button variant="ghost" asChild>
-            <Link to="/callforms">← Templates</Link>
+            <Link to={isMeetingTemplate ? "/notifications/templates" : "/callforms"}>
+              ← Templates
+            </Link>
           </Button>
         </div>
       </div>

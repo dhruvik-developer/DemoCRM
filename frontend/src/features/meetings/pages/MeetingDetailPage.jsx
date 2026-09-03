@@ -136,14 +136,20 @@ export default function MeetingDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Details</CardTitle>
+          <CardTitle>Meeting Information</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
+          <Field label="Title" value={meeting.meeting_title} />
+          <Field label="Related task" value={meeting.task_title} />
+          <Field label="Approval" value={meeting.approval_status} />
           <Field label="Date" value={meeting.meeting_date} />
           <Field label="Start" value={meeting.start_time} />
           <Field label="End" value={meeting.end_time} />
           <Field label="Type" value={meetingTypeName(meeting.meeting_type_id?.id ?? meeting.meeting_type_id)} />
           <Field label="Status" value={meetingStatusName(meeting.meeting_status_id?.id ?? meeting.meeting_status_id)} />
+          <Field label="Manager" value={meeting.manager_name} />
+          <Field label="Requested by" value={meeting.requested_by_name} />
+          <Field label="Created" value={meeting.created_at ? new Date(meeting.created_at).toLocaleString() : null} />
           <Field
             label="Manager"
             value={
@@ -155,6 +161,7 @@ export default function MeetingDetailPage() {
               value={meeting.meeting_link ?? meeting.location ?? null}
             />
           </div>
+          {meeting.description ? <div className="md:col-span-3"><Field label="Description" value={meeting.description} /></div> : null}
           {meeting.rejection_reason ? (
             <div className="md:col-span-3">
               <Field label="Rejection reason" value={meeting.rejection_reason} />
@@ -218,6 +225,16 @@ export default function MeetingDetailPage() {
           <CardTitle className="text-base">Participants</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {meeting.participant_details?.length ? (
+            <div className="divide-y rounded-lg border">
+              {meeting.participant_details.map((participant) => (
+                <div key={participant.participant_id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0"><strong className="block truncate text-sm">{participant.name}</strong><span className="block truncate text-xs text-muted-foreground">{participant.email || "No email"} · {participant.role}</span></div>
+                  {can("delete_meetingparticipant") ? <Button type="button" variant="ghost" size="sm" className="text-destructive" disabled={removeParticipant.isPending} onClick={() => removeParticipant.mutateAsync(participant.user_id)}>Remove</Button> : null}
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-sm text-muted-foreground">No participants have been added.</p>}
           <p className="text-sm text-muted-foreground">
             The API doesn't expose the participant roster — manage by user UUID.
           </p>

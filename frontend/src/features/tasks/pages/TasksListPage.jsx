@@ -14,7 +14,10 @@ import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Pencil, Trash2 } from "lucide-react";
+import { MessageSquareText, Pencil, Pin, Trash2 } from "lucide-react";
+import RecordNotesPanel from "@/features/notes/components/RecordNotesPanel";
+import ListControls from "@/components/common/ListControls";
+import { usePinnedRecords } from "@/hooks/usePinnedRecords";
 
 import { useUsers } from "@/features/admin/hooks";
 
@@ -23,12 +26,15 @@ export default function TasksListPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const usersQuery = useUsers();
   const [taskToDelete, setTaskToDelete] = useState(null);
+  const [notesRecord, setNotesRecord] = useState(null);
   const deleteTask = useDeleteTask();
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
   const ordering = searchParams.get("ordering") ?? "";
   const inbox = searchParams.get("inbox") ?? "all"; // all | overdue | today | upcoming | completed
+  const pinnedOnly = searchParams.get("pinned") === "1";
+  const pins = usePinnedRecords("crm:pinned-tasks");
 
   const updateParam = (key, value) => {
     setSearchParams(
@@ -49,13 +55,14 @@ export default function TasksListPage() {
   };
 
   const tasksQuery = useTasks({
-    page,
+    page: pinnedOnly ? 1 : page,
+    page_size: pinnedOnly ? 100 : 10,
     search: search || undefined,
     ordering: ordering || undefined,
   });
 
   let rows = tasksQuery.data?.results ?? [];
-  const count = tasksQuery.data?.count ?? 0;
+  let count = tasksQuery.data?.count ?? 0;
   const canCreate = hasPermission(resolved, "add_task");
 
   // Inbox filtering client-side per §13 (backend has no overdue/today param)
@@ -66,6 +73,9 @@ export default function TasksListPage() {
   else if (inbox === "today") rows = rows.filter((t) => t.due_date && new Date(t.due_date) >= startToday && new Date(t.due_date) < endToday);
   else if (inbox === "upcoming") rows = rows.filter((t) => t.due_date && new Date(t.due_date) >= endToday);
   else if (inbox === "completed") rows = rows.filter((t) => taskStatusName(t.status)?.toLowerCase() === "completed");
+  if (pinnedOnly) rows = rows.filter((task) => pins.isPinned(task.task_id));
+  rows = pins.pinnedFirst(rows, (task) => task.task_id);
+  if (pinnedOnly) count = rows.length;
 
   const findUserName = (assignee) => {
     if (!assignee) return "Unassigned";
@@ -104,6 +114,16 @@ export default function TasksListPage() {
         <div className="ml-auto flex items-center gap-2">
           <Input placeholder="Search tasks…" className="w-64" defaultValue={search} onChange={(event) => updateParam("search", event.target.value.trim())} />
         </div>
+        <ListControls
+          filterValue={inbox}
+          filterOptions={[["all", "All tasks"], ["overdue", "Overdue"], ["today", "Due today"], ["upcoming", "Upcoming"], ["completed", "Completed"]].map(([value, label]) => ({ value, label }))}
+          onFilterChange={(value) => updateParam("inbox", value === "all" ? "" : value)}
+          sortValue={ordering}
+          sortOptions={[{ value: "due_date", label: "Due date: oldest first" }, { value: "-due_date", label: "Due date: newest first" }, { value: "task_title", label: "Title: A–Z" }, { value: "-task_title", label: "Title: Z–A" }]}
+          onSortChange={(value) => updateParam("ordering", value)}
+          pinnedOnly={pinnedOnly}
+          onPinnedOnlyChange={(value) => updateParam("pinned", value ? "1" : "")}
+        />
       </div>
 
       {tasksQuery.isError ? (
@@ -111,6 +131,12 @@ export default function TasksListPage() {
       ) : (
         <DataTable
           columns={[
+            {
+              key: "pin",
+              header: "",
+              className: "w-10",
+              render: (task) => <Button variant="ghost" size="icon-sm" title={pins.isPinned(task.task_id) ? "Unpin task" : "Pin task"} aria-label={pins.isPinned(task.task_id) ? "Unpin task" : "Pin task"} onClick={() => pins.togglePin(task.task_id)}><Pin className={pins.isPinned(task.task_id) ? "fill-primary text-primary" : "text-muted-foreground"} /></Button>,
+            },
             {
               key: "task_title",
               header: "Title",
@@ -155,6 +181,12 @@ export default function TasksListPage() {
               key: "assigned_to",
               header: "Assigned to",
               render: (task) => findUserName(task.assigned_to),
+            },
+            {
+              key: "notes",
+              header: "Notes",
+              className: "w-16",
+              render: (task) => <Button variant="ghost" size="icon-sm" title="Add note" aria-label={`Notes for ${task.task_title}`} onClick={() => setNotesRecord({ type: "task", id: task.task_id, title: task.task_title })}><MessageSquareText /></Button>,
             },
             {
               key: "actions",
@@ -207,7 +239,7 @@ export default function TasksListPage() {
           }
           sortValue={ordering}
           onSortChange={(value) => updateParam("ordering", value)}
-          page={page}
+          page={pinnedOnly ? 1 : page}
           pageSize={10}
           count={count}
           onPageChange={(nextPage) => updateParam("page", String(nextPage))}
@@ -230,6 +262,7 @@ export default function TasksListPage() {
           setTaskToDelete(null);
         }}
       />
+      <RecordNotesPanel record={notesRecord} onClose={() => setNotesRecord(null)} />
     </div>
   );
 }

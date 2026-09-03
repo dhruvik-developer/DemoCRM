@@ -101,6 +101,10 @@ export const endpoints = {
     status: (followupId) => `/followups/${followupId}/status/`,
   },
 
+  notes: {
+    list: "/followups/notes/",
+  },
+
   notifications: {
     templates: "/notification-templates/",
     templateDetail: (templateId) => `/notification-templates/${templateId}/`,

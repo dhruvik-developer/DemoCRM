@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import ListControls from "@/components/common/ListControls";
+import { usePinnedRecords } from "@/hooks/usePinnedRecords";
 import {
   Dialog,
   DialogContent,
@@ -19,7 +21,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Video, Check, X, CalendarClock } from "lucide-react";
+import { Video, Check, X, CalendarClock, MessageSquareText, Pin } from "lucide-react";
+import RecordNotesPanel from "@/features/notes/components/RecordNotesPanel";
 
 export default function MeetingsListPage() {
   const { user, resolved } = useAuth();
@@ -34,10 +37,14 @@ export default function MeetingsListPage() {
   const [newDate, setNewDate] = useState("");
   const [newStart, setNewStart] = useState("");
   const [newEnd, setNewEnd] = useState("");
+  const [notesRecord, setNotesRecord] = useState(null);
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
   const approvalFilter = searchParams.get("approval") ?? "all"; // all | PENDING | APPROVED | REJECTED
+  const ordering = searchParams.get("ordering") ?? "";
+  const pinnedOnly = searchParams.get("pinned") === "1";
+  const pins = usePinnedRecords("crm:pinned-meetings");
 
   // Manager check using resolved.roleName set by resolvePermissions
   const isManagerRole =
@@ -64,13 +71,17 @@ export default function MeetingsListPage() {
   };
 
   const meetingsQuery = useMeetings({
-    page,
+    page: pinnedOnly ? 1 : page,
+    page_size: pinnedOnly ? 100 : 10,
     search: search || undefined,
     approval_status: approvalFilter !== "all" ? approvalFilter : undefined,
+    ordering: ordering || undefined,
   });
 
-  const rows = meetingsQuery.data?.results ?? [];
-  const count = meetingsQuery.data?.count ?? 0;
+  let rows = meetingsQuery.data?.results ?? [];
+  if (pinnedOnly) rows = rows.filter((meeting) => pins.isPinned(meeting.meeting_id));
+  rows = pins.pinnedFirst(rows, (meeting) => meeting.meeting_id);
+  const count = pinnedOnly ? rows.length : (meetingsQuery.data?.count ?? 0);
   // Only Manager or Admin can create/schedule meetings — Employee cannot
   const canCreate = hasPermission(resolved, "add_meeting");
 
@@ -178,6 +189,16 @@ export default function MeetingsListPage() {
             onChange={(event) => updateParam("search", event.target.value.trim())}
           />
         </div>
+        <ListControls
+          filterValue={approvalFilter}
+          filterOptions={[{ value: "all", label: "All meetings" }, { value: "PENDING", label: "Pending approval" }, { value: "APPROVED", label: "Approved" }, { value: "REJECTED", label: "Rejected" }]}
+          onFilterChange={(value) => updateParam("approval", value === "all" ? "" : value)}
+          sortValue={ordering}
+          sortOptions={[{ value: "meeting_date", label: "Date: oldest first" }, { value: "-meeting_date", label: "Date: newest first" }, { value: "meeting_title", label: "Title: A–Z" }]}
+          onSortChange={(value) => updateParam("ordering", value)}
+          pinnedOnly={pinnedOnly}
+          onPinnedOnlyChange={(value) => updateParam("pinned", value ? "1" : "")}
+        />
       </div>
 
       {meetingsQuery.isError ? (
@@ -185,6 +206,12 @@ export default function MeetingsListPage() {
       ) : (
         <DataTable
           columns={[
+            {
+              key: "pin",
+              header: "",
+              className: "w-10",
+              render: (meeting) => <Button variant="ghost" size="icon-sm" title={pins.isPinned(meeting.meeting_id) ? "Unpin meeting" : "Pin meeting"} onClick={() => pins.togglePin(meeting.meeting_id)}><Pin className={pins.isPinned(meeting.meeting_id) ? "fill-primary text-primary" : "text-muted-foreground"} /></Button>,
+            },
             {
               key: "meeting_title",
               header: "Meeting Title",
@@ -238,6 +265,12 @@ export default function MeetingsListPage() {
               key: "created_by",
               header: "Requested By",
               render: (meeting) => findUserName(meeting.created_by),
+            },
+            {
+              key: "notes",
+              header: "Notes",
+              className: "w-16",
+              render: (meeting) => <Button variant="ghost" size="icon-sm" title="Add note" aria-label={`Notes for ${meeting.meeting_title}`} onClick={() => setNotesRecord({ type: "meeting", id: meeting.meeting_id, title: meeting.meeting_title })}><MessageSquareText /></Button>,
             },
             {
               key: "actions",
@@ -327,7 +360,7 @@ export default function MeetingsListPage() {
               ctaTo={canCreate ? "/meetings/new" : undefined}
             />
           }
-          page={page}
+          page={pinnedOnly ? 1 : page}
           pageSize={10}
           count={count}
           onPageChange={(nextPage) => updateParam("page", String(nextPage))}
@@ -423,6 +456,7 @@ export default function MeetingsListPage() {
           </DialogContent>
         </Dialog>
       )}
+      <RecordNotesPanel record={notesRecord} onClose={() => setNotesRecord(null)} />
     </div>
   );
 }

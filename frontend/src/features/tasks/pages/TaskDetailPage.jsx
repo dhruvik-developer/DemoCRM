@@ -645,6 +645,19 @@ export default function TaskDetailPage() {
         </Card>
       ) : null}
 
+      {task.custom_fields?.definitions?.length ? (
+        <Card>
+          <CardHeader><CardTitle>Custom Information</CardTitle></CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {task.custom_fields.definitions.map((field) => {
+              const value = task.custom_fields.values?.[field.field_key];
+              const displayValue = Array.isArray(value) ? value.join(", ") : typeof value === "boolean" ? (value ? "Yes" : "No") : value;
+              return <Field key={field.field_key} label={field.label} value={displayValue || "—"} />;
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
+
       <TaskCallWorkspace task={task} updateStatus={updateStatus} />
 
       <p className="text-sm text-muted-foreground">

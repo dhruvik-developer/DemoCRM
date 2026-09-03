@@ -2,6 +2,7 @@
 // priority/category come from the G7 workaround constants until master-data
 // endpoints exist. Only Admin/Manager reach this page in practice.
 
+import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,6 +20,8 @@ import FormField from "@/components/forms/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
+import { Plus, Trash2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -33,6 +36,10 @@ export default function TaskCreatePage() {
   const usersQuery = useUsers();
   const { data: taskStatuses = [] } = useTaskStatuses();
   const { data: taskCategories = [] } = useTaskCategories();
+  const [customFields, setCustomFields] = useState([]);
+  const [customValues, setCustomValues] = useState({});
+  const [customErrors, setCustomErrors] = useState({});
+  const [fieldDraft, setFieldDraft] = useState({ label: "", field_type: "text", options: "", is_required: false });
 
   const {
     register,
@@ -61,6 +68,9 @@ export default function TaskCreatePage() {
   const assignedToValue = useWatch({ control, name: "assigned_to" });
 
   const onSubmit = async (values) => {
+    const requiredErrors = Object.fromEntries(customFields.filter((field) => field.is_required && (customValues[field.field_key] === undefined || customValues[field.field_key] === "" || customValues[field.field_key] === null)).map((field) => [field.field_key, `${field.label} is required.`]));
+    setCustomErrors(requiredErrors);
+    if (Object.keys(requiredErrors).length) return;
     try {
       const statusId = Number(values.status || statusValue || taskStatuses[0]?.status_id || 1);
       const priorityId = Number(values.priority || priorityValue || 2);
@@ -78,6 +88,7 @@ export default function TaskCreatePage() {
         priority: priorityId,
         category: categoryId,
         assigned_to: assignedTo,
+        custom_fields: { definitions: customFields, values: customValues },
       });
       navigate("/tasks");
     } catch (error) {
@@ -88,6 +99,23 @@ export default function TaskCreatePage() {
         }
       }
     }
+  };
+
+  const addCustomField = () => {
+    const label = fieldDraft.label.trim();
+    if (!label || customFields.length >= 25) return;
+    const baseKey = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "field";
+    let fieldKey = baseKey;
+    let suffix = 2;
+    while (customFields.some((field) => field.field_key === fieldKey)) fieldKey = `${baseKey}_${suffix++}`;
+    const optionTypes = ["select", "radio", "checkbox"];
+    setCustomFields((current) => [...current, { id: `custom_${Date.now()}`, field_key: fieldKey, label, field_type: fieldDraft.field_type, is_required: fieldDraft.is_required, options: optionTypes.includes(fieldDraft.field_type) ? fieldDraft.options.split(",").map((item) => item.trim()).filter(Boolean) : [] }]);
+    setFieldDraft({ label: "", field_type: "text", options: "", is_required: false });
+  };
+
+  const removeCustomField = (fieldKey) => {
+    setCustomFields((current) => current.filter((field) => field.field_key !== fieldKey));
+    setCustomValues((current) => { const next = { ...current }; delete next[fieldKey]; return next; });
   };
 
   return (
@@ -196,6 +224,32 @@ export default function TaskCreatePage() {
             <Input id="due_date" type="datetime-local" {...register("due_date")} />
           </FormField>
         </div>
+
+        <section className="mt-2 rounded-xl border bg-muted/15 p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div><h2 className="font-semibold">Custom Fields</h2><p className="text-xs text-muted-foreground">Add extra fields to this task whenever you need them.</p></div>
+            <span className="text-xs text-muted-foreground">{customFields.length}/25</span>
+          </div>
+
+          {customFields.length ? (
+            <div className="mb-4 space-y-3">
+              {customFields.map((field) => (
+                <div key={field.field_key} className="relative">
+                  <DynamicFormFields fields={[field]} values={customValues} errors={customErrors} onChange={(next) => { setCustomValues(next); setCustomErrors({}); }} stepView={false} />
+                  <Button type="button" variant="ghost" size="icon-sm" className="absolute right-2 top-2 text-destructive" title="Remove field" onClick={() => removeCustomField(field.field_key)}><Trash2 /></Button>
+                </div>
+              ))}
+            </div>
+          ) : <p className="mb-4 rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No custom fields added yet.</p>}
+
+          <div className="grid items-end gap-3 rounded-lg border bg-background p-3 md:grid-cols-2">
+            <FormField id="custom_field_label" label="Field name"><Input id="custom_field_label" placeholder="e.g. Budget or Contact person" value={fieldDraft.label} onChange={(event) => setFieldDraft({ ...fieldDraft, label: event.target.value })} /></FormField>
+            <FormField id="custom_field_type" label="Field type"><Select value={fieldDraft.field_type} onValueChange={(value) => setFieldDraft({ ...fieldDraft, field_type: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["text", "textarea", "number", "date", "time", "boolean", "select", "radio", "checkbox"].map((type) => <SelectItem key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</SelectItem>)}</SelectContent></Select></FormField>
+            {["select", "radio", "checkbox"].includes(fieldDraft.field_type) ? <FormField id="custom_field_options" label="Options"><Input id="custom_field_options" placeholder="Option one, Option two" value={fieldDraft.options} onChange={(event) => setFieldDraft({ ...fieldDraft, options: event.target.value })} /></FormField> : null}
+            <label className="flex h-8 items-center gap-2 text-sm"><input type="checkbox" checked={fieldDraft.is_required} onChange={(event) => setFieldDraft({ ...fieldDraft, is_required: event.target.checked })} /> Required field</label>
+            <Button type="button" variant="outline" disabled={!fieldDraft.label.trim() || customFields.length >= 25} onClick={addCustomField}><Plus /> Add field</Button>
+          </div>
+        </section>
 
         <Button type="submit" disabled={createTask.isPending} className="self-start">
           {createTask.isPending ? "Creating…" : "Create task"}

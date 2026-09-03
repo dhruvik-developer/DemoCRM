@@ -26,6 +26,10 @@ import FormField from "@/components/forms/FormField";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import ListControls from "@/components/common/ListControls";
+import { usePinnedRecords } from "@/hooks/usePinnedRecords";
+import { MessageSquareText, Pin } from "lucide-react";
+import RecordNotesPanel from "@/features/notes/components/RecordNotesPanel";
 import {
   Dialog,
   DialogContent,
@@ -41,7 +45,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function CreateDialog({ open, onOpenChange }) {
+function CreateDialog({ open, onOpenChange, initialTaskId = "" }) {
   const createFollowUp = useCreateFollowUp();
 
   const {
@@ -53,7 +57,7 @@ function CreateDialog({ open, onOpenChange }) {
   } = useForm({
     resolver: zodResolver(followUpSchema),
     defaultValues: {
-      task_id: "",
+      task_id: initialTaskId,
       followup_status_id: String(FOLLOWUP_STATUSES[0]?.id ?? ""),
       followup_type_id: String(FOLLOWUP_TYPES[0]?.id ?? ""),
       followup_date: "",
@@ -156,6 +160,11 @@ export default function FollowUpsListPage() {
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
+  const initialTaskId = searchParams.get("task_id") ?? "";
+  const statusFilter = searchParams.get("status") ?? "all";
+  const ordering = searchParams.get("ordering") ?? "";
+  const pinnedOnly = searchParams.get("pinned") === "1";
+  const pins = usePinnedRecords("crm:pinned-followups");
   const updateParam = (key, value) => {
     setSearchParams(
       (previous) => {
@@ -169,20 +178,24 @@ export default function FollowUpsListPage() {
     );
   };
 
-  const followUpsQuery = useFollowUps({ page, search: search || undefined });
+  const followUpsQuery = useFollowUps({ page: pinnedOnly ? 1 : page, page_size: pinnedOnly ? 100 : 10, search: search || undefined, ordering: ordering || undefined });
   const updateStatus = useUpdateFollowUpStatus();
   const deleteFollowUp = useDeleteFollowUp();
 
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(searchParams.get("create") === "1");
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [notesRecord, setNotesRecord] = useState(null);
 
   // G13: creating requires change_followup, NOT add_followup.
-  const canCreate = hasPermission(resolved, "change_followup");
-  const canChangeStatus = hasPermission(resolved, "change_followupstatus");
+  const canCreate =
+    hasPermission(resolved, "add_followup") || hasPermission(resolved, "change_followup");
   const canDelete = hasPermission(resolved, "delete_followup");
 
-  const rows = (followUpsQuery.data?.results ?? []).filter(Boolean);
-  const count = followUpsQuery.data?.count ?? 0;
+  let rows = (followUpsQuery.data?.results ?? []).filter(Boolean);
+  if (statusFilter !== "all") rows = rows.filter((row) => String(row.followup_status) === statusFilter);
+  if (pinnedOnly) rows = rows.filter((row) => pins.isPinned(row.followup_id));
+  rows = pins.pinnedFirst(rows, (row) => row.followup_id);
+  const count = pinnedOnly ? rows.length : (followUpsQuery.data?.count ?? 0);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
@@ -199,12 +212,30 @@ export default function FollowUpsListPage() {
         defaultValue={search}
         onChange={(event) => updateParam("search", event.target.value.trim())}
       />
+      <div className="flex justify-end">
+        <ListControls
+          filterValue={statusFilter}
+          filterOptions={[{ value: "all", label: "All follow-ups" }, ...FOLLOWUP_STATUSES.map((item) => ({ value: String(item.id), label: item.name }))]}
+          onFilterChange={(value) => updateParam("status", value === "all" ? "" : value)}
+          sortValue={ordering}
+          sortOptions={[{ value: "followup_date", label: "Date: oldest first" }, { value: "-followup_date", label: "Date: newest first" }]}
+          onSortChange={(value) => updateParam("ordering", value)}
+          pinnedOnly={pinnedOnly}
+          onPinnedOnlyChange={(value) => updateParam("pinned", value ? "1" : "")}
+        />
+      </div>
 
       {followUpsQuery.isError ? (
         <PageError error={followUpsQuery.error} onRetry={followUpsQuery.refetch} />
       ) : (
         <DataTable
           columns={[
+            {
+              key: "pin",
+              header: "",
+              className: "w-10",
+              render: (row) => <Button variant="ghost" size="icon-sm" title={pins.isPinned(row.followup_id) ? "Unpin follow-up" : "Pin follow-up"} onClick={() => pins.togglePin(row.followup_id)}><Pin className={pins.isPinned(row.followup_id) ? "fill-primary text-primary" : "text-muted-foreground"} /></Button>,
+            },
             {
               key: "task_id",
               header: "Task",
@@ -234,6 +265,12 @@ export default function FollowUpsListPage() {
               header: "When",
               sortable: true,
               render: (row) => new Date(row.followup_date).toLocaleString(),
+            },
+            {
+              key: "notes",
+              header: "Notes",
+              className: "w-16",
+              render: (row) => <Button variant="ghost" size="icon-sm" title="Add note" aria-label="Follow-up notes" onClick={() => setNotesRecord({ type: "followup", id: row.followup_id, title: row.task_title || `Follow-up #${row.followup_id}` })}><MessageSquareText /></Button>,
             },
             {
               key: "actions",
@@ -275,16 +312,24 @@ export default function FollowUpsListPage() {
           emptyState={
             <EmptyState title="No follow-ups found" description={search ? "Try adjusting the search." : undefined} />
           }
-          sortValue={searchParams.get("ordering") ?? ""}
+          sortValue={ordering}
           onSortChange={(value) => updateParam("ordering", value)}
-          page={page}
+          page={pinnedOnly ? 1 : page}
           pageSize={10}
           count={count}
           onPageChange={(nextPage) => updateParam("page", String(nextPage))}
         />
       )}
 
-      <CreateDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <CreateDialog
+        key={initialTaskId || "new"}
+        open={createOpen}
+        initialTaskId={initialTaskId}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open && searchParams.has("create")) updateParam("create", "");
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}
@@ -299,6 +344,7 @@ export default function FollowUpsListPage() {
           deleteFollowUp.mutateAsync(pendingDelete.followup_id).then(() => setPendingDelete(null));
         }}
       />
+      <RecordNotesPanel record={notesRecord} onClose={() => setNotesRecord(null)} />
     </div>
   );
 }

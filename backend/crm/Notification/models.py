@@ -70,8 +70,6 @@ class NotificationEventType(models.TextChoices):
 
     # Activity & Call Events
     ACTIVITY_CREATED = "ACTIVITY_CREATED", "Activity Created"
-    CALL_ATTEMPT_LOGGED = "CALL_ATTEMPT_LOGGED", "Call Attempt Logged"
-    FORM_SUBMISSION_COMPLETED = "FORM_SUBMISSION_COMPLETED", "Form Submission Completed"
 
     # Accounts / User Events
     ROLE_CHANGED = "ROLE_CHANGED", "Role Changed"
