@@ -30,7 +30,7 @@ export default function FormResponseHistory({ leadId }) {
         <CardTitle className="text-sm font-bold">Submitted Responses History</CardTitle>
         <Badge className="bg-[#ECFDF5] text-[#047857] border-[#A7F3D0] font-bold text-[11px]">{submissions.length} Submissions Stored</Badge>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      <CardContent className="flex max-h-[500px] flex-col gap-3 overflow-y-auto pr-1">
         {submissions.slice(0, 10).map((row, idx) => (
           <div key={row.id ?? row.submission_id} className="rounded-[6px] border border-[#E2E8F0] p-[14px_16px] bg-[#FAFBFC]" style={{ borderLeftWidth: "3.5px", borderLeftColor: idx === 0 ? "#4F46E5" : "#94A3B8" }}>
             <div className="flex items-start justify-between gap-2">

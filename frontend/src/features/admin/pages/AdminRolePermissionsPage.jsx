@@ -151,7 +151,7 @@ export default function AdminRolePermissionsPage() {
         </div>
       </div>
 
-      <Card className="rounded-[14px] border-[#E5E7EB] bg-white shadow-sm">
+      <Card className="rounded-[14px] border-outline-variant bg-white shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-sm font-semibold">
@@ -193,8 +193,8 @@ export default function AdminRolePermissionsPage() {
         const allChecked = perms.every((p) => activeSelected.has(p.id));
         const someChecked = perms.some((p) => activeSelected.has(p.id));
         return (
-          <Card key={group} className="rounded-[14px] border-[#E5E7EB] bg-white shadow-sm overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 bg-[#F9FAFB] border-b border-[#E5E7EB] py-3">
+          <Card key={group} className="rounded-[14px] border-outline-variant bg-white shadow-sm overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 bg-[#F9FAFB] border-b border-outline-variant py-3">
               <div>
                 <CardTitle className="text-sm font-semibold capitalize">{groupTitle}</CardTitle>
                 <p className="text-xs text-muted-foreground">{perms.length} permissions</p>
@@ -220,12 +220,12 @@ export default function AdminRolePermissionsPage() {
                     <label
                       key={permission.id}
                       className={`flex items-start gap-2.5 rounded-lg border p-3 text-xs transition-colors cursor-pointer ${
-                        checked ? "border-[#C7D2FE] bg-[#EEF2FF]" : "border-[#E5E7EB] hover:bg-[#F9FAFB]"
+                        checked ? "border-transparent bg-primary-soft" : "border-outline-variant hover:bg-[#F9FAFB]"
                       }`}
                     >
                       <input
                         type="checkbox"
-                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#4F46E5] focus:ring-[#4F46E5]"
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-[#4F46E5]"
                         checked={checked}
                         onChange={() => handleToggle(permission.id)}
                       />

@@ -248,11 +248,11 @@ export default function QuotationDetailPage() {
       </div>
 
       {/* Stitch-styled Quotation Document — real company look with GST */}
-      <Card className="overflow-hidden border-[#E5E7EB] bg-white shadow-sm">
+      <Card className="overflow-hidden border-outline-variant bg-white shadow-sm">
         {/* Company header */}
-        <div className="flex flex-col gap-3 border-b border-[#E5E7EB] bg-[#F9FAFB] px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3 border-b border-outline-variant bg-[#F9FAFB] px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex gap-3">
-            <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#2563EB] to-[#818CF8] font-extrabold text-white sm:grid">S</div>
+            <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-primary-container font-extrabold text-white sm:grid">S</div>
             <div>
               <div className="text-[18px] font-bold tracking-tight text-[#111214]">DemoCRM Solutions Pvt. Ltd.</div>
               <div className="mt-1 max-w-[360px] text-[11px] leading-relaxed text-muted-foreground">
@@ -263,7 +263,7 @@ export default function QuotationDetailPage() {
             </div>
           </div>
           <div className="text-left sm:text-right">
-            <div className="text-[20px] font-bold tracking-tight text-[#2563EB]">QUOTATION</div>
+            <div className="text-[20px] font-bold tracking-tight text-primary">QUOTATION</div>
             <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
               <div>Ref: <span className="font-semibold text-foreground">{quotation.quotation_number}</span> • Rev v{currentVersion?.version_number}</div>
               <div className="flex items-center gap-1.5 sm:justify-end"><StatusBadge status={currentVersion?.status ?? status} /><span className="text-[11px]">{currentVersion?.status}</span></div>
@@ -275,7 +275,7 @@ export default function QuotationDetailPage() {
           {/* Prepared For + Overview */}
           <div className="grid gap-6 p-6 sm:grid-cols-2">
             <div>
-              <div className="mb-2 border-b border-[#E5E7EB] pb-1 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">Prepared For</div>
+              <div className="mb-2 border-b border-outline-variant pb-1 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">Prepared For</div>
               <div className="text-sm font-semibold text-foreground">{quotation.customer?.name ?? leadForEmailQ.data?.name ?? quotation.lead_name ?? "—"}</div>
               <div className="text-xs text-muted-foreground">{quotation.customer?.company_name ?? leadForEmailQ.data?.company_name ?? ""}</div>
               <div className="mt-1 text-xs">
@@ -290,7 +290,7 @@ export default function QuotationDetailPage() {
               </div>
             </div>
             <div>
-              <div className="mb-2 border-b border-[#E5E7EB] pb-1 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">Quotation Overview</div>
+              <div className="mb-2 border-b border-outline-variant pb-1 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">Quotation Overview</div>
               <div className="space-y-1.5 text-xs">
                 <div className="flex justify-between"><span className="font-semibold text-[#6B7280] w-24">Date:</span> <span className="font-medium">{currentVersion?.created_at ? new Date(currentVersion.created_at).toLocaleDateString() : "—"}</span></div>
                 <div className="flex justify-between"><span className="font-semibold text-[#6B7280] w-24">Valid Until:</span> <span className="font-medium">{currentVersion?.created_at ? new Date(new Date(currentVersion.created_at).getTime() + 30*24*60*60*1000).toLocaleDateString() : "—"}</span></div>
@@ -303,7 +303,7 @@ export default function QuotationDetailPage() {
           {/* Line Items Table */}
           <div className="px-6">
             <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">Line Items — Discount & GST per revision</div>
-            <div className="overflow-hidden rounded-lg border border-[#E5E7EB]">
+            <div className="overflow-hidden rounded-lg border border-outline-variant">
               <table className="w-full border-collapse text-xs">
                 <thead>
                   <tr className="bg-[#F1F5F9] text-[11px] uppercase tracking-wide text-[#334155]">
@@ -335,7 +335,7 @@ export default function QuotationDetailPage() {
               </table>
             </div>
             <div className="mt-3 flex justify-end">
-              <div className="min-w-[280px] rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-right">
+              <div className="min-w-[280px] rounded-lg border border-outline-variant bg-[#F9FAFB] px-4 py-3 text-right">
                 <div className="flex justify-between text-xs"><span className="text-muted-foreground">Subtotal</span><span className="font-medium tabular-nums">₹{toMoney(currentVersion?.subtotal_amount ?? currentVersion?.subtotal ?? currentVersion?.total_amount)}</span></div>
                 {currentVersion?.discount_value && Number(currentVersion.discount_value) !== 0 ? (
                   <div className="flex justify-between text-xs text-amber-700"><span>Discount {currentVersion.discount_type === "PERCENT" ? `(${currentVersion.discount_value}%)` : ""}</span><span>- ₹{toMoney(currentVersion.discount_amount ?? 0)}</span></div>
@@ -349,7 +349,7 @@ export default function QuotationDetailPage() {
                 ) : (
                   <div className="flex justify-between text-xs text-muted-foreground"><span>GST</span><span>Not applicable</span></div>
                 )}
-                <div className="mt-1 flex justify-between border-t border-[#E5E7EB] pt-2 text-sm font-bold"><span>Total Amount</span><span className="tabular-nums">₹{toMoney(currentVersion?.total_amount)}</span></div>
+                <div className="mt-1 flex justify-between border-t border-outline-variant pt-2 text-sm font-bold"><span>Total Amount</span><span className="tabular-nums">₹{toMoney(currentVersion?.total_amount)}</span></div>
                 <div className="mt-1 text-[10px] text-muted-foreground">Valid 30 days • {currentVersion?.status}</div>
               </div>
             </div>
@@ -363,7 +363,7 @@ export default function QuotationDetailPage() {
               {currentVersion?.rejection_reason && <div className="mt-1 text-destructive"><span className="font-bold">Rejected:</span> {currentVersion.rejection_reason}</div>}
             </div>
           )}
-          <div className="mx-6 mt-6 border-t border-[#E5E7EB] pt-3 text-center text-[11px] leading-relaxed text-[#94A3B8]">
+          <div className="mx-6 mt-6 border-t border-outline-variant pt-3 text-center text-[11px] leading-relaxed text-[#94A3B8]">
             This is an official quotation from DemoCRM Solutions Pvt. Ltd. • GSTIN: 27AABCD1234F1Z5<br />
             Thank you for your business. For queries, contact info@democrm.com
           </div>

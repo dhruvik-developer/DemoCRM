@@ -1,4 +1,5 @@
 import { Link, useLocation } from "react-router-dom";
+import { ChevronRight } from "lucide-react";
 
 const LABELS = { leads: "Leads", customers: "Customers", tasks: "Tasks", quotations: "Quotations", admin: "Admin" };
 
@@ -15,8 +16,8 @@ export default function Breadcrumbs() {
         const label = LABELS[p] ?? p.replace(/-/g, " ");
         return (
           <span key={to} className="flex items-center gap-1">
-            <span>/</span>
-            {isLast ? <span className="font-medium text-foreground">{label}</span> : <Link to={to} className="hover:underline">{label}</Link>}
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            {isLast ? <span className="font-semibold text-on-surface">{label}</span> : <Link to={to} className="hover:underline">{label}</Link>}
           </span>
         );
       })}

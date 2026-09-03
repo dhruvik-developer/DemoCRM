@@ -60,7 +60,7 @@ export default function CallAttemptPanel({ leadId, stageId, activityId, template
   };
 
   return (
-    <Card className="rounded-[14px] border-[#E2E8F0] shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
+    <Card className="rounded-[16px] border-outline bg-surface shadow-sm overflow-hidden">
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-bold">Call workspace</CardTitle>
@@ -68,17 +68,17 @@ export default function CallAttemptPanel({ leadId, stageId, activityId, template
         </div>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
-        <div className="rounded-[10px] bg-[#0F172A] text-white p-[10px_16px] flex items-center justify-between gap-2">
+        <div className="rounded-[12px] bg-primary text-white p-3 flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-[12.5px] font-semibold">
-            <span className={`h-2 w-2 rounded-full ${isLive ? "bg-[#10B981] animate-pulse shadow-[0_0_0_4px_rgba(16,185,129,0.25)]" : "bg-[#64748B]"}`} />
+            <span className={`h-2 w-2 rounded-full bg-secondary ${isLive ? "animate-pulse" : "opacity-90"}`} />
             <span>{isLive ? "Active Live Call" : "Live Call"}</span>
-            <span className="font-mono text-[13.5px] text-[#94A3B8] ml-2">{isLive ? formatDuration(elapsed) : attempts.length ? `${attempts.length} logged` : "No active call"}</span>
+            <span className="font-mono text-sm text-white/70 ml-2">{isLive ? formatDuration(elapsed) : attempts.length ? `${attempts.length} logged` : "No active call"}</span>
           </div>
           <div className="flex items-center gap-2">
             {!isLive ? (
-              <Button size="sm" className="h-7 bg-[#10B981] hover:bg-[#059669] text-white font-semibold" onClick={handleStart}>Start Call</Button>
+              <Button size="sm" variant="default" className="h-7 font-semibold" onClick={handleStart}>Start call</Button>
             ) : (
-              <Button size="sm" className="h-7 bg-[#DC2626] hover:bg-[#B91C1C] text-white font-semibold" onClick={handleEnd} disabled={logAttempt.isPending}>End Call{logAttempt.isPending ? "…" : ""}</Button>
+              <Button size="sm" className="h-7 bg-[#DC2626] hover:bg-[#B91C1C] text-white font-semibold" onClick={handleEnd} disabled={logAttempt.isPending}>End call{logAttempt.isPending ? "…" : ""}</Button>
             )}
             <Badge className="bg-white/10 text-white border-white/20 text-[11px] hidden sm:inline-flex">Outcome: {outcome}</Badge>
           </div>
@@ -93,7 +93,7 @@ export default function CallAttemptPanel({ leadId, stageId, activityId, template
             <Textarea placeholder="Notes (optional)" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
           </div>
           {!isLive ? (
-            <Button size="sm" className="w-fit bg-[#2563EB] hover:bg-[#1D4ED8]" disabled={logAttempt.isPending}
+            <Button size="sm" variant="default" className="w-fit" disabled={logAttempt.isPending}
               onClick={async () => {
                 try {
                   await logAttempt.mutateAsync({ lead_id: leadId, stage_id: stageId, activity_id: activityId, template_version_id: templateVersionId, outcome, notes: notes || undefined });
@@ -110,8 +110,8 @@ export default function CallAttemptPanel({ leadId, stageId, activityId, template
         </div>
 
         {attemptsQ.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : attempts.length ? (
-          <div className="flex flex-col gap-1.5">
-            {attempts.slice(0,5).map((a, i) => (
+          <div className="flex max-h-[280px] flex-col gap-1.5 overflow-y-auto pr-1">
+            {attempts.map((a, i) => (
               <div key={a.id ?? i} className="flex items-center justify-between rounded border px-3 py-1.5 text-sm">
                 <span className="font-medium">{a.outcome ?? "—"} {a.duration_seconds != null ? <span className="ml-1 font-mono text-xs text-muted-foreground">({formatDuration(a.duration_seconds)})</span> : null}</span>
                 <span className="text-xs text-muted-foreground">{a.start_time ? new Date(a.start_time).toLocaleString() : ""}</span>

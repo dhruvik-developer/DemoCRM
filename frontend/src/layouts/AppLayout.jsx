@@ -111,20 +111,23 @@ function NotificationBell() {
 function MobileNav({ open, onOpenChange, resolved }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="left-0 top-0 h-dvh w-72 translate-x-0 translate-y-0 p-0 max-w-none gap-0 rounded-none">
-        <div className="flex h-14 items-center border-b px-4 text-lg font-semibold">CRM</div>
+      <DialogContent className="left-0 top-0 h-dvh w-72 translate-x-0 translate-y-0 p-0 max-w-none gap-0 rounded-none bg-primary text-white">
+        <div className="flex h-14 items-center border-b border-white/10 px-4 text-lg font-display font-semibold tracking-tight">Meridian CRM</div>
         <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
           {NAV_GROUPS.map((group) => {
             const visible = group.items.filter((i) => !i.codename || hasPermission(resolved, i.codename));
             if (!visible.length) return null;
             return (
               <div key={group.label} className="mb-2">
-                <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{group.label}</div>
+                <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-white/60">{group.label}</div>
                 <div className="flex flex-col gap-1">
                   {visible.map((item) => (
-                    <NavLink key={`${group.label}-${item.to}`} to={item.to} end={item.end} onClick={() => onOpenChange(false)} className={({ isActive }) => ["flex items-center gap-3 rounded-md px-3 py-2 text-sm", isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted"].join(" ")}>
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
+                    <NavLink key={`${group.label}-${item.to}`} to={item.to} end={item.end} onClick={() => onOpenChange(false)} className={({ isActive }) => ["relative flex items-center gap-3 rounded-[9px] px-3 py-2 text-sm transition-colors", isActive ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5 hover:text-white"].join(" ")}>
+                      {({ isActive }) => (<>
+                        {isActive && <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-secondary" />}
+                        <item.icon className={`h-4 w-4 ${isActive ? "text-secondary" : ""}`} />
+                        {item.label}
+                      </>)}
                     </NavLink>
                   ))}
                 </div>
@@ -142,19 +145,19 @@ export default function AppLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="flex min-h-screen bg-background">
+    <div className="flex h-screen overflow-hidden bg-background">
       <MobileNav open={mobileOpen} onOpenChange={setMobileOpen} resolved={resolved} />
-      <aside className="hidden w-60 flex-col border-r bg-muted/30 md:flex">
-        <div className="flex h-14 items-center border-b px-4 text-lg font-semibold tracking-tight">
-          CRM
+      <aside className="hidden h-screen w-60 shrink-0 flex-col bg-primary text-white md:flex sticky top-0">
+        <div className="flex h-14 shrink-0 items-center border-b border-white/10 px-4 text-lg font-display font-semibold tracking-tight">
+          DemoCRM
         </div>
-        <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-2">
+        <nav className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto p-2">
           {NAV_GROUPS.map((group) => {
             const visible = group.items.filter((i) => !i.codename || hasPermission(resolved, i.codename));
             if (visible.length === 0) return null;
             return (
               <div key={group.label} className="mb-3">
-                <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                <div className="px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-white/60">
                   {group.label}
                 </div>
                 <div className="flex flex-col gap-1">
@@ -165,40 +168,50 @@ export default function AppLayout() {
                       end={item.end}
                       className={({ isActive }) =>
                         [
-                          "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
+                          "relative flex items-center gap-3 rounded-[9px] px-3 py-2 text-sm transition-colors",
                           isActive
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                            ? "bg-white/10 text-white"
+                            : "text-white/70 hover:bg-white/5 hover:text-white",
                         ].join(" ")
                       }
                     >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
+                      {({ isActive }) => (
+                        <>
+                          {isActive && <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-secondary" />}
+                          <item.icon className={`h-4 w-4 ${isActive ? "text-secondary" : ""}`} />
+                          <span className="flex-1">{item.label}</span>
+                        </>
+                      )}
                     </NavLink>
                   ))}
                 </div>
               </div>
             );
           })}
-          <div className="mt-auto border-t pt-2">
+          <div className="mt-auto border-t border-white/10 pt-2">
             <NavLink
               to="/settings"
               className={({ isActive }) =>
                 [
-                  "flex items-center gap-3 rounded-md px-3 py-2 text-sm transition-colors",
-                  isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  "relative flex items-center gap-3 rounded-[9px] px-3 py-2 text-sm transition-colors",
+                  isActive ? "bg-white/10 text-white" : "text-white/70 hover:bg-white/5 hover:text-white",
                 ].join(" ")
               }
             >
-              <Settings className="h-4 w-4" /> Settings
-              {user?.must_change_password ? <Badge variant="destructive" className="ml-auto text-[10px]">action</Badge> : null}
+              {({ isActive }) => (
+                <>
+                  {isActive && <span className="absolute left-0 top-1/2 h-6 w-[3px] -translate-y-1/2 rounded-full bg-secondary" />}
+                  <Settings className={`h-4 w-4 ${isActive ? "text-secondary" : ""}`} /> Settings
+                  {user?.must_change_password ? <span className="ml-auto rounded-full bg-secondary px-1.5 py-0.5 text-[10px] font-mono text-[#2B1206]">action</span> : null}
+                </>
+              )}
             </NavLink>
           </div>
         </nav>
       </aside>
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between border-b px-4">
+      <div className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b bg-surface px-4">
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Open navigation">
               <Menu className="h-5 w-5" />
@@ -233,7 +246,7 @@ export default function AppLayout() {
           </div>
         </header>
 
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="min-h-0 flex-1 overflow-y-auto">
           <Outlet />
         </main>
       </div>

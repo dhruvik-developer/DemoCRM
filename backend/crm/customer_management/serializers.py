@@ -122,6 +122,9 @@ class PipelineStageSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        # Disable auto UniqueTogetherValidator for (pipeline,display_order) so service can auto-shift on insert at 3.
+        # Service handles shifting; keep model DB constraint as final guard.
+        validators = []
 
     def validate(self, attrs):
         pipeline = attrs.get("pipeline")

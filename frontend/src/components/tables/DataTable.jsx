@@ -63,10 +63,10 @@ export default function DataTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-md border">
+      <div className="rounded-md border border-outline overflow-hidden">
         <Table>
-          <TableHeader>
-            <TableRow>
+          <TableHeader className="bg-surface-container">
+            <TableRow className="bg-surface-container hover:bg-surface-container">
               {columns.map((column) => (
                 <TableHead key={column.key} className={column.className}>
                   {column.sortable && canSort ? (
@@ -103,7 +103,7 @@ export default function DataTable({
               </TableRow>
             ) : (
               rows.filter(Boolean).map((row, idx) => (
-                <TableRow key={getRowId?.(row) ?? row?.id ?? idx}>
+                <TableRow key={getRowId?.(row) ?? row?.id ?? idx} className="hover:bg-surface-container/50">
                   {columns.map((column) => (
                     <TableCell key={column.key} className={column.className}>
                       {column.render ? column.render(row) : row?.[column.key]}

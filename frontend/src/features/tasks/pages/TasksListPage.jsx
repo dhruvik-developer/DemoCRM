@@ -78,7 +78,7 @@ export default function TasksListPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">My Tasks</h1>
         {canCreate ? (
-          <Button asChild className="bg-[#2563EB] hover:bg-[#1D4ED8]">
+          <Button asChild className="bg-secondary hover:bg-[#E0532A]">
             <Link to="/tasks/new">New task</Link>
           </Button>
         ) : null}
@@ -92,7 +92,7 @@ export default function TasksListPage() {
           ["upcoming", "Upcoming"],
           ["completed", "Completed"],
         ].map(([key, label]) => (
-          <Button key={key} variant={inbox === key ? "default" : "outline"} size="sm" onClick={() => updateParam("inbox", key === "all" ? "" : key)} className={inbox === key ? "bg-[#2563EB] hover:bg-[#1D4ED8]" : ""}>
+          <Button key={key} variant={inbox === key ? "default" : "outline"} size="sm" onClick={() => updateParam("inbox", key === "all" ? "" : key)} className={inbox === key ? "bg-secondary hover:bg-[#E0532A]" : ""}>
             {label}
           </Button>
         ))}
@@ -116,7 +116,7 @@ export default function TasksListPage() {
                 const isHigh = priority?.toLowerCase() === "high";
                 return (
                   <div className="flex items-center gap-2">
-                    {isHigh ? <span className="h-6 w-1 rounded bg-[#2563EB]" /> : null}
+                    {isHigh ? <span className="h-6 w-1 rounded bg-secondary" /> : null}
                     <Link to={to} className="font-medium hover:underline">
                       {task.task_title}
                     </Link>

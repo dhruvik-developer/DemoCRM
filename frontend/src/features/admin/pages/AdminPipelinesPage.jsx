@@ -229,7 +229,7 @@ function PipelineStagesList({ pipelineId }) {
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Pipeline Stages ({stages.length})
         </h4>
-        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+        <Button size="sm" variant="outline" onClick={() => { const n = Math.max(0, ...stages.map((s) => Number(s.display_order) || 0)) + 1; stageForm.reset({ name: "", display_order: n, description: "", requires_quotation: false, quotation_approval_required: false }); setAddOpen(true); }}>
           + Add stage
         </Button>
       </div>

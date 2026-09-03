@@ -106,7 +106,7 @@ export default function AdminRolesPage() {
           const isProtected = PROTECTED_ROLES.includes(roleName);
           const assignedPerms = role.permissions ?? [];
           return (
-            <Card key={role.role_id} className="rounded-[14px] border-[#E5E7EB] bg-white shadow-sm overflow-hidden">
+            <Card key={role.role_id} className="rounded-[14px] border-outline-variant bg-white shadow-sm overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-base font-semibold">{role.rolename}</CardTitle>
                 {!isProtected ? (
@@ -160,7 +160,7 @@ export default function AdminRolesPage() {
                         {assignedPerms.length > 12 && (
                           <button
                             type="button"
-                            className="mt-1.5 text-xs font-semibold text-[#2563EB] hover:underline"
+                            className="mt-1.5 text-xs font-semibold text-primary hover:underline"
                             onClick={() => setExpandedRoleId(isExpanded ? null : role.role_id)}
                           >
                             {isExpanded ? "Show less ↑" : `View all (${assignedPerms.length}) →`}

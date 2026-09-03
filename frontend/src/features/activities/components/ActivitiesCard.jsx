@@ -28,11 +28,11 @@ export default function ActivitiesCard({ leadId, customerId, blocked = false }) 
   const activities = activitiesQuery.data ?? [];
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>Activities</CardTitle>
+    <Card className="rounded-[16px] border-outline bg-surface shadow-sm">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3">
+        <CardTitle className="text-sm font-bold">Activities</CardTitle>
         {canCreate ? (
-          <Button size="sm" onClick={() => setDialogOpen(true)}>
+          <Button size="sm" variant="default" onClick={() => setDialogOpen(true)}>
             Log activity
           </Button>
         ) : null}
@@ -40,7 +40,7 @@ export default function ActivitiesCard({ leadId, customerId, blocked = false }) 
           <Badge variant="secondary">Converted — read only</Badge>
         ) : null}
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      <CardContent className="flex max-h-[320px] flex-col gap-3 overflow-y-auto pr-1">
         {activitiesQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
         ) : activities.length === 0 ? (

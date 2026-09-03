@@ -14,17 +14,23 @@ export default function NotificationsPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [expandedId, setExpandedId] = useState(null);
   const tab = searchParams.get("tab") === "unread" ? "unread" : "all";
+  const page = Math.max(1, parseInt(searchParams.get("page") || "1", 10) || 1);
+  const pageSize = 20;
 
-  const filters = tab === "unread" ? { is_read: "false" } : {};
+  const filters = { ...(tab === "unread" ? { is_read: "false" } : {}), page, page_size: pageSize };
   const inboxQuery = useNotifications(filters);
   const markRead = useMarkRead();
-  const markAllRead = useMarkAllRead(
-    (inboxQuery.data?.results ?? [])
-      .filter((notification) => !notification.is_read)
-      .map((notification) => notification.id),
-  );
 
-  const notifications = inboxQuery.data?.results ?? inboxQuery.data ?? [];
+  const raw = inboxQuery.data;
+  const isPaginated = Array.isArray(raw?.results);
+  const allNotifications = isPaginated ? raw.results : Array.isArray(raw) ? raw : [];
+  const totalCount = raw?.count ?? allNotifications.length;
+  const totalPages = raw?.num_pages ?? Math.max(1, Math.ceil(totalCount / pageSize));
+  const notifications = isPaginated ? allNotifications : allNotifications.slice((page - 1) * pageSize, page * pageSize);
+
+  const markAllRead = useMarkAllRead(
+    allNotifications.filter((n) => !n.is_read).map((n) => n.id),
+  );
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 p-6">
@@ -37,7 +43,7 @@ export default function NotificationsPage() {
         ) : null}
       </div>
 
-      <Tabs value={tab} onValueChange={(value) => setSearchParams({ tab: value })}>
+      <Tabs value={tab} onValueChange={(value) => setSearchParams({ tab: value, page: "1" })}>
         <TabsList>
           <TabsTrigger value="all">All</TabsTrigger>
           <TabsTrigger value="unread">Unread</TabsTrigger>
@@ -47,7 +53,7 @@ export default function NotificationsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="text-base">
-            Inbox {inboxQuery.data?.count != null ? `(${inboxQuery.data.count})` : ""}
+            Inbox {totalCount ? `(${totalCount})` : ""}
           </CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
@@ -107,6 +113,32 @@ export default function NotificationsPage() {
               </button>
             ))
           )}
+          {/* Pagination — 10 per page, client fallback if backend not restarted */}
+          {totalPages > 1 ? (
+            <div className="flex items-center justify-between border-t pt-4">
+              <span className="text-xs text-muted-foreground">
+                Page {page} of {totalPages} • {totalCount} total
+              </span>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page <= 1}
+                  onClick={() => setSearchParams({ tab, page: String(page - 1) })}
+                >
+                  Prev
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={page >= totalPages}
+                  onClick={() => setSearchParams({ tab, page: String(page + 1) })}
+                >
+                  Next
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </CardContent>
       </Card>
     </div>

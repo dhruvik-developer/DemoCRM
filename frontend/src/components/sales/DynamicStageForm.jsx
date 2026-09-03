@@ -137,7 +137,7 @@ export default function DynamicStageForm({ lead, onSubmitted }) {
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     {f.template_version?.version_label ? <Badge variant="outline" className="text-[11px]">{f.template_version.version_label}</Badge> : null}
-                    {fLocked ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[11px] font-bold">Locked</Badge> : <Badge className="bg-[#EEF2FF] text-[#4F46E5] border-[#C7D2FE] text-[11px] font-bold">Live Entry</Badge>}
+                    {fLocked ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[11px] font-bold">Locked</Badge> : <Badge className="bg-primary-soft text-primary border-transparent text-[11px] font-bold">Live Entry</Badge>}
                   </div>
                 </div>
                 {fLocked ? <p className="text-xs text-amber-700">This version has submissions and is locked. Ask admin to clone a new version to edit fields.</p> : null}
@@ -152,10 +152,10 @@ export default function DynamicStageForm({ lead, onSubmitted }) {
                     <span className="text-[11.5px] text-muted-foreground hidden sm:block">Fields are autosynced with backend.</span>
                     <div className="flex gap-2 ml-auto">
                       <Button type="button" variant="outline" onClick={() => setValues({})}>Clear</Button>
-                      <Button type="button" disabled={submitForm.isPending || fLocked} onClick={async (e) => { e.preventDefault(); const em=validate(); if(Object.keys(em).length){setErrors(em);return;} setErrors({}); try{ await submitForm.mutateAsync({lead_id: lead.id, template_version_id: fVid, data: values}); setValues({}); onSubmitted?.(); } catch { /* toast */ } }} className="bg-[#2563EB] hover:bg-[#1D4ED8]">
+                      <Button type="button" disabled={submitForm.isPending || fLocked} onClick={async (e) => { e.preventDefault(); const em=validate(); if(Object.keys(em).length){setErrors(em);return;} setErrors({}); try{ await submitForm.mutateAsync({lead_id: lead.id, template_version_id: fVid, data: values}); setValues({}); onSubmitted?.(); } catch { /* toast */ } }} className="bg-secondary hover:bg-[#E0532A]">
                         {submitForm.isPending ? "Submitting…" : "Save draft"}
                       </Button>
-                      <Button type="button" disabled={submitForm.isPending || progressLead.isPending || fLocked} onClick={async (e) => { e.preventDefault(); const em=validate(); if(Object.keys(em).length){setErrors(em);return;} setErrors({}); try{ await submitForm.mutateAsync({lead_id: lead.id, template_version_id: fVid, data: values}); const stages = stagesQ.data ?? []; const idx = stages.findIndex((s) => s.id === lead.current_stage); const nextId = stages[idx + 1]?.id; if (nextId) await progressLead.mutateAsync(nextId); setValues({}); onSubmitted?.(); } catch { /* toast */ }}} className="bg-[#2563EB] hover:bg-[#1D4ED8]">
+                      <Button type="button" disabled={submitForm.isPending || progressLead.isPending || fLocked} onClick={async (e) => { e.preventDefault(); const em=validate(); if(Object.keys(em).length){setErrors(em);return;} setErrors({}); try{ await submitForm.mutateAsync({lead_id: lead.id, template_version_id: fVid, data: values}); const stages = stagesQ.data ?? []; const idx = stages.findIndex((s) => s.id === lead.current_stage); const nextId = stages[idx + 1]?.id; if (nextId) await progressLead.mutateAsync(nextId); setValues({}); onSubmitted?.(); } catch { /* toast */ }}} className="bg-secondary hover:bg-[#E0532A]">
                         Submit & progress →
                       </Button>
                     </div>
@@ -216,7 +216,7 @@ export default function DynamicStageForm({ lead, onSubmitted }) {
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {(formData?.version_label ?? formData?.template_version?.version_label) ? <Badge variant="outline" className="text-[11px]">{formData?.version_label ?? formData?.template_version?.version_label}</Badge> : null}
-              {isLocked ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[11px] font-bold">Locked</Badge> : <Badge className="bg-[#EEF2FF] text-[#4F46E5] border-[#C7D2FE] text-[11px] font-bold">Live Entry</Badge>}
+              {isLocked ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[11px] font-bold">Locked</Badge> : <Badge className="bg-primary-soft text-primary border-transparent text-[11px] font-bold">Live Entry</Badge>}
             </div>
           </div>
           {isLocked ? <p className="text-xs text-amber-700">This version has submissions and is locked. Ask admin to clone a new version to edit fields.</p> : null}
@@ -232,10 +232,10 @@ export default function DynamicStageForm({ lead, onSubmitted }) {
             <span className="text-[11.5px] text-muted-foreground hidden sm:block">Fields are autosynced with backend.</span>
             <div className="flex gap-2 ml-auto">
               <Button type="button" variant="outline" onClick={() => setValues({})}>Clear</Button>
-              <Button type="button" disabled={submitForm.isPending || isLocked} onClick={handleSubmit} className="bg-[#2563EB] hover:bg-[#1D4ED8]">
+              <Button type="button" disabled={submitForm.isPending || isLocked} onClick={handleSubmit} className="bg-secondary hover:bg-[#E0532A]">
                 {submitForm.isPending ? "Submitting…" : "Save draft"}
               </Button>
-              <Button type="button" disabled={submitForm.isPending || progressLead.isPending || isLocked} onClick={handleSubmitAndProgress} className="bg-[#2563EB] hover:bg-[#1D4ED8]">
+              <Button type="button" disabled={submitForm.isPending || progressLead.isPending || isLocked} onClick={handleSubmitAndProgress} className="bg-secondary hover:bg-[#E0532A]">
                 {submitForm.isPending || progressLead.isPending ? "Submitting…" : "Submit & progress →"}
               </Button>
             </div>

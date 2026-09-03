@@ -2,11 +2,16 @@
 // (shareable links, back-button friendly). Filters mirror the LeadListCreateView
 // query params in API_CONTRACT.md.
 
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { LayoutGrid, Table2 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
 import { useMasterDataMaps } from "@/features/crm/hooks";
+import { getPipelineStages } from "@/features/crm/api";
+import { crmKeys } from "@/api/queryKeys";
 import { useLeads } from "../hooks";
+import KanbanBoard from "../components/KanbanBoard";
 import DataTable from "@/components/tables/DataTable";
 import EmptyState from "@/components/common/EmptyState";
 import PageError from "@/components/common/PageError";
@@ -26,11 +31,26 @@ const LEAD_STATUSES = ["ACTIVE", "LOST", "CONVERTED"];
 export default function LeadsListPage() {
   const { resolved } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
   const status = searchParams.get("status") ?? "";
   const ordering = searchParams.get("ordering") ?? "";
+  const viewParam = searchParams.get("view");
+  const view = viewParam === "board" ? "board" : "list";
+
+  const setViewSynced = (next) => {
+    setSearchParams(
+      (previous) => {
+        const nextParams = new URLSearchParams(previous);
+        if (next && next !== "list") nextParams.set("view", next);
+        else nextParams.delete("view");
+        return nextParams;
+      },
+      { replace: true },
+    );
+  };
 
   const updateParam = (key, value) => {
     setSearchParams(
@@ -83,6 +103,17 @@ export default function LeadsListPage() {
   const canCreate = hasPermission(resolved, "add_lead");
   const masterData = useMasterDataMaps();
 
+  const stagesQuery = useQuery({
+    queryKey: [...crmKeys.pipelineStages(null), "all"],
+    queryFn: async () => {
+      const data = await getPipelineStages(null);
+      return Array.isArray(data) ? data : (data?.results ?? []);
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const stagesData = stagesQuery.data ?? [];
+
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -114,10 +145,35 @@ export default function LeadsListPage() {
             ))}
           </SelectContent>
         </Select>
+        <div className="ml-auto inline-flex items-center rounded-full bg-surface-container p-1 gap-1">
+          <button
+            type="button"
+            onClick={() => setViewSynced("list")}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${view === "list" ? "bg-surface shadow-sm text-primary" : "text-on-surface-variant hover:text-on-surface"}`}
+          >
+            <Table2 className="h-4 w-4" />
+            List
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewSynced("board")}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${view === "board" ? "bg-surface shadow-sm text-primary" : "text-on-surface-variant hover:text-on-surface"}`}
+          >
+            <LayoutGrid className="h-4 w-4" />
+            Board
+          </button>
+        </div>
       </div>
 
       {leadsQuery.isError ? (
         <PageError error={leadsQuery.error} onRetry={leadsQuery.refetch} />
+      ) : view === "board" ? (
+        <KanbanBoard
+          stages={stagesData}
+          leads={rows}
+          isLoading={leadsQuery.isLoading || stagesQuery.isLoading}
+          onLeadClick={(lead) => navigate(`/leads/${lead.id}`)}
+        />
       ) : (
         <DataTable
           columns={[

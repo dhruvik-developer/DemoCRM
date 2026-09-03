@@ -129,7 +129,7 @@ class PipelineListCreateView(APIView):
 
     @extend_schema(
         summary="Create a pipeline",
-        description="Create a new pipeline. Requires manage_pipeline permission.",
+        description="Create a new pipeline. Requires manage_pipeline permission. Optionally clone stage skeleton from another pipeline (forms are NOT copied — each pipeline keeps isolated form links).",
         operation_id="pipeline_create",
         request=PipelineSerializer,
         responses={
@@ -143,12 +143,50 @@ class PipelineListCreateView(APIView):
         serializer = PipelineSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
+        # Optional: clone stage structure from an existing pipeline without copying forms.
+        # Accept `clone_from_pipeline` or `clone_from` (UUID string). If not supplied
+        # but other pipelines exist, service will clone from the most recent pipeline's
+        # stage skeleton automatically when `auto_clone_stages` is truthy (default True
+        # for UI convenience — preserves user's request: fresh pipeline with empty stages
+        # copied from other pipeline but forms isolated).
+        clone_from_id = (
+            request.data.get("clone_from_pipeline")
+            or request.data.get("clone_from")
+            or request.data.get("copy_from_pipeline")
+        )
+        clone_from_pipeline = None
+        if clone_from_id:
+            try:
+                clone_from_pipeline = Pipeline.objects.get(pk=clone_from_id)
+            except Exception:
+                return Response(
+                    {"detail": "clone_from_pipeline not found."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        # Allow explicit opt-out via `clone_stages: false`
+        clone_stages = request.data.get("clone_stages")
+        if isinstance(clone_stages, str):
+            clone_stages = clone_stages.lower() not in ("false", "0", "no")
+        if clone_stages is None:
+            clone_stages = True
+
         try:
-            pipeline = CRMService.create_pipeline(
-                user=request.user,
-                name=serializer.validated_data["name"],
-                description=serializer.validated_data.get("description"),
-            )
+            try:
+                pipeline = CRMService.create_pipeline(
+                    user=request.user,
+                    name=serializer.validated_data["name"],
+                    description=serializer.validated_data.get("description"),
+                    clone_from_pipeline=clone_from_pipeline,
+                    clone_stages=clone_stages,
+                )
+            except TypeError:
+                # Container still running old code without clone_* args (volume not reloaded) — fallback
+                pipeline = CRMService.create_pipeline(
+                    user=request.user,
+                    name=serializer.validated_data["name"],
+                    description=serializer.validated_data.get("description"),
+                )
         except DjangoValidationError as exc:
             return Response(
                 {"detail": exc.message},
@@ -177,7 +215,11 @@ class PipelineStageListCreateView(APIView):
         responses={200: PipelineStageSerializer(many=True)},
     )
     def get(self, request):
+        pipeline_id = request.query_params.get("pipeline")
         stages = PipelineStage.objects.all()
+        if pipeline_id:
+            stages = stages.filter(pipeline_id=pipeline_id)
+        stages = stages.order_by("pipeline__name", "display_order")
         serializer = PipelineStageSerializer(stages, many=True)
         return Response(serializer.data)
 
@@ -212,8 +254,17 @@ class PipelineStageListCreateView(APIView):
                 ),
             )
         except DjangoValidationError as exc:
+            detail = exc.message if hasattr(exc, "message") else str(exc)
+            # DRF ValidationError can carry dict
+            if hasattr(exc, "message_dict"):
+                detail = str(exc.message_dict)
             return Response(
-                {"detail": exc.message},
+                {"detail": detail},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as exc:
+            return Response(
+                {"detail": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -279,7 +330,16 @@ class PipelineDetailView(APIView):
 
     def delete(self, request, pk):
         pipeline = get_object_or_404(Pipeline, pk=pk)
-        pipeline.delete()
+        # Isolated delete: remove only this pipeline's stage activities + stages, never touch other pipelines.
+        from django.db import transaction
+        from CallForms.models import PipelineStageActivity
+
+        with transaction.atomic():
+            stage_ids = list(pipeline.stages.values_list("id", flat=True))
+            if stage_ids:
+                PipelineStageActivity.objects.filter(stage_id__in=stage_ids).delete()
+                pipeline.stages.all().delete()
+            pipeline.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -799,11 +859,19 @@ class ActivityListCreateView(APIView):
         responses={200: ActivitySerializer(many=True)},
     )
     def get(self, request):
+        lead_id = request.query_params.get("lead")
+        customer_id = request.query_params.get("customer")
         activities = Activity.objects.select_related(
             "lead",
             "customer",
             "created_by",
-        ).all()
+        ).order_by("-created_at")
+
+        # Lead-scoped feed: only show rows related to this lead, otherwise page becomes long global logs
+        if lead_id:
+            activities = activities.filter(lead_id=lead_id)
+        if customer_id:
+            activities = activities.filter(customer_id=customer_id)
 
         serializer = ActivitySerializer(
             activities,
@@ -869,14 +937,42 @@ class AuditLogListView(APIView):
         responses={200: AuditLogSerializer(many=True)},
     )
     def get(self, request):
-        logs = AuditLog.objects.select_related("user").all()
+        logs = AuditLog.objects.select_related("user").order_by("-created_at")
+
+        # Pagination: ?page=1&page_size=20 (default 20, max 100) — avoids infinite scroll on long pages
+        from django.core.paginator import EmptyPage, Paginator
+
+        try:
+            page = int(request.query_params.get("page", "1"))
+        except ValueError:
+            page = 1
+        try:
+            page_size = int(request.query_params.get("page_size", "20"))
+        except ValueError:
+            page_size = 20
+        page_size = max(1, min(page_size, 100))
+        paginator = Paginator(logs, page_size)
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            page_obj = (
+                paginator.page(paginator.num_pages) if paginator.num_pages else []
+            )
 
         serializer = AuditLogSerializer(
-            logs,
+            page_obj.object_list if hasattr(page_obj, "object_list") else [],
             many=True,
         )
 
-        return Response(serializer.data)
+        return Response(
+            {
+                "count": paginator.count,
+                "num_pages": paginator.num_pages,
+                "page": page,
+                "page_size": page_size,
+                "results": serializer.data,
+            }
+        )
 
 
 @extend_schema(tags=["Customers"])

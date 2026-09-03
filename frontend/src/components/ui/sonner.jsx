@@ -28,17 +28,18 @@ const Toaster = ({
           <Loader2Icon className="size-4 animate-spin" />
         ),
       }}
+      position="bottom-right"
       style={
         {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
-          "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)"
+          "--normal-bg": "var(--primary-fixed-dim)",
+          "--normal-text": "#FFFFFF",
+          "--normal-border": "rgba(255,255,255,0.12)",
+          "--border-radius": "12px"
         }
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
+          toast: "cn-toast group-[.toaster]:bg-primary-fixed-dim group-[.toaster]:text-white group-[.toaster]:border-white/10 rounded-xl shadow-lg",
         },
       }}
       {...props} />
