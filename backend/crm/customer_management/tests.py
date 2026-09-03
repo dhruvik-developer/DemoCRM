@@ -467,6 +467,36 @@ class LeadTests(CRMBaseTestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertGreaterEqual(len(response.data), 1)
 
+    def test_employee_list_contains_only_assigned_leads(self):
+        employee_client, employee, _ = self._create_employee_client(
+            permissions=["view_lead"], username="scope"
+        )
+        employee_lead = CRMService.create_lead(
+            user=self.user,
+            name="Employee Lead",
+            email="employee-lead@example.com",
+            phone="1000000002",
+            source=self.source,
+            assigned_to=employee,
+            pipeline=self.pipeline,
+            current_stage=self.stage1,
+        )
+
+        response = employee_client.get("/api/crm/leads/")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned_ids = {str(item["id"]) for item in response.data}
+        self.assertEqual(returned_ids, {str(employee_lead.id)})
+
+    def test_employee_cannot_retrieve_another_employees_lead(self):
+        employee_client, _, _ = self._create_employee_client(
+            permissions=["view_lead"], username="detail"
+        )
+
+        response = employee_client.get(f"/api/crm/leads/{self.lead.id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
     def test_lead_detail(self):
         response = self.client.get(f"/api/crm/leads/{self.lead.id}/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)

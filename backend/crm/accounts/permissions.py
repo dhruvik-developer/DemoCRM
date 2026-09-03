@@ -46,7 +46,16 @@ class HasDynamicPermission(BasePermission):
             )
             return False
 
-        has_perm = role.permissions.filter(codename=required_permission).exists()
+        if isinstance(required_permission, (list, tuple, set)):
+            # A view may allow any one of several permissions, for example
+            # add_followup for employees or change_followup for managers.
+            has_perm = role.permissions.filter(
+                codename__in=required_permission
+            ).exists()
+            required_permission_label = " or ".join(required_permission)
+        else:
+            has_perm = role.permissions.filter(codename=required_permission).exists()
+            required_permission_label = required_permission
 
         if not has_perm:
             logger.warning(
@@ -55,7 +64,7 @@ class HasDynamicPermission(BasePermission):
                 role.rolename,
                 request.method,
                 request.path,
-                required_permission,
+                required_permission_label,
             )
 
         return has_perm

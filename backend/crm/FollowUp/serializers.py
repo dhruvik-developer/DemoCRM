@@ -38,6 +38,15 @@ class FollowUpTypesSerializer(serializers.ModelSerializer):
 
 class FollowupSerializer(serializers.ModelSerializer):
     task_title = serializers.CharField(source="task_id.task_title", read_only=True)
+    lead_id = serializers.UUIDField(source="task_id.lead_id", read_only=True)
+    lead_name = serializers.CharField(source="task_id.lead.name", read_only=True)
+    lead_phone = serializers.CharField(source="task_id.lead.phone", read_only=True)
+    lead_email = serializers.EmailField(source="task_id.lead.email", read_only=True)
+    lead_company = serializers.CharField(
+        source="task_id.lead.company_name", read_only=True
+    )
+    assigned_to_name = serializers.SerializerMethodField()
+    created_by_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Followup
@@ -47,7 +56,27 @@ class FollowupSerializer(serializers.ModelSerializer):
             "created_by",
             "created_at",
             "updated_at",
+            "task_title",
+            "lead_id",
+            "lead_name",
+            "lead_phone",
+            "lead_email",
+            "lead_company",
+            "assigned_to_name",
+            "created_by_name",
         )
+
+    def get_assigned_to_name(self, followup):
+        user = followup.task_id.assigned_to if followup.task_id else None
+        if not user:
+            return None
+        return user.get_full_name() or user.username or user.email
+
+    def get_created_by_name(self, followup):
+        user = followup.created_by
+        if not user:
+            return None
+        return user.get_full_name() or user.username or user.email
 
     def validate_followup_date(self, value):
         if value:

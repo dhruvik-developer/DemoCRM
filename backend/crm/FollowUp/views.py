@@ -100,6 +100,7 @@ class FollowUpListCreateView(APIView):
             followups = Followup.objects.select_related(
                 "task_id",
                 "task_id__assigned_to",
+                "task_id__lead",
                 "followup_status",
                 "followup_type",
                 "created_by",
@@ -190,17 +191,33 @@ class FollowUpListCreateView(APIView):
     def post(self, request):
         try:
             task_id = request.data.get("task_id")
-            if not task_id:
+            lead_id = request.data.get("lead_id")
+
+            if not task_id and not lead_id:
                 return Response(
                     {"task_id": "This field is required."},
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            task = get_object_or_404(
-                Task.objects.select_related("assigned_to"),
-                task_id=task_id,
-                is_active=True,
-            )
+            if task_id:
+                task = get_object_or_404(
+                    Task.objects.select_related("assigned_to", "lead"),
+                    task_id=task_id,
+                    is_active=True,
+                )
+            else:
+                task = (
+                    Task.objects.filter(lead_id=lead_id, is_active=True)
+                    .select_related("assigned_to", "lead")
+                    .order_by("-created_at")
+                    .first()
+                )
+                if not task:
+                    return Response(
+                        {"lead_id": "No active task found for this lead."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                request.data = {**request.data, "task_id": task.task_id}
 
             user = request.user
             role = getattr(user, "role", None)
@@ -317,6 +334,7 @@ class FollowUpDetailView(APIView):
             Followup.objects.select_related(
                 "task_id",
                 "task_id__assigned_to",
+                "task_id__lead",
                 "followup_status",
                 "followup_type",
                 "created_by",
