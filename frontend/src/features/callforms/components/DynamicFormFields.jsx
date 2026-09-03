@@ -44,7 +44,9 @@ export default function DynamicFormFields({
         return (
           <div
             key={field.id ?? field.field_key}
-            className="flex flex-col gap-1.5 rounded-lg border bg-card p-3.5 shadow-sm"
+            className={stepView
+              ? "flex flex-col gap-1.5 rounded-lg border bg-card p-3.5 shadow-sm"
+              : "flex flex-col gap-1.5 py-1"}
           >
             <div className="flex items-center justify-between">
               <label htmlFor={id} className="text-sm font-semibold text-foreground">
@@ -56,7 +58,9 @@ export default function DynamicFormFields({
                 {onDelete && String(field.id ?? "").startsWith("adhoc_") ? (
                   <button type="button" onClick={() => onDelete(field.field_key)} className="text-[11px] text-destructive hover:underline">Delete</button>
                 ) : null}
-                <span className="text-[11px] font-medium text-muted-foreground px-2 py-0.5 bg-muted rounded">
+                <span className={stepView
+                  ? "rounded bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+                  : "text-[11px] text-muted-foreground"}>
                   Step {index + 1} of {fields.length}
                 </span>
               </div>

@@ -19,11 +19,12 @@ import {
   updateTaskStatus,
 } from "./api";
 
-export function useTasks(filters) {
+export function useTasks(filters, options) {
   return useQuery({
     queryKey: taskKeys.list(filters),
     queryFn: () => getTasks(filters),
     placeholderData: (previous) => previous,
+    ...options,
   });
 }
 

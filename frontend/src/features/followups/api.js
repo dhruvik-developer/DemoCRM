@@ -27,6 +27,11 @@ export async function createFollowUp(values) {
   return data;
 }
 
+export async function updateFollowUp(followUpId, partial) {
+  const { data } = await apiClient.patch(endpoints.followups.detail(followUpId), partial);
+  return data;
+}
+
 export async function deleteFollowUp(followUpId) {
   const { data } = await apiClient.delete(endpoints.followups.detail(followUpId));
   return data;

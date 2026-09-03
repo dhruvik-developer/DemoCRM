@@ -62,7 +62,6 @@ const NAV_GROUPS = [
       { to: "/calendar", label: "Calendar", icon: CalendarDays, codename: "view_task" },
       { to: "/meetings", label: "Meetings", icon: CalendarClock, codename: "view_meeting" },
       { to: "/followups", label: "Follow-ups", icon: PhoneCall, codename: "view_followup" },
-      { to: "/reminders", label: "Reminders", icon: CalendarClock, codename: "view_reminder" },
       { to: "/notifications", label: "Notifications", icon: Bell, codename: "view_notificationtemplate", end: true },
     ],
   },

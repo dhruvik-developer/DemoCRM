@@ -21,6 +21,7 @@ import MeetingsListPage from "@/features/meetings/pages/MeetingsListPage";
 import MeetingCreatePage from "@/features/meetings/pages/MeetingCreatePage";
 import MeetingDetailPage from "@/features/meetings/pages/MeetingDetailPage";
 import FollowUpsListPage from "@/features/followups/pages/FollowUpsListPage";
+import FollowUpDetailPage from "@/features/followups/pages/FollowUpDetailPage";
 import RemindersPage from "@/features/reminders/pages/RemindersPage";
 import QuotationsListPage from "@/features/quotations/pages/QuotationsListPage";
 import QuotationCreatePage from "@/features/quotations/pages/QuotationCreatePage";
@@ -76,6 +77,7 @@ export const router = createBrowserRouter([
           { path: "/meetings/new", element: <MeetingCreatePage /> },
           { path: "/meetings/:meetingId", element: <MeetingDetailPage /> },
           { path: "/followups", element: <FollowUpsListPage /> },
+          { path: "/followups/:followUpId", element: <FollowUpDetailPage /> },
           { path: "/quotations", element: <QuotationsListPage /> },
           { path: "/quotations/new", element: <QuotationCreatePage /> },
           { path: "/quotations/:quotationId", element: <QuotationDetailPage /> },

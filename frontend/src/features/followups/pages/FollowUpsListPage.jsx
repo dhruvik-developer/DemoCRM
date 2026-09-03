@@ -32,6 +32,7 @@ import ListControls from "@/components/common/ListControls";
 import { usePinnedRecords } from "@/hooks/usePinnedRecords";
 import { MessageSquareText, Pin, ListTodo, Clock, CalendarClock, CalendarRange, CheckCircle2, Hourglass, PhoneCall, Mail } from "lucide-react";
 import RecordNotesPanel from "@/features/notes/components/RecordNotesPanel";
+import TakeFollowUpPanel from "../components/TakeFollowUpPanel";
 import {
   Dialog,
   DialogContent,
@@ -204,6 +205,7 @@ export default function FollowUpsListPage() {
   const [createOpen, setCreateOpen] = useState(searchParams.get("create") === "1");
   const [pendingDelete, setPendingDelete] = useState(null);
   const [notesRecord, setNotesRecord] = useState(null);
+  const [panelFollowUp, setPanelFollowUp] = useState(null);
 
   // G13: creating requires change_followup, NOT add_followup.
   const canCreate =
@@ -333,11 +335,13 @@ export default function FollowUpsListPage() {
               header: "",
               render: (row) => (
                 <div className="flex items-center justify-end gap-2">
-                  {row.task_id ? (
-                    <Button asChild size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8]">
-                      <Link to={`/tasks/${row.task_id}`}>Take Follow-up →</Link>
-                    </Button>
-                  ) : null}
+                  <Button
+                    size="sm"
+                    className="bg-[#2563EB] hover:bg-[#1D4ED8]"
+                    onClick={() => setPanelFollowUp(row)}
+                  >
+                    Take Follow-up
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
@@ -401,6 +405,7 @@ export default function FollowUpsListPage() {
         }}
       />
       <RecordNotesPanel record={notesRecord} onClose={() => setNotesRecord(null)} />
+      <TakeFollowUpPanel followUp={panelFollowUp} onClose={() => setPanelFollowUp(null)} />
     </div>
   );
 }

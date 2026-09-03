@@ -2,11 +2,11 @@
 // Status/priority names resolve from the G7 workaround constants.
 
 import { useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
-import { taskPriorityName, taskStatusName } from "@/utils/taskMasterData";
-import { useTasks, useDeleteTask, useTaskKpi } from "../hooks";
+import { TASK_STATUSES, taskPriorityName, taskStatusName } from "@/utils/taskMasterData";
+import { useTasks, useDeleteTask, useTaskKpi, useUpdateTaskStatus } from "../hooks";
 import DataTable from "@/components/tables/DataTable";
 import EmptyState from "@/components/common/EmptyState";
 import PageError from "@/components/common/PageError";
@@ -14,6 +14,13 @@ import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MessageSquareText, Pencil, Pin, Trash2, CheckSquare, Clock, CalendarClock, CalendarRange, Flag, ListTodo } from "lucide-react";
@@ -38,7 +45,35 @@ function KpiCard({ title, value, loading, icon: Icon, to }) {
   );
 }
 
+function EmployeeTaskStatusSelect({ task }) {
+  const updateStatus = useUpdateTaskStatus(task.task_id);
+
+  return (
+    <Select
+      value={String(task.status ?? "")}
+      disabled={updateStatus.isPending}
+      onValueChange={(value) => updateStatus.mutate(Number(value))}
+    >
+      <SelectTrigger
+        className="h-8 w-32"
+        aria-label={`Update status for ${task.task_title}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <SelectValue placeholder="Select status" />
+      </SelectTrigger>
+      <SelectContent>
+        {TASK_STATUSES.map((status) => (
+          <SelectItem key={status.id} value={String(status.id)}>
+            {status.name}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export default function TasksListPage() {
+  const navigate = useNavigate();
   const { resolved } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const usersQuery = useUsers();
@@ -186,9 +221,7 @@ export default function TasksListPage() {
             {
               key: "status",
               header: "Status",
-              render: (task) => (
-                <Badge variant="outline">{taskStatusName(task.status)}</Badge>
-              ),
+              render: (task) => <EmployeeTaskStatusSelect task={task} />,
             },
             {
               key: "priority",
@@ -227,7 +260,7 @@ export default function TasksListPage() {
                 return (
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild variant="ghost" size="sm">
-                      <Link to={task.lead ? `/leads/${task.lead}` : `/tasks/${task.task_id}`}>Open →</Link>
+                      <Link to={`/tasks/${task.task_id}`}>Open →</Link>
                     </Button>
                     <Button asChild variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" title="Edit task">
                       <Link to={`/tasks/${task.task_id}`}>
@@ -250,6 +283,7 @@ export default function TasksListPage() {
           ]}
           rows={rows}
           getRowId={(row) => row.task_id}
+          onRowClick={(task) => navigate(`/tasks/${task.task_id}`)}
           isLoading={tasksQuery.isLoading}
           emptyState={
             <EmptyState
