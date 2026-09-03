@@ -1,18 +1,31 @@
-// Task detail: info card + Assign / Status / soft-Delete actions, each gated
-// on its codename. Employees can only act on their own tasks (server-side).
-
 import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useForm } from "react-hook-form";
 
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
-import { taskPriorityName, taskStatusName, TASK_STATUSES } from "@/utils/taskMasterData";
+import {
+  taskPriorityName,
+  taskStatusName,
+  TASK_STATUSES,
+  TASK_PRIORITIES,
+  TASK_CATEGORIES,
+} from "@/utils/taskMasterData";
 import { toast } from "sonner";
 import { useLead, useProgressLead } from "@/features/leads/hooks";
 import { useLeadPrimaryForm, useLogAttempt, useSubmitForm } from "@/features/callforms/hooks";
 import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
+import CallWorkspaceForm from "@/components/CallWorkspaceForm";
 import { useMasterDataMaps, usePipelineStages } from "@/features/crm/hooks";
-import { useAssignTask, useDeleteTask, useTask, useUpdateTaskStatus } from "../hooks";
+import {
+  useAssignTask,
+  useDeleteTask,
+  useTask,
+  useTaskCategories,
+  useTaskStatuses,
+  useUpdateTask,
+  useUpdateTaskStatus,
+} from "../hooks";
 import { useUsers } from "@/features/admin/hooks";
 import PageError from "@/components/common/PageError";
 import PageLoader from "@/components/common/PageLoader";
@@ -20,6 +33,145 @@ import ConfirmDialog from "@/components/common/ConfirmDialog";
 import FormField from "@/components/forms/FormField";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+
+function EditTaskDialog({ task, open, onOpenChange }) {
+  const updateTask = useUpdateTask(task?.task_id);
+  const { data: taskStatuses = [] } = useTaskStatuses();
+  const { data: taskCategories = [] } = useTaskCategories();
+
+  const formattedDueDate = task?.due_date
+    ? new Date(task.due_date).toISOString().slice(0, 16)
+    : "";
+
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors },
+  } = useForm({
+    defaultValues: {
+      task_title: task?.task_title ?? "",
+      description: task?.description ?? "",
+      due_date: formattedDueDate,
+      status: String(task?.status ?? "1"),
+      priority: String(task?.priority ?? "2"),
+      category: String(task?.category ?? "1"),
+    },
+  });
+
+  const onSubmit = async (values) => {
+    await updateTask.mutateAsync({
+      task_title: values.task_title,
+      description: values.description || undefined,
+      due_date: values.due_date ? new Date(values.due_date).toISOString() : undefined,
+      status: Number(values.status),
+      priority: Number(values.priority),
+      category: Number(values.category),
+    });
+    onOpenChange(false);
+  };
+
+  const statusOptions =
+    taskStatuses.length > 0
+      ? taskStatuses.map((s) => ({ id: s.status_id ?? s.id, name: s.status_name ?? s.name }))
+      : TASK_STATUSES;
+
+  const categoryOptions =
+    taskCategories.length > 0
+      ? taskCategories.map((c) => ({ id: c.category_id ?? c.id, name: c.category_name ?? c.name }))
+      : TASK_CATEGORIES;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit task</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
+          <FormField id="task_title" label="Title" error={errors.task_title?.message}>
+            <Input {...register("task_title", { required: "Title is required" })} />
+          </FormField>
+
+          <FormField id="description" label="Description">
+            <Textarea {...register("description")} rows={3} />
+          </FormField>
+
+          <FormField id="due_date" label="Due date">
+            <Input type="datetime-local" {...register("due_date")} />
+          </FormField>
+
+          <div className="grid grid-cols-2 gap-3">
+            <FormField id="priority" label="Priority">
+              <Select
+                value={watch("priority")}
+                onValueChange={(val) => setValue("priority", val)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {TASK_PRIORITIES.map((p) => (
+                    <SelectItem key={p.id} value={String(p.id)}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+
+            <FormField id="category" label="Category">
+              <Select
+                value={watch("category")}
+                onValueChange={(val) => setValue("category", val)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {categoryOptions.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
+          </div>
+
+          <FormField id="status" label="Status">
+            <Select
+              value={watch("status")}
+              onValueChange={(val) => setValue("status", val)}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {statusOptions.map((s) => (
+                  <SelectItem key={s.id} value={String(s.id)}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </FormField>
+
+          <DialogFooter className="mt-4">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={updateTask.isPending}>
+              {updateTask.isPending ? "Saving…" : "Save changes"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 import {
   Card,
   CardContent,
@@ -74,6 +226,15 @@ function TaskCallWorkspace({ task, updateStatus }) {
   const stages = stagesQuery.data ?? [];
   const currentStageIndex = stages.findIndex((st) => st.id === lead?.current_stage);
   const nextStage = currentStageIndex >= 0 ? stages[currentStageIndex + 1] : null;
+  const firstStage = stages.reduce((first, stage) => {
+    if (!first) return stage;
+    return Number(stage.display_order ?? 0) < Number(first.display_order ?? 0)
+      ? stage
+      : first;
+  }, null);
+  const isFirstStage = Boolean(
+    firstStage && String(firstStage.id) === String(lead?.current_stage),
+  );
 
   if (!leadId) return null;
   if (leadQuery.isLoading || primaryFormQuery.isLoading) {
@@ -85,12 +246,13 @@ function TaskCallWorkspace({ task, updateStatus }) {
       </Card>
     );
   }
+  if (!isFirstStage) return null;
 
   // Define default fallback fields if no custom form is assigned to current stage
   const fallbackFields = [
     {
       field_key: "call_outcome",
-      label: "Step 1 — Call Outcome",
+      label: "Call Outcome",
       field_type: "select",
       is_required: true,
       options: [
@@ -104,7 +266,7 @@ function TaskCallWorkspace({ task, updateStatus }) {
     },
     {
       field_key: "client_feedback",
-      label: "Step 1 — Client Feedback & Requirements",
+      label: "Client Feedback & Requirements",
       field_type: "textarea",
       is_required: false,
       placeholder: "Record client requirements and call notes during the call...",
@@ -112,7 +274,7 @@ function TaskCallWorkspace({ task, updateStatus }) {
     },
     {
       field_key: "proposed_value",
-      label: "Step 2 — Proposed Deal Value / Quotation Amount",
+      label: "Proposed Deal Value / Quotation Amount",
       field_type: "number",
       is_required: false,
       placeholder: "e.g. 50000.00",
@@ -120,8 +282,8 @@ function TaskCallWorkspace({ task, updateStatus }) {
     },
     {
       field_key: "agreed_next_action",
-      label: "Step 2 — Agreed Next Step / Meeting Date",
-      field_type: "text",
+      label: "Agreed Next Step / Meeting Date",
+      field_type: "date",
       is_required: false,
       placeholder: "e.g. Send formal quotation tomorrow at 2 PM",
       step: 2,
@@ -130,39 +292,53 @@ function TaskCallWorkspace({ task, updateStatus }) {
 
   const activeFields = customFields.length > 0 ? customFields : fallbackFields;
 
-  const handleSaveForm = async (e) => {
-    if (e) e.preventDefault();
+  const handleSaveForm = async (submittedValues) => {
+    if (submittedValues?.preventDefault) submittedValues.preventDefault();
+    const rawValues = submittedValues && !submittedValues.preventDefault
+      ? submittedValues
+      : formValues;
+    const valuesToSave = {
+      ...rawValues,
+      ...(rawValues.callOutcome !== undefined ? { call_outcome: rawValues.callOutcome } : {}),
+      ...(rawValues.clientFeedback !== undefined ? { client_feedback: rawValues.clientFeedback } : {}),
+      ...(rawValues.proposedDealValue !== undefined ? { proposed_value: rawValues.proposedDealValue } : {}),
+      ...(rawValues.nextStepDate !== undefined ? { agreed_next_action: rawValues.nextStepDate } : {}),
+    };
     setFieldErrors({});
-
-    const errors = {};
-    for (const field of activeFields) {
-      if (field.is_required && !formValues[field.field_key]) {
-        errors[field.field_key] = `${field.label} is required.`;
-      }
-    }
-    if (Object.keys(errors).length > 0) {
-      setFieldErrors(errors);
-      toast.error("Please complete required form fields.");
-      return false;
-    }
 
     const versionId =
       formData?.template_version?.id ||
       formData?.template_version_id ||
       formData?.id;
 
+    const mapToBackendOutcome = (val) => {
+      if (!val) return "COMPLETED";
+      const upper = String(val).toUpperCase();
+      if (upper === "CONNECTED" || upper.includes("CONNECTED") || upper.includes("INTERESTED") || upper.includes("PROPOSAL")) return "CONNECTED";
+      if (upper.includes("BUSY")) return "BUSY";
+      if (upper.includes("NO_ANSWER") || upper.includes("NO ANSWER")) return "NO_ANSWER";
+      if (upper.includes("FOLLOW") || upper.includes("CALLBACK")) return "CALLBACK";
+      if (upper.includes("LOST") || upper.includes("NOT INTERESTED")) return "LOST_SUGGESTED";
+      return "COMPLETED";
+    };
+
     try {
       if (versionId) {
         await submitForm.mutateAsync({
           lead_id: leadId,
           template_version_id: versionId,
-          data: formValues,
+          data: valuesToSave,
         });
       } else {
+        const validOutcome = mapToBackendOutcome(valuesToSave.callOutcome || valuesToSave.call_outcome);
+        const formattedNotes = Object.entries(valuesToSave)
+          .filter(([_, v]) => Boolean(v))
+          .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`)
+          .join("\n");
         await logAttempt.mutateAsync({
           lead_id: leadId,
-          notes: JSON.stringify(formValues),
-          outcome: formValues.call_outcome || "COMPLETED",
+          notes: formattedNotes || undefined,
+          outcome: validOutcome,
         });
       }
       toast.success("Call form responses saved!");
@@ -172,8 +348,8 @@ function TaskCallWorkspace({ task, updateStatus }) {
     }
   };
 
-  const handleCompleteTask = async () => {
-    const saved = await handleSaveForm();
+  const handleCompleteTask = async (submittedValues) => {
+    const saved = await handleSaveForm(submittedValues);
     if (!saved && activeFields.some((f) => f.is_required)) return;
 
     try {
@@ -187,13 +363,13 @@ function TaskCallWorkspace({ task, updateStatus }) {
     }
   };
 
-  const handleMoveToNextStage = async () => {
+  const handleMoveToNextStage = async (submittedValues) => {
     if (!nextStage) {
       toast.info("Lead is already at the final pipeline stage.");
       return;
     }
 
-    const saved = await handleSaveForm();
+    const saved = await handleSaveForm(submittedValues);
     if (!saved && activeFields.some((f) => f.is_required)) return;
 
     try {
@@ -210,8 +386,23 @@ function TaskCallWorkspace({ task, updateStatus }) {
   };
 
   return (
-    <Card className="border-primary/40 bg-card shadow-md">
-      <CardHeader className="border-b bg-muted/20 pb-4">
+    <CallWorkspaceForm
+      lead={{
+        ...lead,
+        company: lead?.company_name || lead?.company,
+      }}
+      stage={masterData.stageName(lead?.current_stage) || "New"}
+      nextStage={nextStage?.name || "Final Stage"}
+      pipeline={masterData.pipelineName(lead?.pipeline) || "Sales Pipeline"}
+      onSaveDraft={handleSaveForm}
+      onCompleteTask={handleCompleteTask}
+      onSubmitAndMove={handleMoveToNextStage}
+    />
+  );
+
+  return (
+    <Card className="border-primary/40 bg-background shadow-none">
+      <CardHeader className="pb-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <CardTitle className="text-lg font-bold flex items-center gap-2">
@@ -230,7 +421,7 @@ function TaskCallWorkspace({ task, updateStatus }) {
       <CardContent className="flex flex-col gap-6 pt-5">
         {/* Lead Basic Info Header Bar */}
         {lead ? (
-          <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 text-sm md:grid-cols-4">
+          <div className="grid gap-4 py-2 text-sm md:grid-cols-4">
             <div>
               <span className="text-xs font-medium uppercase text-muted-foreground">Phone</span>
               <p className="font-semibold text-foreground">{lead.phone || "—"}</p>
@@ -265,12 +456,17 @@ function TaskCallWorkspace({ task, updateStatus }) {
             ) : null}
           </div>
 
+          <div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground">
+            <span>Form Fields Workflow</span>
+            <span>{activeFields.length} {activeFields.length === 1 ? "field" : "fields"}</span>
+          </div>
+
           <DynamicFormFields
             fields={activeFields}
             values={formValues}
             errors={fieldErrors}
             onChange={setFormValues}
-            stepView={true}
+            stepView={false}
           />
         </div>
 
@@ -366,6 +562,7 @@ export default function TaskDetailPage() {
   const usersQuery = useUsers();
 
   const [assignOpen, setAssignOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const [statusValue, setStatusValue] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
   const updateStatus = useUpdateTaskStatus(taskId);
@@ -398,6 +595,11 @@ export default function TaskDetailPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {can("assign_task") ? (
+            <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+              Edit
+            </Button>
+          ) : null}
           {can("assign_task") ? (
             <Button variant="outline" size="sm" onClick={() => setAssignOpen(true)}>
               Assign
@@ -472,15 +674,26 @@ export default function TaskDetailPage() {
         </Card>
       ) : null}
 
-      <TaskCallWorkspace task={task} updateStatus={updateStatus} />
+      {task.custom_fields?.definitions?.length ? (
+        <Card>
+          <CardHeader><CardTitle>Custom Information</CardTitle></CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {task.custom_fields.definitions.map((field) => {
+              const value = task.custom_fields.values?.[field.field_key];
+              const displayValue = Array.isArray(value) ? value.join(", ") : typeof value === "boolean" ? (value ? "Yes" : "No") : value;
+              return <Field key={field.field_key} label={field.label} value={displayValue || "—"} />;
+            })}
+          </CardContent>
+        </Card>
+      ) : null}
 
-      <p className="text-sm text-muted-foreground">
-        Meetings, follow-ups and reminders for this task arrive with Phases 10–11.
-      </p>
+      <TaskCallWorkspace task={task} updateStatus={updateStatus} />
 
       <Link to="/tasks" className="text-sm text-muted-foreground hover:underline">
         ← Back to tasks
       </Link>
+
+      <EditTaskDialog task={task} open={editOpen} onOpenChange={setEditOpen} />
 
       <AssignDialog taskId={taskId} open={assignOpen} onOpenChange={setAssignOpen} />
 

@@ -214,6 +214,47 @@ body {
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+  /* Primary gradient kept consistent light/dark */
+  .bg-primary {
+    background: linear-gradient(135deg, oklch(0.546 0.22 264.376) 0%, oklch(0.62 0.18 264) 100%);
+  }
+  .dark .bg-primary {
+    background: linear-gradient(135deg, oklch(0.6 0.2 264) 0%, oklch(0.55 0.18 260) 100%);
+  }
+}
+
+/* Polished card elevation — visible in both themes */
+@layer components {
+  .card-elevated {
+    @apply bg-card text-card-foreground border shadow-sm;
+  }
+  .dark .card-elevated {
+    box-shadow: 0 4px 24px oklch(0 0 0 / 0.35), 0 1px 3px oklch(0 0 0 / 0.4);
+    border-color: oklch(0.28 0.02 260);
+  }
+  /* Inputs: ensure placeholder contrast per theme */
+  ::placeholder {
+    color: var(--muted-foreground);
+    opacity: 0.7;
+  }
+  .dark ::placeholder {
+    opacity: 0.6;
+  }
+  /* Scrollbar subtle theming */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 9999px;
+  }
+  .dark ::-webkit-scrollbar-thumb {
+    background: oklch(0.32 0.02 260);
   }
 }
 

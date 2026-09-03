@@ -66,17 +66,21 @@ export const endpoints = {
     quotationEvents: "/crm/quotation-events/",
   },
 
-  tasks: {
+   tasks: {
     list: "/tasks/",
+    kpi: "/tasks/kpi/",
     detail: (taskId) => `/tasks/${taskId}/`,
     assign: (taskId) => `/tasks/${taskId}/assign/`,
     status: (taskId) => `/tasks/${taskId}/status/`,
+    masterStatuses: "/tasks/master/task-statuses/",
+    masterPriorities: "/tasks/master/task-priorities/",
+    masterCategories: "/tasks/master/task-categories/",
   },
 
   meetings: {
-    // NOTE: no GET list endpoint exists yet (BACKEND_GAPS.md G8).
-    // Lists are derived client-side from tasks until the backend ships one.
+    list: "/tasks/meetings/",
     create: "/tasks/meetings/",
+    kpi: "/tasks/meetings/kpi/",
     detail: (meetingId) => `/tasks/meetings/${meetingId}/`,
     approval: (meetingId) => `/tasks/meetings/${meetingId}/approval/`,
     reschedule: (meetingId) => `/tasks/meetings/${meetingId}/reschedule/`,
@@ -95,8 +99,13 @@ export const endpoints = {
 
   followups: {
     list: "/followups/",
+    kpi: "/followups/kpi/",
     detail: (followupId) => `/followups/${followupId}/`,
     status: (followupId) => `/followups/${followupId}/status/`,
+  },
+
+  notes: {
+    list: "/followups/notes/",
   },
 
   notifications: {

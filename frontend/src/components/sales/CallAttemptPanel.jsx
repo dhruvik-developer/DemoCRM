@@ -26,6 +26,39 @@ export default function CallAttemptPanel({ leadId, stageId, activityId, template
 
   const rawAttempts = attemptsQ.data ?? [];
   const attempts = (Array.isArray(rawAttempts) ? rawAttempts : rawAttempts?.results ?? []).filter(Boolean);
+  // timeline endpoint returns mixed submissions/attempts; fallback to separate history if needed
+
+  useEffect(() => {
+    if (isLive) {
+      intervalRef.current = setInterval(() => setElapsed((e) => e + 1), 1000);
+    } else {
+      clearInterval(intervalRef.current);
+    }
+    return () => clearInterval(intervalRef.current);
+  }, [isLive]);
+
+  const handleStart = () => {
+    setStartAt(new Date());
+    setElapsed(0);
+    setIsLive(true);
+  };
+
+  const handleEnd = async () => {
+    const endAt = new Date();
+    const startISO = startAt ? startAt.toISOString() : new Date(Date.now() - elapsed * 1000).toISOString();
+    const endISO = endAt.toISOString();
+    setIsLive(false);
+    try {
+      await logAttempt.mutateAsync({ lead_id: leadId, stage_id: stageId, activity_id: activityId, template_version_id: templateVersionId, outcome, notes: notes || undefined, start_time: startISO, end_time: endISO });
+      setNotes("");
+      setStartAt(null);
+      setElapsed(0);
+    } catch (err) {
+      void err;
+      // keep live state off even on error to avoid stuck timer
+      setIsLive(false);
+    }
+  };
 
   useEffect(() => {
     if (isLive) {

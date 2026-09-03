@@ -9,6 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Building2, Mail, Phone, FileText, CalendarDays, Bell, Rocket, ArrowLeft, ArrowRight } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { hasPermission } from "@/utils/permissions";
 import { useWorkflowCapabilities } from "@/hooks/useWorkflowCapabilities";
 import { useMasterDataMaps, usePipelineStages } from "@/features/crm/hooks";
 import {
@@ -19,7 +20,8 @@ import {
   useProgressLead,
   useReengageLead,
 } from "../hooks";
-import { useLeadPrimaryForm, useSubmitForm } from "@/features/callforms/hooks";
+import { useLeadPrimaryForm, useLogAttempt, useSubmitForm } from "@/features/callforms/hooks";
+import CallWorkspaceForm from "@/components/CallWorkspaceForm";
 import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
 import ActivitiesCard from "@/features/activities/components/ActivitiesCard";
 import { convertLeadSchema, lostLeadSchema } from "@/schemas/lead.schema";
@@ -46,6 +48,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -56,7 +59,106 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { useUsers } from "@/features/admin/hooks";
 import { useQuotations } from "@/features/quotations/hooks";
-import { useTasks } from "@/features/tasks/hooks";
+import { useTasks, useUpdateTaskStatus } from "@/features/tasks/hooks";
+import { useFollowUps, useCreateFollowUp } from "@/features/followups/hooks";
+import { useMeetings } from "@/features/meetings/hooks";
+import { followUpStatusName, followUpTypeName, FOLLOWUP_TYPES } from "@/utils/followUpMasterData";
+import { toast } from "sonner";
+
+function FollowUpsPanel({ query, taskId, canSchedule }) {
+  const rows = query.data?.results ?? [];
+  return (
+    <Card className="rounded-xl">
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-sm">Follow-ups</CardTitle>
+        <Badge variant="outline">{query.data?.count ?? rows.length}</Badge>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {query.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+        {!query.isLoading && rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No follow-ups for this lead.</p>
+        ) : null}
+        {rows.slice(0, 3).map((followUp) => (
+          <div key={followUp.followup_id} className="flex items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-medium">{followUpTypeName(followUp.followup_type) || "Follow-up"}</p>
+              <p className="text-xs text-muted-foreground">
+                {followUp.followup_date ? new Date(followUp.followup_date).toLocaleString() : "Date not set"}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <Badge variant="outline">{followUpStatusName(followUp.followup_status)}</Badge>
+              {followUp.task_id ? (
+                <Button asChild size="sm">
+                  <Link to={`/tasks/${followUp.task_id}`}>Take follow-up</Link>
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/followups">View follow-ups</Link>
+          </Button>
+          {canSchedule && taskId ? (
+            <Button asChild size="sm">
+              <Link to={`/followups?create=1&task_id=${taskId}`}>Schedule follow-up</Link>
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MeetingsPanel({ query, taskId, canSchedule, currentUserId }) {
+  const rows = query.data?.results ?? [];
+  return (
+    <Card className="rounded-xl">
+      <CardHeader className="flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-sm">Meetings</CardTitle>
+        <Badge variant="outline">{query.data?.count ?? rows.length}</Badge>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        {query.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+        {!query.isLoading && rows.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No meetings for this lead.</p>
+        ) : null}
+        {rows.slice(0, 3).map((meeting) => (
+          <div key={meeting.meeting_id} className="flex items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
+            <div className="min-w-0">
+              <Link to={`/meetings/${meeting.meeting_id}`} className="truncate text-sm font-medium hover:underline">
+                {meeting.meeting_title}
+              </Link>
+              <p className="text-xs text-muted-foreground">
+                {meeting.meeting_date || "Date not set"}{meeting.start_time ? ` · ${meeting.start_time.slice(0, 5)}` : ""}
+              </p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <StatusBadge status={meeting.approval_status} />
+              {String(meeting.approval_status).toUpperCase() === "REJECTED" &&
+              String(meeting.created_by?.user_id ?? meeting.created_by ?? "") === String(currentUserId) ? (
+                <Button asChild size="sm" variant="destructive">
+                  <Link to={`/meetings/${meeting.meeting_id}`}>Reschedule meeting</Link>
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        ))}
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link to="/meetings">View meetings</Link>
+          </Button>
+          {canSchedule && taskId ? (
+            <Button asChild size="sm">
+              <Link to={`/meetings/new?task_id=${taskId}`}>Schedule meeting</Link>
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
 function Field({ label, value, mono = false }) {
   return (
@@ -247,7 +349,7 @@ function ConvertDialog({ lead, open, onOpenChange }) {
 
 export default function LeadDetailPage() {
   const { leadId } = useParams();
-  const { resolved } = useAuth();
+  const { user, resolved } = useAuth();
   const leadQuery = useLead(leadId);
   const usersQuery = useUsers();
   const masterData = useMasterDataMaps();
@@ -255,14 +357,76 @@ export default function LeadDetailPage() {
   const primaryFormQuery = useLeadPrimaryForm(leadId);
   const quotationsQuery = useQuotations({ lead: leadId });
   const tasksQuery = useTasks({ lead: leadId });
+  const followUpsQuery = useFollowUps({ lead: leadId, page_size: 3 });
+  const meetingsQuery = useMeetings({ lead: leadId, page_size: 3 });
+  const workspaceSubmit = useSubmitForm();
+  const workspaceLogAttempt = useLogAttempt();
+  const workspaceProgress = useProgressLead(leadId);
+  const workspaceTask = (tasksQuery.data?.results ?? tasksQuery.data ?? [])[0] ?? null;
+  const workspaceTaskStatus = useUpdateTaskStatus(workspaceTask?.task_id);
 
   const [dialog, setDialog] = useState(null);
   const [reengageOpen, setReengageOpen] = useState(false);
   const reengageLead = useReengageLead(leadId);
+  const navigate = useNavigate();
+  const createFollowUp = useCreateFollowUp();
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const [reminderType, setReminderType] = useState(String(FOLLOWUP_TYPES[0]?.id ?? 1));
+  const [reminderDate, setReminderDate] = useState("");
+  const [reminderPurpose, setReminderPurpose] = useState("");
+  const [reminderError, setReminderError] = useState(null);
+
+  const submitReminder = async (event) => {
+    event.preventDefault();
+    setReminderError(null);
+    if (!workspaceTask?.task_id) {
+      setReminderError("This lead needs an assigned task before creating a follow-up.");
+      return;
+    }
+    if (!reminderDate) {
+      setReminderError("Please pick a date and time.");
+      return;
+    }
+    if (new Date(reminderDate).getTime() <= Date.now()) {
+      setReminderError("The follow-up date must be in the future.");
+      return;
+    }
+    try {
+      const created = await createFollowUp.mutateAsync({
+        task_id: workspaceTask.task_id,
+        followup_type: Number(reminderType),
+        followup_status: 1,
+        followup_date: new Date(reminderDate).toISOString(),
+        decription: reminderPurpose.trim() || undefined,
+      });
+      setReminderOpen(false);
+      navigate(`/followups/${created.followup_id}?return_lead=${leadId}`);
+    } catch (error) {
+      const response = error?.response?.data;
+      setReminderError(
+        response?.task_id?.[0]
+          || response?.followup_type?.[0]
+          || response?.followup_status?.[0]
+          || response?.followup_date?.[0]
+          || response?.detail
+          || response?.error
+          || "Could not create the follow-up. Please try again.",
+      );
+    }
+  };
 
   const lead = leadQuery.data;
   const stages = stagesQuery.data ?? [];
   const currentStage = lead ? (stages.find((s) => s.id === lead.current_stage) ?? null) : null;
+  const firstStage = stages.reduce((first, stage) => {
+    if (!first) return stage;
+    return Number(stage.display_order ?? 0) < Number(first.display_order ?? 0)
+      ? stage
+      : first;
+  }, null);
+  const isFirstStage = Boolean(
+    lead && firstStage && String(firstStage.id) === String(lead.current_stage),
+  );
   const currentForm = primaryFormQuery.data ?? null;
   const latestQuotation = (quotationsQuery.data?.results ?? quotationsQuery.data ?? [])[0] ?? null;
   const currentTask = (tasksQuery.data?.results ?? tasksQuery.data ?? [])[0] ?? null;
@@ -279,10 +443,37 @@ export default function LeadDetailPage() {
     return found?.full_name || found?.username || `${String(lead.assigned_to).slice(0, 8)}…`;
   })();
 
+  const nextStage = (() => {
+    const index = stages.findIndex((item) => item.id === lead.current_stage);
+    return index >= 0 ? stages[index + 1] : null;
+  })();
+  const mapWorkspaceValues = (values) => ({
+    call_outcome: values.callOutcome,
+    client_feedback: values.clientFeedback,
+    proposed_value: values.proposedDealValue,
+    agreed_next_action: values.nextStepDate,
+  });
+  const saveWorkspace = async (values) => {
+    const data = mapWorkspaceValues(values);
+    const versionId = currentForm?.template_version_id || currentForm?.id;
+    if (versionId) await workspaceSubmit.mutateAsync({ lead_id: lead.id, template_version_id: versionId, data });
+    else await workspaceLogAttempt.mutateAsync({ lead_id: lead.id, outcome: values.callOutcome === "No Answer" ? "NO_ANSWER" : values.callOutcome === "Call Back Later" ? "CALLBACK" : values.callOutcome === "Wrong Number" ? "WRONG_NUMBER" : "CONNECTED", notes: values.clientFeedback || undefined });
+  };
+  const completeWorkspaceTask = async (values) => {
+    await saveWorkspace(values);
+    if (workspaceTask?.task_id) await workspaceTaskStatus.mutateAsync(3);
+    else toast.info("Form saved. This lead has no active task to complete.");
+  };
+  const moveWorkspaceLead = async (values) => {
+    await saveWorkspace(values);
+    if (nextStage) await workspaceProgress.mutateAsync(nextStage.id);
+    else toast.info("This lead is already at the final pipeline stage.");
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5 p-6 lg:px-7 lg:py-6">
       {/* Hero Card — single composite like sample hero-card:258 */}
-      <Card className="rounded-[16px] border-outline bg-surface shadow-sm overflow-hidden">
+      <Card className="rounded-[14px] border-[#E2E8F0] shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
         <CardContent className="p-0">
           <div className="p-[22px_26px]">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -291,13 +482,13 @@ export default function LeadDetailPage() {
                   <span>{masterData.pipelineName(lead.pipeline) ? `Pipeline: ${masterData.pipelineName(lead.pipeline)}` : "Pipeline"}</span>
                   <span>•</span>
                   <StatusBadge status={lead.status} />
-                  {masterData.stageName(lead.current_stage) ? <Badge className="bg-primary-soft text-primary border-transparent text-[11px] font-bold">{masterData.stageName(lead.current_stage)}</Badge> : null}
+                  {masterData.stageName(lead.current_stage) ? <Badge className="bg-[#EEF2FF] text-[#4F46E5] border-[#C7D2FE] text-[11px] font-bold">{masterData.stageName(lead.current_stage)}</Badge> : null}
                 </div>
-                <h1 className="mt-1 truncate font-display text-[24px] font-extrabold tracking-[-0.03em] text-on-surface">{lead.name}</h1>
+                <h1 className="mt-1 truncate text-[24px] font-extrabold tracking-[-0.03em] text-[#0F172A]">{lead.name}</h1>
                 <div className="mt-1.5 flex flex-wrap items-center gap-3.5 text-[13px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 shrink-0" /> {lead.company_name ?? "—"}</span>
-                  <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 shrink-0" /> {lead.email ?? "—"}</span>
-                  <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 shrink-0" /> <span className="font-mono">{lead.phone ?? "—"}</span></span>
+                  <span className="inline-flex items-center gap-1.5">👤 {lead.company_name ?? "—"}</span>
+                  <span className="inline-flex items-center gap-1.5">✉️ {lead.email ?? "—"}</span>
+                  <span className="inline-flex items-center gap-1.5">📞 {lead.phone ?? "—"}</span>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4 lg:hidden">
                   <Field label="Pipeline" value={masterData.pipelineName(lead.pipeline)} />
@@ -307,8 +498,8 @@ export default function LeadDetailPage() {
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
-                {caps.canMarkLost ? <Button variant="ghost" size="sm" className="text-[#DC2626] hover:bg-[#FEF2F2] font-semibold" onClick={() => setDialog("lost")}>Mark lost</Button> : null}
-                {caps.canProgress ? <Button size="sm" variant="default" className="font-semibold" onClick={() => setDialog("progress")}>Submit & move <ArrowRight className="h-3.5 w-3.5" /></Button> : caps.canConvert ? <Button size="sm" variant="default" className="font-semibold" onClick={() => setDialog("convert")}>Convert <Rocket className="h-3.5 w-3.5" /></Button> : null}
+                {caps.canMarkLost ? <Button variant="ghost" size="sm" className="text-[#DC2626] hover:bg-[#FEF2F2] font-semibold" onClick={() => setDialog("lost")}>Mark Lost</Button> : null}
+                {caps.canProgress ? <Button size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8] font-semibold" onClick={() => setDialog("progress")}>Submit & Move →</Button> : caps.canConvert ? <Button size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8] font-semibold" onClick={() => setDialog("convert")}>Convert 🚀</Button> : null}
                 {caps.canAssign ? <Button variant="outline" size="sm" className="font-semibold" onClick={() => setDialog("assign")}>Assign</Button> : null}
               </div>
             </div>
@@ -329,6 +520,18 @@ export default function LeadDetailPage() {
         <TaskSummary task={currentTask} />
       </div>
 
+      {isFirstStage ? (
+        <CallWorkspaceForm
+          lead={{ ...lead, company: lead.company_name }}
+          stage={masterData.stageName(lead.current_stage) || "New"}
+          nextStage={nextStage?.name || "Final Stage"}
+          pipeline={masterData.pipelineName(lead.pipeline) || "Sales Pipeline"}
+          onSaveDraft={saveWorkspace}
+          onCompleteTask={completeWorkspaceTask}
+          onSubmitAndMove={moveWorkspaceLead}
+        />
+      ) : null}
+
       <div className="grid gap-5 lg:grid-cols-[1.85fr_0.95fr]">
         <div className="flex flex-col gap-5">
           <CallAttemptPanel leadId={lead.id} stageId={lead.current_stage} templateVersionId={currentForm?.template_version_id ?? currentForm?.id} />
@@ -338,12 +541,46 @@ export default function LeadDetailPage() {
         </div>
         <div className="flex flex-col gap-5">
           <QuotationPanel leadId={lead.id} requiresQuotation={caps.requiresQuotation} />
-          <Card className="rounded-[16px] border-outline bg-surface shadow-sm">
-            <CardHeader className="pb-3"><CardTitle className="text-sm font-bold">Quick operations</CardTitle></CardHeader>
+          <Card className="rounded-[14px] border-[#E2E8F0] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <CardHeader className="pb-3"><CardTitle className="text-sm font-bold">Quick Operations</CardTitle></CardHeader>
             <CardContent className="flex flex-col gap-2">
-              <Button variant="outline" className="justify-start font-medium" onClick={() => setDialog("assign")}><CalendarDays className="h-4 w-4" />Schedule review meeting</Button>
-              <Button variant="outline" className="justify-start font-medium" asChild><Link to={`/tasks/new?lead=${lead.id}`} className="inline-flex items-center gap-2"><Bell className="h-4 w-4" />Set follow-up reminder</Link></Button>
-              <Button variant="outline" className="justify-start font-medium" asChild><Link to={`/quotations/new?lead=${lead.id}`} className="inline-flex items-center gap-2"><FileText className="h-4 w-4" />Send quotation</Link></Button>
+              {currentTask?.task_id ? (
+                <Button variant="outline" className="justify-start font-medium" asChild>
+                  <Link to={`/meetings/new?task_id=${currentTask.task_id}&lead=${lead.id}`}>📅 Schedule Meeting</Link>
+                </Button>
+              ) : (
+                <Button variant="outline" className="justify-start font-medium" disabled title="Create a task for this lead before scheduling a meeting">📅 Schedule Meeting</Button>
+              )}
+              <Button variant="outline" className="justify-start font-medium" onClick={() => setReminderOpen((open) => !open)}>🔔 Set Follow-up Reminder</Button>
+              {reminderOpen ? (
+                <form onSubmit={submitReminder} className="flex flex-col gap-2 rounded-lg border bg-muted/30 p-3">
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">Type</p>
+                    <Select value={reminderType} onValueChange={setReminderType}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        {FOLLOWUP_TYPES.map((type) => (
+                          <SelectItem key={type.id} value={String(type.id)}>{type.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">When</p>
+                    <Input type="datetime-local" value={reminderDate} onChange={(e) => setReminderDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium text-muted-foreground">Purpose (optional)</p>
+                    <Textarea rows={2} maxLength={2000} value={reminderPurpose} onChange={(e) => setReminderPurpose(e.target.value)} placeholder="Reason for follow-up" />
+                  </div>
+                  {reminderError ? <p className="text-xs font-medium text-destructive">{reminderError}</p> : null}
+                  <div className="flex justify-end gap-2">
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setReminderOpen(false)}>Cancel</Button>
+                    <Button type="submit" size="sm" disabled={createFollowUp.isPending}>{createFollowUp.isPending ? "Creating…" : "Create"}</Button>
+                  </div>
+                </form>
+              ) : null}
+              <Button variant="outline" className="justify-start font-medium" asChild><Link to={`/quotations/new?lead=${lead.id}`}>💬 Send Quotation</Link></Button>
             </CardContent>
           </Card>
           <ActivitiesCard leadId={lead.id} blocked={lead.status === "CONVERTED"} />

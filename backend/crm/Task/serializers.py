@@ -1,3 +1,5 @@
+import json
+
 from rest_framework import serializers
 from django.utils import timezone
 from .models import (
@@ -160,6 +162,10 @@ class MeetingSerializer(serializers.ModelSerializer):
         queryset=CustomUser.objects.filter(role__rolename__iexact="manager", is_active=True),
         required=True,
     )
+    manager_name = serializers.SerializerMethodField()
+    requested_by_name = serializers.SerializerMethodField()
+    task_title = serializers.CharField(source="task_id.task_title", read_only=True)
+    participant_details = serializers.SerializerMethodField()
 
     class Meta:
         model = Meeting
@@ -189,6 +195,41 @@ class MeetingSerializer(serializers.ModelSerializer):
             )
 
         return value
+
+    def validate_custom_fields(self, value):
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("Custom fields must be an object.")
+        definitions = value.get("definitions", [])
+        values = value.get("values", {})
+        if not isinstance(definitions, list) or not isinstance(values, dict):
+            raise serializers.ValidationError("Invalid custom-field structure.")
+        if len(definitions) > 25:
+            raise serializers.ValidationError("A task can have at most 25 custom fields.")
+        if len(json.dumps(value, default=str).encode("utf-8")) > 20_000:
+            raise serializers.ValidationError("Custom-field data is too large.")
+        return value
+
+    def get_manager_name(self, meeting):
+        user = meeting.manager
+        return user.get_full_name() or user.username or user.email
+
+    def get_requested_by_name(self, meeting):
+        user = meeting.created_by
+        return user.get_full_name() or user.username or user.email
+
+    def get_participant_details(self, meeting):
+        participants = meeting.participants.select_related("user_id").all()
+        return [
+            {
+                "participant_id": participant.participant_id,
+                "user_id": participant.user_id_id,
+                "name": participant.user_id.get_full_name() or participant.user_id.username,
+                "email": participant.user_id.email,
+                "role": participant.participant_role,
+                "is_required": participant.is_required,
+            }
+            for participant in participants
+        ]
 
     def validate_meeting_date(self, value):
         if value and value < timezone.now().date():

@@ -10,6 +10,11 @@ export async function getTasks(filters) {
   return data;
 }
 
+export async function getTaskKpi() {
+  const { data } = await apiClient.get(endpoints.tasks.kpi);
+  return data;
+}
+
 export async function getTask(taskId) {
   const { data } = await apiClient.get(endpoints.tasks.detail(taskId));
   return data;
@@ -43,4 +48,14 @@ export async function updateTaskStatus(taskId, statusId) {
     status_id: statusId,
   });
   return data;
+}
+
+export async function getTaskStatuses() {
+  const { data } = await apiClient.get(endpoints.tasks.masterStatuses);
+  return data?.task_statuses || [];
+}
+
+export async function getTaskCategories() {
+  const { data } = await apiClient.get(endpoints.tasks.masterCategories);
+  return data?.task_categories || [];
 }

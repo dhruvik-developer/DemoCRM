@@ -35,16 +35,24 @@ export default function PipelineStepper({ stages = [], currentStageId, stageEnte
               <span className={["text-sm leading-tight line-clamp-1", isActive ? "font-semibold text-on-surface" : isCompleted ? "font-medium text-on-surface" : "text-on-surface-variant"].join(" ")}>
                 {stage.name}
               </span>
+              {stage.requires_quotation ? (
+                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                  Quotation
+                </span>
+              ) : null}
+              {isActive && daysInStage !== null ? (
+                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${daysInStage > 7 ? "bg-red-50 text-red-700 border-red-200" : "bg-muted text-muted-foreground"}`}>
+                  {daysInStage}d {daysInStage > 7 ? "⚠️" : ""}
+                </span>
+              ) : null}
             </div>
-            {stage.requires_quotation ? (
-              <span className="inline-flex w-fit items-center gap-1 rounded-full border border-warning-border bg-warning-soft px-2 py-0.5 text-xs font-medium text-warning">
-                <span className="h-1.5 w-1.5 rounded-full bg-warning" /> Quotation
-              </span>
-            ) : null}
-            {isActive && daysInStage !== null ? (
-              <span className={`inline-flex w-fit rounded-full border px-2 py-0.5 text-xs font-mono ${daysInStage > 7 ? "bg-error-container text-error border-transparent" : "bg-surface-container text-on-surface-variant border-outline-variant"}`}>
-                {daysInStage}d {daysInStage > 7 ? "• overdue" : ""}
-              </span>
+            {idx < sorted.length - 1 ? (
+              <div
+                className={[
+                  "h-0.5 flex-1 mx-1 rounded -mt-6",
+                  idx < activeIndex ? "bg-[#10B981]" : "bg-[#E5E7EB]",
+                ].join(" ")}
+              />
             ) : null}
           </div>
         );

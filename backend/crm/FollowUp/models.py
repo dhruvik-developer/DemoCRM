@@ -47,3 +47,23 @@ class Followup(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class RecordNote(models.Model):
+    class EntityType(models.TextChoices):
+        TASK = "task", "Task"
+        FOLLOWUP = "followup", "Follow-up"
+        MEETING = "meeting", "Meeting"
+
+    note_id = models.AutoField(primary_key=True)
+    entity_type = models.CharField(max_length=20, choices=EntityType.choices)
+    entity_id = models.PositiveIntegerField()
+    body = models.TextField(max_length=5000)
+    created_by = models.ForeignKey(
+        "accounts.CustomUser", on_delete=models.PROTECT, related_name="record_notes"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at",)
+        indexes = [models.Index(fields=("entity_type", "entity_id"))]

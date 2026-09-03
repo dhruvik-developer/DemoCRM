@@ -68,7 +68,7 @@ class NotificationEventType(models.TextChoices):
     LEAD_REENGAGED = "LEAD_REENGAGED", "Lead Re-engaged"
     LEAD_CONVERTED = "LEAD_CONVERTED", "Lead Converted"
 
-    # Activity Events
+    # Activity & Call Events
     ACTIVITY_CREATED = "ACTIVITY_CREATED", "Activity Created"
 
     # Accounts / User Events

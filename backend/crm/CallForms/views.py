@@ -90,6 +90,9 @@ class CallTemplateViewSet(viewsets.ModelViewSet):
             created_by=request.user,
             initial_fields=data.get("initial_fields", []),
         )
+        template.email_configuration = data.get("email_configuration", {})
+        template.is_active = data.get("is_active", True)
+        template.save(update_fields=["email_configuration", "is_active", "updated_at"])
 
         response_serializer = CallTemplateDetailSerializer(template)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)

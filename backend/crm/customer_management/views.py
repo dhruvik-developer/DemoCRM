@@ -53,6 +53,25 @@ from .services import CRMService, QuotationService
 from .pdf_utils import generate_quotation_pdf
 
 
+def _leads_visible_to(user):
+    """Return the lead scope available to the authenticated user."""
+    leads = Lead.objects.select_related(
+        "source",
+        "assigned_to",
+        "pipeline",
+        "current_stage",
+    )
+    if user.is_superuser:
+        return leads
+
+    role = getattr(user, "role", None)
+    role_name = getattr(role, "rolename", "").strip().lower() if role else ""
+    if role_name in {"admin", "manager"}:
+        return leads
+
+    return leads.filter(assigned_to=user)
+
+
 @extend_schema(tags=["Lead Sources"])
 class LeadSourceListCreateView(APIView):
     permission_classes = [CRMHasPermission]
@@ -389,12 +408,7 @@ class LeadListCreateView(APIView):
         responses={200: LeadSerializer(many=True)},
     )
     def get(self, request):
-        leads = Lead.objects.select_related(
-            "source",
-            "assigned_to",
-            "pipeline",
-            "current_stage",
-        ).all()
+        leads = _leads_visible_to(request.user)
 
         serializer = LeadSerializer(
             leads,
@@ -445,7 +459,6 @@ class LeadListCreateView(APIView):
 
 @extend_schema(tags=["Leads"])
 class LeadDetailView(generics.RetrieveUpdateAPIView):
-    queryset = Lead.objects.all()
     serializer_class = LeadSerializer
     permission_classes = [CRMHasPermission]
 
@@ -454,6 +467,11 @@ class LeadDetailView(generics.RetrieveUpdateAPIView):
         "PUT": "change_lead",
         "PATCH": "change_lead",
     }
+
+    def get_queryset(self):
+        # Using the same restricted queryset for retrieve and update prevents
+        # employees from accessing another employee's lead by guessing its UUID.
+        return _leads_visible_to(self.request.user)
 
     @extend_schema(
         summary="Retrieve a lead by UUID",

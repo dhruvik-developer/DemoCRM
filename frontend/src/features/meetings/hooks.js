@@ -11,10 +11,27 @@ import {
   createMeeting,
   decideMeetingApproval,
   getMeeting,
+  getMeetings,
+  getMeetingKpi,
   removeMeetingParticipant,
   rescheduleMeeting,
   updateMeetingStatus,
 } from "./api";
+
+export function useMeetings(filters) {
+  return useQuery({
+    queryKey: meetingKeys.list(filters),
+    queryFn: () => getMeetings(filters),
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useMeetingKpi() {
+  return useQuery({
+    queryKey: ["meetings", "kpi"],
+    queryFn: getMeetingKpi,
+  });
+}
 
 export function useMeeting(meetingId) {
   return useQuery({
@@ -45,12 +62,16 @@ export function useCreateMeeting() {
 export function useDecideApproval(meetingId) {
   const invalidate = useInvalidateMeeting(meetingId);
   return useMutation({
-    mutationFn: (payload) => decideMeetingApproval(meetingId, payload),
+    mutationFn: (payload) => {
+      const id = payload.meetingId || meetingId;
+      const { meetingId: _, ...rest } = payload;
+      return decideMeetingApproval(id, rest);
+    },
     onSuccess: (_data, payload) => {
       invalidate();
       toast.success(
-        payload.approval_status === "APPROVED"
-          ? "Meeting approved — invites are being sent."
+        payload.approval_status === "APPROVED" || payload.decision === "APPROVE"
+          ? "Meeting approved — invites and link are being sent."
           : "Meeting rejected.",
       );
     },
@@ -61,10 +82,14 @@ export function useDecideApproval(meetingId) {
 export function useRescheduleMeeting(meetingId) {
   const invalidate = useInvalidateMeeting(meetingId);
   return useMutation({
-    mutationFn: (payload) => rescheduleMeeting(meetingId, payload),
+    mutationFn: (payload) => {
+      const id = payload.meetingId || meetingId;
+      const { meetingId: _, ...rest } = payload;
+      return rescheduleMeeting(id, rest);
+    },
     onSuccess: () => {
       invalidate();
-      toast.success("Meeting rescheduled — the manager has been notified.");
+      toast.success("Meeting rescheduled — sent back to manager for approval.");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });

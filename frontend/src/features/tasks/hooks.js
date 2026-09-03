@@ -12,14 +12,26 @@ import {
   deleteTask,
   getTask,
   getTasks,
+  getTaskKpi,
+  getTaskStatuses,
+  getTaskCategories,
+  updateTask,
   updateTaskStatus,
 } from "./api";
 
-export function useTasks(filters) {
+export function useTasks(filters, options) {
   return useQuery({
     queryKey: taskKeys.list(filters),
     queryFn: () => getTasks(filters),
     placeholderData: (previous) => previous,
+    ...options,
+  });
+}
+
+export function useTaskKpi() {
+  return useQuery({
+    queryKey: ["tasks", "kpi"],
+    queryFn: getTaskKpi,
   });
 }
 
@@ -44,6 +56,18 @@ export function useCreateTask() {
       invalidate();
       toast.success("Task created.");
       return task;
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useUpdateTask(taskId) {
+  const invalidate = useInvalidateTasks();
+  return useMutation({
+    mutationFn: (values) => updateTask(taskId, values),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Task updated.");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });
@@ -76,7 +100,7 @@ export function useUpdateTaskStatus(taskId) {
 export function useDeleteTask(taskId) {
   const invalidate = useInvalidateTasks();
   return useMutation({
-    mutationFn: () => deleteTask(taskId),
+    mutationFn: (id) => deleteTask(taskId ?? id),
     onSuccess: () => {
       invalidate();
       toast.success("Task deleted.");
@@ -84,3 +108,21 @@ export function useDeleteTask(taskId) {
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });
 }
+
+export function useTaskStatuses() {
+  return useQuery({
+    queryKey: ["tasks", "master-statuses"],
+    queryFn: getTaskStatuses,
+    staleTime: 5 * 60 * 1000, // 5 minutes cache
+  });
+}
+
+
+export function useTaskCategories() {
+  return useQuery({
+    queryKey: ["tasks", "master-categories"],
+    queryFn: getTaskCategories,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+

@@ -36,8 +36,8 @@ class NotificationTemplateListView(APIView):
     permission_classes = [NotificationHasPermission]
 
     permission_names = {
-        "GET": "view_notification_template",
-        "POST": "add_notification_template",
+        "GET": "view_notificationtemplate",
+        "POST": "add_notificationtemplate",
     }
 
     @extend_schema(
@@ -145,10 +145,10 @@ class NotificationTemplateDetailView(APIView):
     permission_classes = [NotificationHasPermission]
 
     permission_names = {
-        "GET": "view_notification_template",
-        "PUT": "change_notification_template",
-        "PATCH": "change_notification_template",
-        "DELETE": "delete_notification_template",
+        "GET": "view_notificationtemplate",
+        "PUT": "change_notificationtemplate",
+        "PATCH": "change_notificationtemplate",
+        "DELETE": "delete_notificationtemplate",
     }
 
     def get_template(self, pk):

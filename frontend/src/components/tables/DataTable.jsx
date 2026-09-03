@@ -57,6 +57,7 @@ export default function DataTable({
   pageSize = 10,
   count = 0,
   onPageChange,
+  onRowClick,
 }) {
   const totalPages = Math.max(1, Math.ceil(count / pageSize));
   const canSort = Boolean(onSortChange);
