@@ -10,20 +10,54 @@ import {
   createFollowUp,
   deleteFollowUp,
   getFollowUps,
+  getFollowUp,
+  getFollowUpKpi,
+  updateFollowUp,
   updateFollowUpStatus,
 } from "./api";
 
-export function useFollowUps(filters) {
+export function useFollowUps(filters, options) {
   return useQuery({
     queryKey: followUpKeys.list(filters),
     queryFn: () => getFollowUps(filters),
     placeholderData: (previous) => previous,
+    ...options,
+  });
+}
+
+export function useFollowUp(followUpId) {
+  return useQuery({
+    queryKey: followUpKeys.detail(followUpId),
+    queryFn: () => getFollowUp(followUpId),
+    enabled: Boolean(followUpId),
+  });
+}
+
+export function useFollowUpKpi() {
+  return useQuery({
+    queryKey: ["followups", "kpi"],
+    queryFn: getFollowUpKpi,
   });
 }
 
 function useInvalidateFollowUps() {
   const queryClient = useQueryClient();
-  return () => queryClient.invalidateQueries({ queryKey: followUpKeys.all });
+  return () => {
+    queryClient.invalidateQueries({ queryKey: followUpKeys.all });
+    queryClient.invalidateQueries({ queryKey: ["followups", "kpi"] });
+  };
+}
+
+export function useUpdateFollowUp() {
+  const invalidate = useInvalidateFollowUps();
+  return useMutation({
+    mutationFn: ({ followUpId, ...partial }) => updateFollowUp(followUpId, partial),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Follow-up updated.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
 }
 
 export function useCreateFollowUp() {

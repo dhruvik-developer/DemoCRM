@@ -43,7 +43,7 @@ export default function LeadSelect({ value, onChange, disabled }) {
   return (
     <div className="flex flex-col gap-1">
       <Select value={value} onValueChange={onChange} disabled={disabled}>
-        <SelectTrigger>
+        <SelectTrigger className="w-full">
           <SelectValue
             placeholder={leadsQuery.isLoading ? "Loading leads…" : "Select lead"}
           />
@@ -51,7 +51,12 @@ export default function LeadSelect({ value, onChange, disabled }) {
         <SelectContent>
           {leads.map((lead) => (
             <SelectItem key={lead.id} value={String(lead.id)}>
-              {lead.id} - {lead.name}
+              <span className="font-medium truncate">{lead.name || "Unnamed Lead"}</span>
+              {lead.company_name || lead.email ? (
+                <span className="text-xs text-muted-foreground ml-2 truncate">
+                  ({lead.company_name || lead.email})
+                </span>
+              ) : null}
             </SelectItem>
           ))}
         </SelectContent>

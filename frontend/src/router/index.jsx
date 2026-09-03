@@ -14,18 +14,19 @@ import LeadDetailPage from "@/features/leads/pages/LeadDetailPage";
 import CustomersListPage from "@/features/customers/pages/CustomersListPage";
 import CustomerDetailPage from "@/features/customers/pages/CustomerDetailPage";
 import TasksListPage from "@/features/tasks/pages/TasksListPage";
+import TaskCalendarPage from "@/features/tasks/pages/TaskCalendarPage";
 import TaskCreatePage from "@/features/tasks/pages/TaskCreatePage";
 import TaskDetailPage from "@/features/tasks/pages/TaskDetailPage";
 import MeetingsListPage from "@/features/meetings/pages/MeetingsListPage";
 import MeetingCreatePage from "@/features/meetings/pages/MeetingCreatePage";
 import MeetingDetailPage from "@/features/meetings/pages/MeetingDetailPage";
 import FollowUpsListPage from "@/features/followups/pages/FollowUpsListPage";
+import FollowUpDetailPage from "@/features/followups/pages/FollowUpDetailPage";
 import RemindersPage from "@/features/reminders/pages/RemindersPage";
 import QuotationsListPage from "@/features/quotations/pages/QuotationsListPage";
 import QuotationCreatePage from "@/features/quotations/pages/QuotationCreatePage";
 import QuotationDetailPage from "@/features/quotations/pages/QuotationDetailPage";
 import NotificationsPage from "@/features/notifications/pages/NotificationsPage";
-import NotificationTemplatesPage from "@/features/notifications/pages/NotificationTemplatesPage";
 import CallTemplatesPage from "@/features/callforms/pages/CallTemplatesPage";
 import CallTemplateDetailPage from "@/features/callforms/pages/CallTemplateDetailPage";
 import CallFormSubmitPage from "@/features/callforms/pages/CallFormSubmitPage";
@@ -69,17 +70,18 @@ export const router = createBrowserRouter([
           { path: "/customers", element: <CustomersListPage /> },
           { path: "/customers/:customerId", element: <CustomerDetailPage /> },
           { path: "/tasks", element: <TasksListPage /> },
+          { path: "/calendar", element: <TaskCalendarPage /> },
           { path: "/tasks/new", element: <TaskCreatePage /> },
           { path: "/tasks/:taskId", element: <TaskDetailPage /> },
           { path: "/meetings", element: <MeetingsListPage /> },
           { path: "/meetings/new", element: <MeetingCreatePage /> },
           { path: "/meetings/:meetingId", element: <MeetingDetailPage /> },
           { path: "/followups", element: <FollowUpsListPage /> },
+          { path: "/followups/:followUpId", element: <FollowUpDetailPage /> },
           { path: "/quotations", element: <QuotationsListPage /> },
           { path: "/quotations/new", element: <QuotationCreatePage /> },
           { path: "/quotations/:quotationId", element: <QuotationDetailPage /> },
           { path: "/notifications", element: <NotificationsPage /> },
-          { path: "/notifications/templates", element: <NotificationTemplatesPage /> },
           { path: "/callforms", element: <CallTemplatesPage /> },
           { path: "/callforms/templates/:templateId", element: <CallTemplateDetailPage /> },
           { path: "/callforms/submit", element: <CallFormSubmitPage /> },

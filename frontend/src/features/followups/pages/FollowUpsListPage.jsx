@@ -16,7 +16,7 @@ import {
   followUpTypeName,
 } from "@/utils/followUpMasterData";
 import TaskSelect from "@/features/tasks/components/TaskSelect";
-import { useCreateFollowUp, useDeleteFollowUp, useFollowUps, useUpdateFollowUpStatus } from "../hooks";
+import { useCreateFollowUp, useDeleteFollowUp, useFollowUps, useUpdateFollowUpStatus, useFollowUpKpi } from "../hooks";
 import { followUpSchema } from "@/schemas/followUp.schema";
 import DataTable from "@/components/tables/DataTable";
 import EmptyState from "@/components/common/EmptyState";
@@ -26,6 +26,13 @@ import FormField from "@/components/forms/FormField";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import ListControls from "@/components/common/ListControls";
+import { usePinnedRecords } from "@/hooks/usePinnedRecords";
+import { MessageSquareText, Pin, ListTodo, Clock, CalendarClock, CalendarRange, CheckCircle2, Hourglass, PhoneCall, Mail } from "lucide-react";
+import RecordNotesPanel from "@/features/notes/components/RecordNotesPanel";
+import TakeFollowUpPanel from "../components/TakeFollowUpPanel";
 import {
   Dialog,
   DialogContent,
@@ -41,7 +48,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-function CreateDialog({ open, onOpenChange }) {
+function CreateDialog({ open, onOpenChange, initialTaskId = "" }) {
   const createFollowUp = useCreateFollowUp();
 
   const {
@@ -53,7 +60,7 @@ function CreateDialog({ open, onOpenChange }) {
   } = useForm({
     resolver: zodResolver(followUpSchema),
     defaultValues: {
-      task_id: "",
+      task_id: initialTaskId,
       followup_status_id: String(FOLLOWUP_STATUSES[0]?.id ?? ""),
       followup_type_id: String(FOLLOWUP_TYPES[0]?.id ?? ""),
       followup_date: "",
@@ -150,12 +157,33 @@ function CreateDialog({ open, onOpenChange }) {
   );
 }
 
+function KpiCard({ title, value, loading, icon: Icon, to }) {
+  return (
+    <Card className="rounded-xl">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        {loading ? <Skeleton className="h-7 w-12" /> : <div className="text-2xl font-bold">{value ?? "—"}</div>}
+        {to ? <Link to={to} className="text-xs text-[#2563EB] hover:underline">View →</Link> : null}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function FollowUpsListPage() {
   const { resolved } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
+  const initialTaskId = searchParams.get("task_id") ?? "";
+  const statusFilter = searchParams.get("status") ?? "all";
+  const inbox = searchParams.get("inbox") ?? "all"; // all | pending | overdue | today | upcoming | completed
+  const ordering = searchParams.get("ordering") ?? "";
+  const pinnedOnly = searchParams.get("pinned") === "1";
+  const pins = usePinnedRecords("crm:pinned-followups");
   const updateParam = (key, value) => {
     setSearchParams(
       (previous) => {
@@ -169,20 +197,38 @@ export default function FollowUpsListPage() {
     );
   };
 
-  const followUpsQuery = useFollowUps({ page, search: search || undefined });
+  const followUpsQuery = useFollowUps({ page: pinnedOnly ? 1 : page, page_size: pinnedOnly ? 100 : 10, search: search || undefined, ordering: ordering || undefined });
   const updateStatus = useUpdateFollowUpStatus();
   const deleteFollowUp = useDeleteFollowUp();
+  const kpi = useFollowUpKpi();
 
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(searchParams.get("create") === "1");
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [notesRecord, setNotesRecord] = useState(null);
+  const [panelFollowUp, setPanelFollowUp] = useState(null);
 
   // G13: creating requires change_followup, NOT add_followup.
-  const canCreate = hasPermission(resolved, "change_followup");
-  const canChangeStatus = hasPermission(resolved, "change_followupstatus");
+  const canCreate =
+    hasPermission(resolved, "add_followup") || hasPermission(resolved, "change_followup");
   const canDelete = hasPermission(resolved, "delete_followup");
 
-  const rows = (followUpsQuery.data?.results ?? []).filter(Boolean);
-  const count = followUpsQuery.data?.count ?? 0;
+  let rows = (followUpsQuery.data?.results ?? []).filter(Boolean);
+  if (statusFilter !== "all") rows = rows.filter((row) => String(row.followup_status) === statusFilter);
+
+  // Inbox filtering client-side per §13 (backend has no overdue/today param).
+  const now = new Date();
+  const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const endToday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const isCompleted = (row) => String(row.followup_status) === "2";
+  if (inbox === "pending") rows = rows.filter((row) => !isCompleted(row));
+  else if (inbox === "overdue") rows = rows.filter((row) => !isCompleted(row) && row.followup_date && new Date(row.followup_date) < now);
+  else if (inbox === "today") rows = rows.filter((row) => row.followup_date && new Date(row.followup_date) >= startToday && new Date(row.followup_date) < endToday);
+  else if (inbox === "upcoming") rows = rows.filter((row) => !isCompleted(row) && row.followup_date && new Date(row.followup_date) >= endToday);
+  else if (inbox === "completed") rows = rows.filter((row) => isCompleted(row));
+
+  if (pinnedOnly) rows = rows.filter((row) => pins.isPinned(row.followup_id));
+  rows = pins.pinnedFirst(rows, (row) => row.followup_id);
+  const count = pinnedOnly ? rows.length : (followUpsQuery.data?.count ?? 0);
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
@@ -193,12 +239,49 @@ export default function FollowUpsListPage() {
         ) : null}
       </div>
 
-      <Input
-        placeholder="Search…"
-        className="w-64"
-        defaultValue={search}
-        onChange={(event) => updateParam("search", event.target.value.trim())}
-      />
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard title="Total follow-ups" value={kpi.data?.total} loading={kpi.isLoading} icon={ListTodo} />
+        <KpiCard title="Pending" value={kpi.data?.pending} loading={kpi.isLoading} icon={Hourglass} to="/followups?inbox=pending" />
+        <KpiCard title="Completed" value={kpi.data?.completed} loading={kpi.isLoading} icon={CheckCircle2} to="/followups?inbox=completed" />
+        <KpiCard title="Overdue" value={kpi.data?.overdue} loading={kpi.isLoading} icon={Clock} to="/followups?inbox=overdue" />
+        <KpiCard title="Due today" value={kpi.data?.today} loading={kpi.isLoading} icon={CalendarClock} to="/followups?inbox=today" />
+        <KpiCard title="Upcoming" value={kpi.data?.upcoming} loading={kpi.isLoading} icon={CalendarRange} to="/followups?inbox=upcoming" />
+        <KpiCard title="Calls" value={kpi.data?.by_type?.[1]} loading={kpi.isLoading} icon={PhoneCall} />
+        <KpiCard title="Emails" value={kpi.data?.by_type?.[2]} loading={kpi.isLoading} icon={Mail} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {[
+          ["all", "All"],
+          ["pending", "Pending"],
+          ["overdue", "Overdue"],
+          ["today", "Today"],
+          ["upcoming", "Upcoming"],
+          ["completed", "Completed"],
+        ].map(([key, label]) => (
+          <Button key={key} variant={inbox === key ? "default" : "outline"} size="sm" onClick={() => updateParam("inbox", key === "all" ? "" : key)} className={inbox === key ? "bg-[#2563EB] hover:bg-[#1D4ED8]" : ""}>
+            {label}
+          </Button>
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          <Input
+            placeholder="Search…"
+            className="w-64"
+            defaultValue={search}
+            onChange={(event) => updateParam("search", event.target.value.trim())}
+          />
+        </div>
+        <ListControls
+          filterValue={statusFilter}
+          filterOptions={[{ value: "all", label: "All statuses" }, ...FOLLOWUP_STATUSES.map((item) => ({ value: String(item.id), label: item.name }))]}
+          onFilterChange={(value) => updateParam("status", value === "all" ? "" : value)}
+          sortValue={ordering}
+          sortOptions={[{ value: "followup_date", label: "Date: oldest first" }, { value: "-followup_date", label: "Date: newest first" }]}
+          onSortChange={(value) => updateParam("ordering", value)}
+          pinnedOnly={pinnedOnly}
+          onPinnedOnlyChange={(value) => updateParam("pinned", value ? "1" : "")}
+        />
+      </div>
 
       {followUpsQuery.isError ? (
         <PageError error={followUpsQuery.error} onRetry={followUpsQuery.refetch} />
@@ -206,12 +289,18 @@ export default function FollowUpsListPage() {
         <DataTable
           columns={[
             {
+              key: "pin",
+              header: "",
+              className: "w-10",
+              render: (row) => <Button variant="ghost" size="icon-sm" title={pins.isPinned(row.followup_id) ? "Unpin follow-up" : "Pin follow-up"} onClick={() => pins.togglePin(row.followup_id)}><Pin className={pins.isPinned(row.followup_id) ? "fill-primary text-primary" : "text-muted-foreground"} /></Button>,
+            },
+            {
               key: "task_id",
               header: "Task",
               render: (row) =>
                 row.task_id ? (
-                  <Link to={`/tasks/${row.task_id}`} className="hover:underline">
-                    #{row.task_id}
+                  <Link to={`/tasks/${row.task_id}`} className="font-medium text-foreground hover:underline">
+                    {row.task_title || `Task #${row.task_id}`}
                   </Link>
                 ) : (
                   "—"
@@ -236,22 +325,33 @@ export default function FollowUpsListPage() {
               render: (row) => new Date(row.followup_date).toLocaleString(),
             },
             {
+              key: "notes",
+              header: "Notes",
+              className: "w-16",
+              render: (row) => <Button variant="ghost" size="icon-sm" title="Add note" aria-label="Follow-up notes" onClick={() => setNotesRecord({ type: "followup", id: row.followup_id, title: row.task_title || `Follow-up #${row.followup_id}` })}><MessageSquareText /></Button>,
+            },
+            {
               key: "actions",
               header: "",
               render: (row) => (
                 <div className="flex items-center justify-end gap-2">
-                  {canChangeStatus ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={updateStatus.isPending || row.followup_status === 2}
-                      onClick={() =>
-                        updateStatus.mutateAsync({ followUpId: row.followup_id, statusId: 2 })
-                      }
-                    >
-                      Complete
-                    </Button>
-                  ) : null}
+                  <Button
+                    size="sm"
+                    className="bg-[#2563EB] hover:bg-[#1D4ED8]"
+                    onClick={() => setPanelFollowUp(row)}
+                  >
+                    Take Follow-up
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={updateStatus.isPending || row.followup_status === 2}
+                    onClick={() =>
+                      updateStatus.mutateAsync({ followUpId: row.followup_id, statusId: 2 })
+                    }
+                  >
+                    {row.followup_status === 2 ? "Completed" : "Complete"}
+                  </Button>
                   {canDelete ? (
                     <Button
                       size="sm"
@@ -272,16 +372,24 @@ export default function FollowUpsListPage() {
           emptyState={
             <EmptyState title="No follow-ups found" description={search ? "Try adjusting the search." : undefined} />
           }
-          sortValue={searchParams.get("ordering") ?? ""}
+          sortValue={ordering}
           onSortChange={(value) => updateParam("ordering", value)}
-          page={page}
+          page={pinnedOnly ? 1 : page}
           pageSize={10}
           count={count}
           onPageChange={(nextPage) => updateParam("page", String(nextPage))}
         />
       )}
 
-      <CreateDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <CreateDialog
+        key={initialTaskId || "new"}
+        open={createOpen}
+        initialTaskId={initialTaskId}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open && searchParams.has("create")) updateParam("create", "");
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(pendingDelete)}
@@ -296,6 +404,8 @@ export default function FollowUpsListPage() {
           deleteFollowUp.mutateAsync(pendingDelete.followup_id).then(() => setPendingDelete(null));
         }}
       />
+      <RecordNotesPanel record={notesRecord} onClose={() => setNotesRecord(null)} />
+      <TakeFollowUpPanel followUp={panelFollowUp} onClose={() => setPanelFollowUp(null)} />
     </div>
   );
 }

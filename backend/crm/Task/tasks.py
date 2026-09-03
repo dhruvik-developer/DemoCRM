@@ -242,7 +242,7 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
         # TEMPLATE BASED NOTIFICATION
         # ==================================================
 
-        trigger_notification_event(
+        notifications = trigger_notification_event(
             event_type=event_type,
             recipient=manager,
             context=context,
@@ -253,7 +253,12 @@ def notify_manager_about_meeting(meeting_id, template_id=None):
         # DIRECT EMAIL TO MANAGER
         # ==================================================
 
-        if manager.email:
+        template_email_sent = any(
+            notification.channel in ("EMAIL", "BOTH")
+            for notification in notifications
+        )
+
+        if manager.email and not template_email_sent:
 
             send_mail(
                 subject=(f"Meeting Approval Required: " f"{meeting.meeting_title}"),

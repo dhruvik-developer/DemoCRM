@@ -16,6 +16,8 @@ class CallTemplate(models.Model):
     name = models.CharField(max_length=150, unique=True)
     description = models.TextField(blank=True, null=True)
     is_active = models.BooleanField(default=True)
+    # Retained for backward-compatible storage after Meeting Templates UI removal.
+    email_configuration = models.JSONField(default=dict, blank=True)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,

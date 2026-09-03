@@ -6,6 +6,16 @@
 import apiClient from "@/api/axios";
 import { endpoints } from "@/api/endpoints";
 
+export async function getMeetings(filters) {
+  const { data } = await apiClient.get(endpoints.meetings.list, { params: filters });
+  return data;
+}
+
+export async function getMeetingKpi() {
+  const { data } = await apiClient.get(endpoints.meetings.kpi);
+  return data;
+}
+
 export async function createMeeting(values) {
   const { data } = await apiClient.post(endpoints.meetings.create, values);
   return data;

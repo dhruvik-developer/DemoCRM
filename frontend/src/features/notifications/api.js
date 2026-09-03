@@ -24,6 +24,14 @@ export async function createNotificationTemplate(values) {
   return data;
 }
 
+export async function updateNotificationTemplate(templateId, values) {
+  const { data } = await apiClient.patch(
+    endpoints.notifications.templateDetail(templateId),
+    values,
+  );
+  return data;
+}
+
 /** Soft delete on the backend (is_active=False). */
 export async function deleteNotificationTemplate(templateId) {
   const { data } = await apiClient.delete(

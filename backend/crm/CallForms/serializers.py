@@ -115,6 +115,7 @@ class CallTemplateSerializer(serializers.ModelSerializer):
             "name",
             "description",
             "is_active",
+            "email_configuration",
             "created_by",
             "created_at",
             "updated_at",
@@ -144,6 +145,7 @@ class CreateTemplateSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=150)
     description = serializers.CharField(required=False, allow_blank=True, default="")
     is_active = serializers.BooleanField(default=True)
+    email_configuration = serializers.JSONField(required=False, default=dict)
     initial_fields = serializers.ListField(
         child=serializers.DictField(),
         required=False,

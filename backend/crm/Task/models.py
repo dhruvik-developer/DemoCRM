@@ -66,6 +66,11 @@ class Task(models.Model):
     )
     task_title = models.CharField(max_length=200)
     description = models.TextField(blank=True, null=True)
+    custom_fields = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="User-defined task field definitions and values.",
+    )
     due_date = models.DateTimeField(blank=True, null=True)
     status = models.ForeignKey(
         TaskStatus, on_delete=models.PROTECT, related_name="tasks"

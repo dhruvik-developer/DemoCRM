@@ -16,7 +16,7 @@ from .services import (
     OFFLINE_MEETING_TYPE_ID,
     OFFICE_LOCATION,
 )
-from django.db.models import Q
+from django.db.models import Q, Count
 
 from .permission import CanCommunicateWithLead
 
@@ -74,11 +74,11 @@ User = get_user_model()
 class MasterDataListView(APIView):
     """
     Base for read-only master-data (enum) list endpoints.
-    Subclasses set model / serializer_class / response_key /
-    permission_names. Only active rows are returned.
+    Subclasses set model / serializer_class / response_key.
+    Only active rows are returned.
     """
 
-    permission_classes = [CanCommunicateWithLead]
+    permission_classes = [IsAuthenticated]
     model = None
     serializer_class = None
     response_key = None
@@ -394,8 +394,11 @@ class TaskListCreateView(APIView):
     )
     def post(self, request):
         try:
+            data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+            if not data.get("assigned_to"):
+                data["assigned_to"] = getattr(request.user, "user_id", request.user.pk)
 
-            serializer = TaskSerializer(data=request.data, context={"request": request})
+            serializer = TaskSerializer(data=data, context={"request": request})
 
             if not serializer.is_valid():
 
@@ -438,6 +441,25 @@ class TaskListCreateView(APIView):
                 customer=task.customer,
             )
 
+            # Automatically create a Follow-up instance if task is follow-up category or follow-up related
+            category_name = str(getattr(task.category, "category_name", "") or str(task.category)).lower()
+            if "follow" in category_name or "follow" in task.task_title.lower():
+                try:
+                    from FollowUp.models import Followup, FollowUpStatus, FollowUpTypes
+                    default_status = FollowUpStatus.objects.filter(is_active=True).first()
+                    default_type = FollowUpTypes.objects.filter(is_active=True).first()
+                    if default_status and default_type:
+                        Followup.objects.create(
+                            task_id=task,
+                            followup_status=default_status,
+                            followup_type=default_type,
+                            followup_date=task.due_date or timezone.now(),
+                            decription=task.description or f"Follow-up for {task.task_title}",
+                            created_by=request.user,
+                        )
+                except Exception:
+                    logger.exception("Failed to auto-create Followup record for task: %s", task.pk)
+
             if task.assigned_to and task.assigned_to != request.user:
                 trigger_notification_event(
                     event_type=NotificationEventType.TASK_ASSIGNED,
@@ -467,6 +489,242 @@ class TaskListCreateView(APIView):
 
             return Response(
                 {"error": ("Something went wrong while " "creating the task.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+def _visible_tasks_queryset(request):
+    """Active tasks visible to the requesting user.
+
+    Mirrors the role-based visibility used by TaskListCreateView:
+    superuser / admin / manager see all active tasks, everyone else
+    only sees tasks assigned to them.
+    """
+    tasks = Task.objects.filter(is_active=True).select_related("status", "priority")
+    user = request.user
+    if not user.is_superuser:
+        role = getattr(user, "role", None)
+        if role is None:
+            return None, {"detail": "No role assigned to this user."}
+        role_name = getattr(role, "rolename", "").strip().lower()
+        if role_name not in ["admin", "manager"]:
+            tasks = tasks.filter(assigned_to=user)
+    return tasks, None
+
+
+# ==========================================================
+# TASK KPI (aggregate summary)
+# ==========================================================
+
+
+class TaskKPIView(APIView):
+    """GET /api/tasks/kpi/
+
+    Returns aggregate KPIs for tasks visible to the requesting user.
+    Counts respect the same role-based visibility as the task list.
+    """
+
+    permission_classes = [CanCommunicateWithLead]
+    permission_names = {"GET": "view_task"}
+
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Task KPIs",
+        description=(
+            "GET: Returns aggregate task KPIs (total, open, overdue, today, "
+            "upcoming, completed, high_priority) for tasks visible to the "
+            "requesting user."
+        ),
+        operation_id="task_kpi",
+        responses={
+            200: inline_serializer(
+                "TaskKPIResponse",
+                fields={
+                    "total": serializers.IntegerField(),
+                    "open": serializers.IntegerField(),
+                    "overdue": serializers.IntegerField(),
+                    "today": serializers.IntegerField(),
+                    "upcoming": serializers.IntegerField(),
+                    "completed": serializers.IntegerField(),
+                    "high_priority": serializers.IntegerField(),
+                },
+            ),
+            403: inline_serializer(
+                "TaskKPIForbiddenResponse", fields={"detail": serializers.CharField()}
+            ),
+            500: inline_serializer(
+                "TaskKPIServerErrorResponse", fields={"error": serializers.CharField()}
+            ),
+        },
+    )
+    def get(self, request):
+        try:
+            tasks, error = _visible_tasks_queryset(request)
+            if error:
+                return Response(error, status=status.HTTP_403_FORBIDDEN)
+
+            # Status ID 3 == Completed (TASK_STATUSES / frontend constants)
+            completed_status_id = 3
+
+            now = timezone.now()
+            start_today = timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_today = start_today + timezone.timedelta(days=1)
+
+            total = tasks.count()
+
+            completed_tasks = tasks.filter(status_id=completed_status_id)
+            open_tasks = tasks.exclude(status_id=completed_status_id)
+
+            completed = completed_tasks.count()
+            open_count = open_tasks.count()
+
+            overdue = open_tasks.filter(due_date__lt=now).count()
+            today = open_tasks.filter(due_date__gte=start_today, due_date__lt=end_today).count()
+            upcoming = open_tasks.filter(due_date__gte=end_today).count()
+
+            high_priority = open_tasks.filter(priority_id=3).count()
+
+            return Response(
+                {
+                    "total": total,
+                    "open": open_count,
+                    "overdue": overdue,
+                    "today": today,
+                    "upcoming": upcoming,
+                    "completed": completed,
+                    "high_priority": high_priority,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except (Http404, APIException):
+            raise
+        except Exception:
+            logger.exception(
+                "Error while fetching task KPIs: user_id=%s", request.user.pk
+            )
+            return Response(
+                {"error": ("Something went wrong while " "fetching task KPIs.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+def _visible_meetings_queryset(request):
+    """Meetings visible to the requesting user.
+
+    Mirrors the role-based visibility used by MeetingCreateView list:
+    superuser / admin see all active meetings, everyone else only sees
+    meetings they created or manage.
+    """
+    meetings = Meeting.objects.filter(is_active=True).select_related(
+        "task_id", "lead", "meeting_status_id", "meeting_type_id", "created_by", "manager"
+    )
+    user = request.user
+    if not user.is_superuser:
+        role = getattr(user, "role", None)
+        if role is None:
+            return None, {"detail": "No role assigned to this user."}
+        role_name = getattr(role, "rolename", "").strip().lower()
+        if role_name != "admin":
+            meetings = meetings.filter(Q(created_by=user) | Q(manager=user))
+    return meetings, None
+
+
+# ==========================================================
+# MEETING KPI (aggregate summary)
+# ==========================================================
+
+
+class MeetingKPIView(APIView):
+    """GET /api/tasks/meetings/kpi/
+
+    Returns aggregate KPIs for meetings visible to the requesting user.
+    Counts respect the same role-based visibility as the meeting list.
+    """
+
+    permission_classes = [CanCommunicateWithLead]
+    permission_names = {"GET": "view_meeting"}
+
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Meeting KPIs",
+        description=(
+            "GET: Returns aggregate meeting KPIs (total, pending, approved, "
+            "rejected, online, offline, today, upcoming) for meetings visible "
+            "to the requesting user."
+        ),
+        operation_id="meeting_kpi",
+        responses={
+            200: inline_serializer(
+                "MeetingKPIResponse",
+                fields={
+                    "total": serializers.IntegerField(),
+                    "pending": serializers.IntegerField(),
+                    "approved": serializers.IntegerField(),
+                    "rejected": serializers.IntegerField(),
+                    "online": serializers.IntegerField(),
+                    "offline": serializers.IntegerField(),
+                    "today": serializers.IntegerField(),
+                    "upcoming": serializers.IntegerField(),
+                },
+            ),
+            403: inline_serializer(
+                "MeetingKPIForbiddenResponse", fields={"detail": serializers.CharField()}
+            ),
+            500: inline_serializer(
+                "MeetingKPIServerErrorResponse", fields={"error": serializers.CharField()}
+            ),
+        },
+    )
+    def get(self, request):
+        try:
+            meetings, error = _visible_meetings_queryset(request)
+            if error:
+                return Response(error, status=status.HTTP_403_FORBIDDEN)
+
+            now = timezone.localtime()
+
+            total = meetings.count()
+
+            pending = meetings.filter(
+                approval_status=Meeting.ApprovalStatus.PENDING
+            ).count()
+            approved = meetings.filter(
+                approval_status=Meeting.ApprovalStatus.APPROVED
+            ).count()
+            rejected = meetings.filter(
+                approval_status=Meeting.ApprovalStatus.REJECTED
+            ).count()
+
+            online = meetings.filter(meeting_type_id=1).count()
+            offline = meetings.filter(meeting_type_id=2).count()
+
+            # 1 == Online, 2 == Offline (MeetingType ids, see Task/services.py)
+            today = meetings.filter(meeting_date=now.date()).count()
+            upcoming = meetings.filter(meeting_date__gt=now.date()).count()
+
+            return Response(
+                {
+                    "total": total,
+                    "pending": pending,
+                    "approved": approved,
+                    "rejected": rejected,
+                    "online": online,
+                    "offline": offline,
+                    "today": today,
+                    "upcoming": upcoming,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except (Http404, APIException):
+            raise
+        except Exception:
+            logger.exception(
+                "Error while fetching meeting KPIs: user_id=%s", request.user.pk
+            )
+            return Response(
+                {"error": ("Something went wrong while " "fetching meeting KPIs.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -719,19 +977,65 @@ class TaskDetailView(APIView):
                 customer=task.customer,
             )
 
-            if task.assigned_to and task.assigned_to != request.user:
-                trigger_notification_event(
-                    event_type=NotificationEventType.TASK_UPDATED,
-                    recipient=task.assigned_to,
-                    context={
-                        "user_name": task.assigned_to.get_full_name()
-                        or task.assigned_to.username,
-                        "employee_name": request.user.get_full_name()
-                        or request.user.username,
-                        "task_title": task.task_title,
-                        "due_date": str(task.due_date) if task.due_date else "N/A",
-                    },
-                )
+            status_str = str(task.status.status_name).lower() if task.status else ""
+            is_completed = "complete" in status_str
+
+            if is_completed:
+                # Notify task creator / manager on task completion
+                if task.created_by and task.created_by != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.TASK_COMPLETED,
+                        recipient=task.created_by,
+                        context={
+                            "user_name": task.created_by.get_full_name()
+                            or task.created_by.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "due_date": str(task.due_date) if task.due_date else "N/A",
+                        },
+                    )
+                # Also notify assigned employee if marked completed by manager
+                if task.assigned_to and task.assigned_to != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.TASK_COMPLETED,
+                        recipient=task.assigned_to,
+                        context={
+                            "user_name": task.assigned_to.get_full_name()
+                            or task.assigned_to.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "due_date": str(task.due_date) if task.due_date else "N/A",
+                        },
+                    )
+            else:
+                if task.assigned_to and task.assigned_to != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.TASK_UPDATED,
+                        recipient=task.assigned_to,
+                        context={
+                            "user_name": task.assigned_to.get_full_name()
+                            or task.assigned_to.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "due_date": str(task.due_date) if task.due_date else "N/A",
+                        },
+                    )
+                elif task.created_by and task.created_by != request.user:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.TASK_UPDATED,
+                        recipient=task.created_by,
+                        context={
+                            "user_name": task.created_by.get_full_name()
+                            or task.created_by.username,
+                            "employee_name": request.user.get_full_name()
+                            or request.user.username,
+                            "task_title": task.task_title,
+                            "due_date": str(task.due_date) if task.due_date else "N/A",
+                        },
+                    )
 
             return Response(
                 TaskSerializer(task, context={"request": request}).data,
@@ -836,51 +1140,55 @@ class TaskDetailView(APIView):
                         )
 
             # ==================================================
-            # SOFT DELETE
+            # PERMANENT DELETE (HARD DELETE)
             # ==================================================
 
-            task.is_active = False
+            task_id_val = task.task_id
+            task_title_val = task.task_title
+            task_lead = task.lead
+            task_customer = task.customer
+            assigned_user = task.assigned_to
 
-            task.save(update_fields=["is_active"])
+            task.delete()
 
             logger.info(
-                "Task soft deleted successfully: " "task_id=%s user_id=%s",
-                task.task_id,
+                "Task permanently deleted successfully: task_id=%s user_id=%s",
+                task_id_val,
                 request.user.pk,
             )
 
             log_audit(
                 user=request.user,
                 entity_type="Task",
-                entity_id=task.task_id,
+                entity_id=task_id_val,
                 action="TASK_DELETED",
-                old_value={"is_active": True, "task_title": task.task_title},
-                new_value={"is_active": False},
+                old_value={"task_title": task_title_val},
+                new_value=None,
             )
             log_activity(
                 user=request.user,
                 activity_type=Activity.ActivityType.TASK_DELETED,
-                outcome=f"Task deleted: {task.task_title}",
-                lead=task.lead,
-                customer=task.customer,
+                outcome=f"Task deleted: {task_title_val}",
+                lead=task_lead,
+                customer=task_customer,
             )
 
-            if task.assigned_to and task.assigned_to != request.user:
+            if assigned_user and assigned_user != request.user:
                 trigger_notification_event(
                     event_type=NotificationEventType.TASK_DELETED,
-                    recipient=task.assigned_to,
+                    recipient=assigned_user,
                     context={
-                        "user_name": task.assigned_to.get_full_name()
-                        or task.assigned_to.username,
+                        "user_name": assigned_user.get_full_name()
+                        or assigned_user.username,
                         "employee_name": request.user.get_full_name()
                         or request.user.username,
-                        "task_title": task.task_title,
-                        "due_date": str(task.due_date) if task.due_date else "N/A",
+                        "task_title": task_title_val,
+                        "due_date": "N/A",
                     },
                 )
 
             return Response(
-                {"message": "Task deleted successfully.", "task_id": task.task_id},
+                {"message": "Task deleted successfully.", "task_id": task_id_val},
                 status=status.HTTP_200_OK,
             )
 
@@ -1360,11 +1668,7 @@ class MeetingCreateView(APIView):
     It goes to manager for approval.
     """
 
-    permission_classes = [CanCommunicateWithLead]
-    permission_names = {
-        "GET": "view_meeting",
-        "POST": "add_meeting",
-    }
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Meetings"],
@@ -1455,7 +1759,7 @@ class MeetingCreateView(APIView):
 
                 role_name = getattr(role, "rolename", "").strip().lower()
 
-                if role_name not in ["admin", "manager"]:
+                if role_name != "admin":
                     meetings = meetings.filter(Q(created_by=user) | Q(manager=user))
 
             approval_status = request.query_params.get("approval_status")
@@ -1527,6 +1831,27 @@ class MeetingCreateView(APIView):
     def post(self, request):
 
         try:
+
+            # ==================================================
+            # ONLY MANAGER CAN CREATE MEETINGS
+            # ==================================================
+
+            user_role = getattr(request.user, "role", None)
+            role_name = (
+                getattr(user_role, "rolename", "").strip().lower()
+                if user_role
+                else ""
+            )
+
+            if not request.user.is_superuser and role_name not in {"manager", "employee"}:
+                return Response(
+                    {
+                        "error": (
+                            "Only Employees and Managers can create meetings."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
             serializer = MeetingSerializer(
                 data=request.data,
@@ -1704,12 +2029,7 @@ class MeetingApprovalView(APIView):
     Only assigned manager can approve/reject.
     """
 
-    permission_classes = [
-        CanCommunicateWithLead,
-    ]
-    permission_names = {
-        "PATCH": "meeting_approve",
-    }
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Meetings"],
@@ -1946,6 +2266,19 @@ class MeetingApprovalView(APIView):
                     customer=meeting.task_id.customer,
                 )
 
+                if meeting.created_by:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_APPROVED,
+                        recipient=meeting.created_by,
+                        context={
+                            "user_name": meeting.created_by.get_full_name() or meeting.created_by.username,
+                            "meeting_title": meeting.meeting_title,
+                            "meeting_date": str(meeting.meeting_date),
+                            "start_time": str(meeting.start_time),
+                            "meeting_link": meeting.meeting_link or meeting.location or "Scheduled",
+                        },
+                    )
+
                 return Response(
                     {
                         "message": (
@@ -1993,6 +2326,17 @@ class MeetingApprovalView(APIView):
                         "updated_at",
                     ]
                 )
+
+                if meeting.created_by:
+                    trigger_notification_event(
+                        event_type=NotificationEventType.MEETING_REJECTED,
+                        recipient=meeting.created_by,
+                        context={
+                            "user_name": meeting.created_by.get_full_name() or meeting.created_by.username,
+                            "meeting_title": meeting.meeting_title,
+                            "rejection_reason": rejection_reason,
+                        },
+                    )
 
                 # ==================================================
                 # CELERY
@@ -2060,19 +2404,16 @@ class MeetingApprovalView(APIView):
 @extend_schema(tags=["Meetings"])
 class MeetingDetailView(APIView):
     """
-    GET /api/meetings/<meeting_id>/
+    GET /api/tasks/meetings/<meeting_id>/
     Get meeting details.
     """
 
-    permission_classes = [IsAuthenticated, CanCommunicateWithLead]
-    permission_names = {
-        "GET": "view_meeting",
-    }
+    permission_classes = [IsAuthenticated]
 
     @extend_schema(
         tags=["Meetings"],
         summary="Get meeting details",
-        description="Retrieve details of a meeting by its ID. Permission: view_meeting.",
+        description="Retrieve details of a meeting by its ID.",
         operation_id="meeting_detail",
         parameters=[
             OpenApiParameter(
@@ -2107,7 +2448,6 @@ class MeetingDetailView(APIView):
                 meeting_id=meeting_id,
                 is_active=True,
             )
-            self.check_object_permissions(request, meeting)
             serializer = MeetingSerializer(meeting, context={"request": request})
             logger.info(
                 "Meeting fetched successfully: meeting_id=%s user_id=%s",
@@ -2281,6 +2621,7 @@ class MeetingRescheduleView(APIView):
                 "end_time",
                 "meeting_link",
                 "location",
+                "extra_fields",
             ):
 
                 if field in request.data:

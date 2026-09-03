@@ -13,6 +13,7 @@ import {
   getNotifications,
   markNotificationRead,
   sendManualNotification,
+  updateNotificationTemplate,
 } from "./api";
 
 export function useNotifications(filters) {
@@ -82,6 +83,19 @@ export function useCreateNotificationTemplate() {
     onSuccess: () => {
       invalidate();
       toast.success("Template created.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useUpdateNotificationTemplate() {
+  const invalidate = useInvalidateTemplates();
+  return useMutation({
+    mutationFn: ({ templateId, ...values }) =>
+      updateNotificationTemplate(templateId, values),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Template updated.");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });

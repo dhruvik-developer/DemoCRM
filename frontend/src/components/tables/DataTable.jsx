@@ -57,6 +57,7 @@ export default function DataTable({
   pageSize = 10,
   count = 0,
   onPageChange,
+  onRowClick,
 }) {
   const totalPages = Math.max(1, Math.ceil(count / pageSize));
   const canSort = Boolean(onSortChange);
@@ -103,7 +104,14 @@ export default function DataTable({
               </TableRow>
             ) : (
               rows.filter(Boolean).map((row, idx) => (
-                <TableRow key={getRowId?.(row) ?? row?.id ?? idx}>
+                <TableRow
+                  key={getRowId?.(row) ?? row?.id ?? idx}
+                  className={onRowClick ? "cursor-pointer hover:bg-muted/50" : undefined}
+                  onClick={(event) => {
+                    if (!onRowClick || event.target.closest("a,button,input,select,textarea,[role='button']")) return;
+                    onRowClick(row);
+                  }}
+                >
                   {columns.map((column) => (
                     <TableCell key={column.key} className={column.className}>
                       {column.render ? column.render(row) : row?.[column.key]}

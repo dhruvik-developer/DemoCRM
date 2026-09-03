@@ -12,6 +12,11 @@ export async function getFollowUps(filters) {
   return data;
 }
 
+export async function getFollowUpKpi() {
+  const { data } = await apiClient.get(endpoints.followups.kpi);
+  return data;
+}
+
 export async function getFollowUp(followUpId) {
   const { data } = await apiClient.get(endpoints.followups.detail(followUpId));
   return data;
@@ -19,6 +24,11 @@ export async function getFollowUp(followUpId) {
 
 export async function createFollowUp(values) {
   const { data } = await apiClient.post(endpoints.followups.list, values);
+  return data;
+}
+
+export async function updateFollowUp(followUpId, partial) {
+  const { data } = await apiClient.patch(endpoints.followups.detail(followUpId), partial);
   return data;
 }
 

@@ -7,6 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   Bell,
   Building2,
+  CalendarDays,
   CalendarClock,
   CheckSquare,
   ChevronDown,
@@ -58,10 +59,10 @@ const NAV_GROUPS = [
   {
     label: "Operations",
     items: [
+      { to: "/calendar", label: "Calendar", icon: CalendarDays, codename: "view_task" },
       { to: "/meetings", label: "Meetings", icon: CalendarClock, codename: "view_meeting" },
       { to: "/followups", label: "Follow-ups", icon: PhoneCall, codename: "view_followup" },
-      { to: "/reminders", label: "Reminders", icon: CalendarClock, codename: "view_reminder" },
-      { to: "/notifications", label: "Notifications", icon: Bell, codename: "view_notificationtemplate" },
+      { to: "/notifications", label: "Notifications", icon: Bell, codename: "view_notificationtemplate", end: true },
     ],
   },
   {
@@ -71,7 +72,6 @@ const NAV_GROUPS = [
       { to: "/admin/sources", label: "Lead Sources", icon: Database, codename: "manage_lead_source" },
       { to: "/admin/pipelines", label: "Pipelines", icon: GitBranch, codename: "manage_pipeline" },
       { to: "/callforms", label: "Form Templates", icon: ClipboardList, codename: "manage_calltemplate" },
-      { to: "/notifications/templates", label: "Notification Templates", icon: Bell, codename: "manage_notificationtemplate" },
       { to: "/admin/audit-logs", label: "Audit Logs", icon: Database, codename: "view_auditlog" },
     ],
   },

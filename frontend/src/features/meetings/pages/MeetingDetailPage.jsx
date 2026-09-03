@@ -20,19 +20,28 @@ import {
   useRemoveParticipant,
   useRescheduleMeeting,
 } from "../hooks";
+import { useUsers } from "@/features/admin/hooks";
 import { approvalDecisionSchema } from "@/schemas/meeting.schema";
 import PageError from "@/components/common/PageError";
 import PageLoader from "@/components/common/PageLoader";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
 import StatusBadge from "@/components/common/StatusBadge";
 import FormField from "@/components/forms/FormField";
-import { Button } from "@/components/ui/button";import {
+import { Button } from "@/components/ui/button";
+import {
   Card,
   CardContent,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 function Field({ label, value }) {
   return (
@@ -49,6 +58,7 @@ export default function MeetingDetailPage() {
   const { meetingId } = useParams();
   const { user, resolved } = useAuth();
   const meetingQuery = useMeeting(meetingId);
+  const { data: users = [] } = useUsers();
 
   const decideApproval = useDecideApproval(meetingId);
   const reschedule = useRescheduleMeeting(meetingId);
@@ -74,15 +84,23 @@ export default function MeetingDetailPage() {
 
   const isAssignedManager =
     user?.user_id != null &&
-    String(meeting.manager ?? "") === String(user.user_id);
+    String(meeting?.manager?.user_id ?? meeting?.manager ?? "") === String(user.user_id);
   const isCreator =
     user?.user_id != null &&
-    String(meeting.created_by ?? "") === String(user.user_id);
-  const isPending = meeting.approval_status === "PENDING";
-  const isRejected = meeting.approval_status === "REJECTED";
+    String(meeting?.created_by?.user_id ?? meeting?.created_by ?? "") === String(user.user_id);
+  const isManagerRole =
+    resolved?.isAdmin ||
+    resolved?.roleName === "Manager" ||
+    String(resolved?.roleName || "").toLowerCase() === "manager";
 
-  const showApprovalActions = isPending && isAssignedManager && can("change_meeting");
-  const showReschedule = isRejected && isCreator;
+  const isEmployeeRole = resolved?.roleName === "Employee";
+
+  const isPending = meeting?.approval_status === "PENDING";
+  const isRejected = meeting?.approval_status === "REJECTED";
+
+  const showApprovalActions = isPending && (isAssignedManager || isManagerRole);
+  // Only Employee (creator) can reschedule — Manager cannot reschedule
+  const showReschedule = isRejected && isCreator && isEmployeeRole;
 
   const onApprove = () =>
     decideApproval.mutateAsync({ approval_status: "APPROVED" });
@@ -118,14 +136,20 @@ export default function MeetingDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Details</CardTitle>
+          <CardTitle>Meeting Information</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
+          <Field label="Title" value={meeting.meeting_title} />
+          <Field label="Related task" value={meeting.task_title} />
+          <Field label="Approval" value={meeting.approval_status} />
           <Field label="Date" value={meeting.meeting_date} />
           <Field label="Start" value={meeting.start_time} />
           <Field label="End" value={meeting.end_time} />
           <Field label="Type" value={meetingTypeName(meeting.meeting_type_id?.id ?? meeting.meeting_type_id)} />
           <Field label="Status" value={meetingStatusName(meeting.meeting_status_id?.id ?? meeting.meeting_status_id)} />
+          <Field label="Manager" value={meeting.manager_name} />
+          <Field label="Requested by" value={meeting.requested_by_name} />
+          <Field label="Created" value={meeting.created_at ? new Date(meeting.created_at).toLocaleString() : null} />
           <Field
             label="Manager"
             value={
@@ -137,6 +161,7 @@ export default function MeetingDetailPage() {
               value={meeting.meeting_link ?? meeting.location ?? null}
             />
           </div>
+          {meeting.description ? <div className="md:col-span-3"><Field label="Description" value={meeting.description} /></div> : null}
           {meeting.rejection_reason ? (
             <div className="md:col-span-3">
               <Field label="Rejection reason" value={meeting.rejection_reason} />
@@ -200,6 +225,16 @@ export default function MeetingDetailPage() {
           <CardTitle className="text-base">Participants</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          {meeting.participant_details?.length ? (
+            <div className="divide-y rounded-lg border">
+              {meeting.participant_details.map((participant) => (
+                <div key={participant.participant_id} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0"><strong className="block truncate text-sm">{participant.name}</strong><span className="block truncate text-xs text-muted-foreground">{participant.email || "No email"} · {participant.role}</span></div>
+                  {can("delete_meetingparticipant") ? <Button type="button" variant="ghost" size="sm" className="text-destructive" disabled={removeParticipant.isPending} onClick={() => removeParticipant.mutateAsync(participant.user_id)}>Remove</Button> : null}
+                </div>
+              ))}
+            </div>
+          ) : <p className="text-sm text-muted-foreground">No participants have been added.</p>}
           <p className="text-sm text-muted-foreground">
             The API doesn't expose the participant roster — manage by user UUID.
           </p>
@@ -219,13 +254,19 @@ export default function MeetingDetailPage() {
               }}
             >
               <div className="flex-1">
-                <FormField id="participant_user" label="Add participant (user UUID)">
-                  <Input
-                    id="participant_user"
-                    placeholder="00000000-0000-4000-8000-…"
-                    value={participantId}
-                    onChange={(event) => setParticipantId(event.target.value)}
-                  />
+                <FormField id="participant_user" label="Add participant">
+                  <Select value={participantId} onValueChange={setParticipantId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select user to invite…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {users.map((u) => (
+                        <SelectItem key={u.user_id} value={String(u.user_id)}>
+                          {u.full_name || u.username} {u.role ? `(${u.role})` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </FormField>
               </div>
               <Button type="submit" disabled={!participantId.trim() || addParticipant.isPending}>

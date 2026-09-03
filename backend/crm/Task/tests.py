@@ -639,6 +639,7 @@ class MeetingAPITestCase(APITestCase):
                 "end_time": "11:00:00",
                 "location": "Office",
                 "description": "Discuss quotation",
+                "meeting_link": "https://meet.google.com/abc-defg-hij",
             },
             format="json",
         )
@@ -651,7 +652,7 @@ class MeetingAPITestCase(APITestCase):
         self.assertTrue(Meeting.objects.filter(meeting_title="Client Meeting").exists())
         meeting = Meeting.objects.get(meeting_title="Client Meeting")
         self.assertEqual(meeting.approval_status, Meeting.ApprovalStatus.PENDING)
-        self.assertTrue(bool(meeting.meeting_link))
+        self.assertEqual(meeting.meeting_link, "https://meet.google.com/abc-defg-hij")
 
     # ======================================================
     # MEETING - INVALID TIME
@@ -712,6 +713,7 @@ class MeetingAPITestCase(APITestCase):
                 "start_time": "14:00:00",
                 "end_time": "15:00:00",
                 "description": "Quarterly review with client",
+                "meeting_link": "https://meet.google.com/abc-defg-hij",
             },
             format="json",
         )

@@ -365,6 +365,18 @@ class HasDynamicPermissionUnitTests(APITestCase):
             perm.has_permission(self._request(None), self._view({"GET": "view_role"}))
         )
 
+    def test_permission_list_allows_any_matching_permission(self):
+        user = make_user("perm.any@example.com", rolename="Employee")
+        permission = Permission.objects.get(codename="view_role")
+        user.role.permissions.add(permission)
+
+        allowed = HasDynamicPermission().has_permission(
+            self._request(user),
+            self._view({"GET": ["add_role", "view_role"]}),
+        )
+
+        self.assertTrue(allowed)
+
     def test_superuser_allowed_without_permission_entry(self):
         user = make_user("perm.super@example.com", is_superuser=True)
         user.is_superuser = True
