@@ -101,12 +101,14 @@ export const useLeadPrimaryForm = (leadId) =>
     queryKey: ["callforms", "lead-primary-form", leadId],
     queryFn: () => api.getLeadPrimaryForm(leadId),
     enabled: Boolean(leadId),
+    staleTime: 30 * 1000,
   });
 export const useLeadStageForms = (leadId, stageId) =>
   useQuery({
     queryKey: ["callforms", "lead-stage-forms", leadId, stageId],
     queryFn: () => api.getLeadStageForms(leadId, stageId),
     enabled: Boolean(leadId || stageId),
+    staleTime: 30 * 1000,
   });
 
 // Attempts / submissions

@@ -10,6 +10,7 @@ import {
   acceptQuotation,
   approveQuotation,
   createQuotation,
+  deleteQuotation,
   downloadQuotationPdf,
   getQuotation,
   getQuotations,
@@ -170,6 +171,18 @@ export function useRefuseQuotation(quotationId) {
     onSuccess: () => {
       invalidate();
       toast.success("Quotation rejected — the lead was marked lost.");
+    },
+    onError: (error) => toast.error(getApiErrorMessage(error)),
+  });
+}
+
+export function useDeleteQuotation() {
+  const invalidate = useInvalidateQuotations();
+  return useMutation({
+    mutationFn: (quotationId) => deleteQuotation(quotationId),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Draft quotation deleted.");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });

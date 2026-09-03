@@ -102,11 +102,11 @@ export default function DataTable({
                 <TableCell colSpan={columns.length}>{emptyState}</TableCell>
               </TableRow>
             ) : (
-              rows.map((row) => (
-                <TableRow key={getRowId(row)}>
+              rows.filter(Boolean).map((row, idx) => (
+                <TableRow key={getRowId?.(row) ?? row?.id ?? idx}>
                   {columns.map((column) => (
                     <TableCell key={column.key} className={column.className}>
-                      {column.render ? column.render(row) : row[column.key]}
+                      {column.render ? column.render(row) : row?.[column.key]}
                     </TableCell>
                   ))}
                 </TableRow>

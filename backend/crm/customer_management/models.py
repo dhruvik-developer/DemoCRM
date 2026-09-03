@@ -3,8 +3,9 @@ from uuid import uuid4
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
+from django.utils import timezone
 
 
 class QuotationStatus(models.TextChoices):
@@ -298,6 +299,7 @@ class Lead(models.Model):
             ("mark_lead_lost", "Can mark lead as lost"),
             ("reengage_lead", "Can re-engage lead"),
             ("convert_lead", "Can convert lead to customer"),
+            ("record_payment", "Can record payment for lead/customer"),
         ]
 
     def clean(self):
@@ -362,6 +364,59 @@ class Customer(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Payment(models.Model):
+    class Method(models.TextChoices):
+        CASH = "CASH", "Cash"
+        BANK_TRANSFER = "BANK_TRANSFER", "Bank Transfer"
+        UPI = "UPI", "UPI"
+        CHEQUE = "CHEQUE", "Cheque"
+        ONLINE = "ONLINE", "Online Gateway"
+        OTHER = "OTHER", "Other"
+
+    id = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    lead = models.ForeignKey(
+        Lead,
+        on_delete=models.PROTECT,
+        related_name="payments",
+        null=True,
+        blank=True,
+    )
+    customer = models.ForeignKey(
+        Customer,
+        on_delete=models.SET_NULL,
+        related_name="payments",
+        null=True,
+        blank=True,
+    )
+    amount = models.DecimalField(
+        max_digits=12, decimal_places=2, validators=[MinValueValidator(Decimal("0.01"))]
+    )
+    payment_date = models.DateField(default=timezone.now)
+    method = models.CharField(
+        max_length=20, choices=Method.choices, default=Method.CASH
+    )
+    reference = models.CharField(max_length=100, blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_payments",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "payment"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["lead"], name="payment_lead_idx"),
+            models.Index(fields=["customer"], name="payment_customer_idx"),
+        ]
+
+    def __str__(self):
+        return f"Payment {self.amount} for {self.lead or self.customer}"
 
 
 class Quotation(models.Model):
@@ -508,6 +563,35 @@ class QuotationVersion(models.Model):
         default=Decimal("0.00"),
     )
 
+    # Revision-level discount — optional per version (v1 no discount, v2 with discount)
+    discount_type = models.CharField(
+        max_length=10,
+        choices=[("FLAT", "Flat"), ("PERCENT", "Percent")],
+        default="FLAT",
+        blank=True,
+    )
+    discount_value = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[MinValueValidator(Decimal("0.00"))],
+    )
+    # Overall GST handling per revision — can be 0 (not applicable) or 18, etc.
+    gst_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[
+            MinValueValidator(Decimal("0.00")),
+            MaxValueValidator(Decimal("100.00")),
+        ],
+    )
+    subtotal_amount = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        default=Decimal("0.00"),
+    )
+
     terms = models.TextField(blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
 
@@ -536,17 +620,102 @@ class QuotationVersion(models.Model):
     def __str__(self):
         return f"{self.quotation.quotation_number} v{self.version_number}"
 
-    def clean(self):
-        if self.pk:
-            line_items_amount = sum(
-                li.quantity * li.unit_price for li in self.line_items.all()
+    @property
+    def subtotal(self):
+        # sum after per-line discounts (most accurate)
+        return (
+            sum(
+                (
+                    li.quantity
+                    * li.unit_price
+                    * (Decimal("1") - li.discount_percent / Decimal("100"))
+                ).quantize(Decimal("0.01"))
+                for li in self.line_items.all()
             )
-            if self.total_amount != line_items_amount:
+            if self.line_items.exists()
+            else (self.subtotal_amount if self.subtotal_amount else Decimal("0.00"))
+        )
+
+    @property
+    def discount_amount(self):
+        if not self.discount_value or self.discount_value == 0:
+            return Decimal("0.00")
+        if self.discount_type == "PERCENT":
+            return (self.subtotal * self.discount_value / Decimal("100")).quantize(
+                Decimal("0.01")
+            )
+        return self.discount_value.quantize(Decimal("0.01"))
+
+    @property
+    def taxable_amount(self):
+        return (
+            (self.subtotal - self.discount_amount).quantize(Decimal("0.01"))
+            if self.subtotal
+            else Decimal("0.00")
+        )
+
+    @property
+    def gst_amount(self):
+        if not self.gst_rate or self.gst_rate == 0:
+            return Decimal("0.00")
+        # version-level GST on taxable amount
+        return (self.taxable_amount * self.gst_rate / Decimal("100")).quantize(
+            Decimal("0.01")
+        )
+
+    def clean(self):
+        if self.pk and self.line_items.exists():
+            # subtotal from line items (discount per line considered)
+            line_subtotal = sum(
+                (
+                    li.quantity
+                    * li.unit_price
+                    * (Decimal("1") - li.discount_percent / Decimal("100"))
+                )
+                for li in self.line_items.all()
+            )
+            discount_amt = Decimal("0.00")
+            if self.discount_value:
+                if self.discount_type == "PERCENT":
+                    discount_amt = (
+                        line_subtotal * self.discount_value / Decimal("100")
+                    ).quantize(Decimal("0.01"))
+                else:
+                    discount_amt = self.discount_value
+            taxable = (line_subtotal - discount_amt).quantize(Decimal("0.01"))
+            gst_amt = Decimal("0.00")
+            if self.gst_rate and self.gst_rate != 0:
+                # if any line has custom GST, use line-level sum already (approx)
+                gst_amt = (taxable * self.gst_rate / Decimal("100")).quantize(
+                    Decimal("0.01")
+                )
+            expected = (taxable + gst_amt).quantize(Decimal("0.01"))
+            # allow 0.01 tolerance and also allow legacy data where total == subtotal without discount/gst
+            if (
+                self.gst_rate == 0
+                and self.discount_value == 0
+                and all(
+                    li.gst_rate == Decimal("18.00") and li.discount_percent == 0
+                    for li in self.line_items.all()
+                )
+            ):
+                # legacy strict check
+                if self.total_amount != line_subtotal:
+                    raise ValidationError(
+                        {
+                            "total_amount": (
+                                f"Total amount {self.total_amount} does not match "
+                                f"calculated sum {line_subtotal} from line items."
+                            )
+                        }
+                    )
+            elif abs(self.total_amount - expected) > Decimal("0.05"):
+                # for new discount/gst flows, enforce expected
                 raise ValidationError(
                     {
                         "total_amount": (
                             f"Total amount {self.total_amount} does not match "
-                            f"calculated sum {line_items_amount} from line items."
+                            f"calculated total {expected} (subtotal {line_subtotal} - discount {discount_amt} + GST {gst_amt})."
                         )
                     }
                 )
@@ -562,11 +731,30 @@ class QuotationLineItem(models.Model):
     )
 
     description = models.CharField(max_length=255)
+    hsn_code = models.CharField(max_length=20, blank=True, default="")
     quantity = models.PositiveIntegerField(default=1)
     unit_price = models.DecimalField(
         max_digits=18,
         decimal_places=2,
         validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    gst_rate = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("18.00"),
+        validators=[
+            MinValueValidator(Decimal("0.00")),
+            MaxValueValidator(Decimal("100.00")),
+        ],
+    )
+    discount_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=Decimal("0.00"),
+        validators=[
+            MinValueValidator(Decimal("0.00")),
+            MaxValueValidator(Decimal("100.00")),
+        ],
     )
 
     created_at = models.DateTimeField(auto_now_add=True)

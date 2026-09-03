@@ -28,6 +28,7 @@ const MANAGER_MODEL_PREFIXES = [
   // customer_management core (G23 fix)
   "lead", "leadsource", "pipeline", "pipelinestage",
   "quotation", "quotationversion", "quotationlineitem", "quotationapproval",
+  "payment",
   "activity", "auditlog",
 ];
 
@@ -36,10 +37,12 @@ const MANAGER_EXTRA_CODENAMES = [
   "manage_call_template", "manage_template_version", "manage_template_field",
   "manage_stage_activity", "add_adhoc_field", "manage_adhoc_field",
   // lead workflow (backend custom perms)
-  "assign_lead", "progress_lead", "mark_lead_lost", "reengage_lead", "convert_lead",
+  "assign_lead", "progress_lead", "mark_lead_lost", "reengage_lead", "convert_lead", "record_payment",
   "view_quotation", "add_quotation", "change_quotation", "submit_quotation",
   "approve_quotation", "send_quotation", "request_quotation_revision",
   "accept_quotation", "reject_quotation",
+  // pipeline management — required for /admin/pipelines (view_pipeline is via prefix, manage_* needed for POST/PATCH/DELETE)
+  "manage_pipeline", "manage_pipeline_stage", "manage_lead_source",
 ];
 
 // Mirrors EMPLOYEE_MODEL_PREFIXES + extras in accounts/signals.py.
@@ -55,7 +58,8 @@ const EMPLOYEE_MODEL_PREFIXES = [
   "tasktriggerrule", "customeraccount", "customercontact", "customer",
   "adhocfieldproposal", "indexedsubmissionvalue",
   // customer_management core (G23 fix) — auditlog stays Admin-only
-  "lead", "leadsource", "pipeline", "pipelinestage",
+  // NOTE: pipeline/pipelinestage removed — Employee must not see Pipeline nav (manager/admin only)
+  "lead", "leadsource",
   "quotation", "quotationversion", "quotationlineitem", "quotationapproval",
   "activity",
 ];

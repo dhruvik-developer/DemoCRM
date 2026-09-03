@@ -32,7 +32,10 @@ export default function QuotationCreatePage() {
       lead_id: presetLead || "",
       terms: "",
       notes: "",
-      line_items: [{ description: "", quantity: 1, unit_price: "" }],
+      discount_type: "FLAT",
+      discount_value: 0,
+      gst_rate: 0,
+      line_items: [{ description: "", hsn_code: "", quantity: 1, unit_price: "", gst_rate: 18, discount_percent: 0 }],
     },
   });
 
@@ -63,6 +66,9 @@ export default function QuotationCreatePage() {
         lead_id: effectiveLead || values.lead_id,
         terms: values.terms || undefined,
         notes: values.notes || undefined,
+        discount_type: values.discount_type || undefined,
+        discount_value: values.discount_value || 0,
+        gst_rate: values.gst_rate ?? 0,
         line_items: values.line_items.length
           ? values.line_items
           : undefined,
@@ -129,8 +135,24 @@ export default function QuotationCreatePage() {
             <Textarea id="notes" rows={2} {...register("notes")} />
           </FormField>
 
+          <div className="grid gap-3 sm:grid-cols-3">
+            <FormField id="discount_type" label="Discount type (per revision)">
+              <select id="discount_type" className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm" {...register("discount_type")}>
+                <option value="FLAT">Flat (₹)</option>
+                <option value="PERCENT">Percent (%)</option>
+              </select>
+            </FormField>
+            <FormField id="discount_value" label="Discount value">
+              <Input id="discount_value" type="number" step={0.01} placeholder="0 — v1 none, v2 can add" {...register("discount_value")} />
+            </FormField>
+            <FormField id="gst_rate" label="GST rate % (0 = not applicable)">
+              <Input id="gst_rate" type="number" step={0.1} placeholder="0 or 18" {...register("gst_rate")} />
+            </FormField>
+          </div>
+          <p className="text-xs text-muted-foreground">Discount & GST are stored per version — v1 can have 0, v2 can add new values.</p>
+
           <div>
-            <h2 className="mb-2 text-sm font-medium">Line items</h2>
+            <h2 className="mb-2 text-sm font-medium">Line items (HSN & GST per line)</h2>
             <LineItemsEditor />
           </div>
 

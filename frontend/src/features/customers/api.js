@@ -30,3 +30,18 @@ export async function smartLookup(params) {
   });
   return data;
 }
+
+export async function getPayments(filters) {
+  const { data } = await apiClient.get(endpoints.crm.payments, { params: filters });
+  return data;
+}
+
+export async function recordCustomerPayment(customerId, payload) {
+  const { data } = await apiClient.post(endpoints.crm.customerRecordPayment(customerId), payload);
+  return data;
+}
+
+export async function recordLeadPayment(leadId, payload) {
+  const { data } = await apiClient.post(endpoints.crm.leadRecordPayment(leadId), payload);
+  return data;
+}

@@ -11,7 +11,9 @@ describe("permissions", () => {
   it("Employee has view_lead but not assign_lead by default", () => {
     const r = resolvePermissions({ roleName: "Employee" });
     expect(hasPermission(r, "view_lead")).toBe(true);
-    expect(hasPermission(r, "view_pipeline")).toBe(true);
+    // Pipeline is manager/admin only
+    expect(hasPermission(r, "view_pipeline")).toBe(false);
+    expect(hasPermission(r, "manage_pipeline")).toBe(false);
     expect(hasPermission(r, "view_quotation")).toBe(true);
     // Employee extra includes change_followup per G13
     expect(hasPermission(r, "change_followup")).toBe(true);
@@ -22,6 +24,8 @@ describe("permissions", () => {
     expect(hasPermission(r, "assign_lead")).toBe(true);
     expect(hasPermission(r, "progress_lead")).toBe(true);
     expect(hasPermission(r, "view_quotation")).toBe(true);
+    expect(hasPermission(r, "view_pipeline")).toBe(true);
+    expect(hasPermission(r, "manage_pipeline")).toBe(true);
   });
   it("no role denied", () => {
     const r = resolvePermissions({ roleName: null });

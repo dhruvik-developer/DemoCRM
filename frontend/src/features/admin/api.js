@@ -29,7 +29,10 @@ export async function deleteRole(roleId) {
 }
 
 export async function getPermissions() {
-  const { data } = await apiClient.get(endpoints.auth.permissions);
+  const { data } = await apiClient.get(endpoints.auth.permissions, { params: { page_size: 1000 } });
+  // backend returns { permissions: [...] } (not paginated results)
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.permissions)) return data.permissions;
   return unwrap(data);
 }
 

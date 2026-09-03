@@ -18,6 +18,7 @@ export const customerKeys = {
   detail: (customerId) => ["customers", "detail", customerId],
   activities: (customerId) => ["customers", "activities", customerId],
   smartLookup: (params) => ["customers", "smart-lookup", params ?? {}],
+  payments: (params) => ["customers", "payments", params ?? {}],
 };
 
 export const crmKeys = {

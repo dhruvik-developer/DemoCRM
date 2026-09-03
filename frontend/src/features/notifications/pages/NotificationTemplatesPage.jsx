@@ -175,7 +175,8 @@ export default function NotificationTemplatesPage() {
   const [sendOpen, setSendOpen] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(null);
 
-  const rows = templatesQuery.data?.results ?? templatesQuery.data ?? [];
+  const rawRows = templatesQuery.data?.results ?? templatesQuery.data ?? [];
+  const rows = (Array.isArray(rawRows) ? rawRows : []).filter(Boolean);
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 p-6">
@@ -234,7 +235,7 @@ export default function NotificationTemplatesPage() {
             },
           ]}
           rows={rows}
-          getRowId={(row) => row.id}
+          getRowId={(row) => row?.id ?? String(row?.name ?? Math.random())}
           isLoading={templatesQuery.isLoading}
           emptyState={<EmptyState title="No templates yet" description="Templates render messages for workflow events." />}
           page={1}
@@ -255,7 +256,9 @@ export default function NotificationTemplatesPage() {
         destructive
         loading={deleteTemplate.isPending}
         onConfirm={() =>
-          deleteTemplate.mutateAsync(pendingDelete.id).then(() => setPendingDelete(null))
+          pendingDelete?.id
+            ? deleteTemplate.mutateAsync(pendingDelete.id).then(() => setPendingDelete(null))
+            : Promise.resolve()
         }
       />
     </div>
