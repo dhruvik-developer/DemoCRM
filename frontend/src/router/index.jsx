@@ -20,7 +20,6 @@ import TaskDetailPage from "@/features/tasks/pages/TaskDetailPage";
 import MeetingsListPage from "@/features/meetings/pages/MeetingsListPage";
 import MeetingCreatePage from "@/features/meetings/pages/MeetingCreatePage";
 import MeetingDetailPage from "@/features/meetings/pages/MeetingDetailPage";
-import MeetingTemplatesPage from "@/features/meetings/pages/MeetingTemplatesPage";
 import FollowUpsListPage from "@/features/followups/pages/FollowUpsListPage";
 import RemindersPage from "@/features/reminders/pages/RemindersPage";
 import QuotationsListPage from "@/features/quotations/pages/QuotationsListPage";
@@ -81,8 +80,6 @@ export const router = createBrowserRouter([
           { path: "/quotations/new", element: <QuotationCreatePage /> },
           { path: "/quotations/:quotationId", element: <QuotationDetailPage /> },
           { path: "/notifications", element: <NotificationsPage /> },
-          { path: "/meeting-templates", element: <MeetingTemplatesPage /> },
-          { path: "/meeting-templates/:templateId", element: <CallTemplateDetailPage /> },
           { path: "/callforms", element: <CallTemplatesPage /> },
           { path: "/callforms/templates/:templateId", element: <CallTemplateDetailPage /> },
           { path: "/callforms/submit", element: <CallFormSubmitPage /> },

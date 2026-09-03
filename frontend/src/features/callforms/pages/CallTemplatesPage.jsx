@@ -40,9 +40,7 @@ export default function CallTemplatesPage() {
     defaultValues: { name: "", is_active: true },
   });
 
-  const rows = (templatesQuery.data ?? []).filter(
-    (template) => !template?.description?.startsWith("__MEETING_TEMPLATE__"),
-  );
+  const rows = templatesQuery.data ?? [];
 
   const handleEditClick = (template) => {
     setEditingTemplate(template);

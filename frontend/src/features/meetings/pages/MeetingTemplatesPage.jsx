@@ -1,10 +1,9 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 
 import {
   useCallTemplates,
-  useCreateCallTemplate,
   useDeleteCallTemplate,
   useUpdateCallTemplate,
 } from "@/features/callforms/hooks";
@@ -22,13 +21,10 @@ import { MEETING_TEMPLATE_MARKER, meetingTemplateDescription, meetingTemplateTyp
 export default function MeetingTemplatesPage() {
   const navigate = useNavigate();
   const templatesQuery = useCallTemplates();
-  const createTemplate = useCreateCallTemplate();
   const updateTemplate = useUpdateCallTemplate();
   const deleteTemplate = useDeleteCallTemplate();
-  const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
-  const createForm = useForm({ defaultValues: { name: "", template_type: "online" } });
   const editForm = useForm({ defaultValues: { name: "", template_type: "online", is_active: true } });
 
   const rows = (templatesQuery.data ?? []).filter(
@@ -47,7 +43,9 @@ export default function MeetingTemplatesPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Meeting templates</h1>
           <p className="text-sm text-muted-foreground">Build versioned, fully dynamic fields for meeting forms.</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}>New template</Button>
+        <Button asChild>
+          <Link to="/meeting-templates/new">New template</Link>
+        </Button>
       </div>
 
       {templatesQuery.isError ? <PageError error={templatesQuery.error} onRetry={templatesQuery.refetch} /> : (
@@ -73,25 +71,6 @@ export default function MeetingTemplatesPage() {
           count={rows.length}
         />
       )}
-
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>New meeting template</DialogTitle></DialogHeader>
-          <form className="flex flex-col gap-4" onSubmit={createForm.handleSubmit(async (values) => {
-            const template = await createTemplate.mutateAsync({ name: values.name, description: meetingTemplateDescription(values.template_type), initial_fields: [] });
-            setCreateOpen(false);
-            navigate(`/meeting-templates/${template.id}`);
-          })}>
-            <FormField id="meeting_template_name" label="Template name" required>
-              <Input id="meeting_template_name" {...createForm.register("name", { required: true })} />
-            </FormField>
-            <FormField id="meeting_template_type" label="Meeting workflow">
-              <Select value={createForm.watch("template_type")} onValueChange={(value) => createForm.setValue("template_type", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="online">Online meeting</SelectItem><SelectItem value="offline">Offline meeting</SelectItem><SelectItem value="reschedule">Reschedule request</SelectItem></SelectContent></Select>
-            </FormField>
-            <DialogFooter><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit">Create & build fields</Button></DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent><DialogHeader><DialogTitle>Edit meeting template</DialogTitle></DialogHeader>

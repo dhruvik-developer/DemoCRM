@@ -12,6 +12,7 @@ import {
   decideMeetingApproval,
   getMeeting,
   getMeetings,
+  getMeetingKpi,
   removeMeetingParticipant,
   rescheduleMeeting,
   updateMeetingStatus,
@@ -22,6 +23,13 @@ export function useMeetings(filters) {
     queryKey: meetingKeys.list(filters),
     queryFn: () => getMeetings(filters),
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useMeetingKpi() {
+  return useQuery({
+    queryKey: ["meetings", "kpi"],
+    queryFn: getMeetingKpi,
   });
 }
 

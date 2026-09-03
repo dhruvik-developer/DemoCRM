@@ -9,7 +9,6 @@ import {
   Building2,
   CalendarDays,
   CalendarClock,
-  CalendarPlus,
   CheckSquare,
   ChevronDown,
   ClipboardList,
@@ -65,7 +64,6 @@ const NAV_GROUPS = [
       { to: "/followups", label: "Follow-ups", icon: PhoneCall, codename: "view_followup" },
       { to: "/reminders", label: "Reminders", icon: CalendarClock, codename: "view_reminder" },
       { to: "/notifications", label: "Notifications", icon: Bell, codename: "view_notificationtemplate", end: true },
-      { to: "/meeting-templates", label: "Meeting Templates", icon: CalendarPlus, codename: "view_calltemplate" },
     ],
   },
   {

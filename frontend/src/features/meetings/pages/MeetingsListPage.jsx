@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
-import { useMeetings, useDecideApproval, useRescheduleMeeting } from "../hooks";
+import { useMeetings, useDecideApproval, useRescheduleMeeting, useMeetingKpi } from "../hooks";
 import { useUsers } from "@/features/admin/hooks";
 import DataTable from "@/components/tables/DataTable";
 import EmptyState from "@/components/common/EmptyState";
@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import ListControls from "@/components/common/ListControls";
 import { usePinnedRecords } from "@/hooks/usePinnedRecords";
 import {
@@ -21,8 +23,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Video, Check, X, CalendarClock, MessageSquareText, Pin } from "lucide-react";
+import { Video, Check, X, CalendarClock, MessageSquareText, Pin, ListTodo, Hourglass, CheckCircle2, XCircle, Monitor, Building2, CalendarCheck2, CalendarRange } from "lucide-react";
 import RecordNotesPanel from "@/features/notes/components/RecordNotesPanel";
+
+function KpiCard({ title, value, loading, icon: Icon, to }) {
+  return (
+    <Card className="rounded-xl">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        {loading ? <Skeleton className="h-7 w-12" /> : <div className="text-2xl font-bold">{value ?? "—"}</div>}
+        {to ? <Link to={to} className="text-xs text-[#2563EB] hover:underline">View →</Link> : null}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function MeetingsListPage() {
   const { user, resolved } = useAuth();
@@ -30,6 +47,7 @@ export default function MeetingsListPage() {
   const usersQuery = useUsers();
   const decideApproval = useDecideApproval();
   const reschedule = useRescheduleMeeting();
+  const kpi = useMeetingKpi();
 
   const [rejectMeeting, setRejectMeeting] = useState(null);
   const [rejectionReason, setRejectionReason] = useState("");
@@ -162,6 +180,17 @@ export default function MeetingsListPage() {
             <Link to="/meetings/new">Schedule Meeting</Link>
           </Button>
         ) : null}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard title="Total meetings" value={kpi.data?.total} loading={kpi.isLoading} icon={ListTodo} />
+        <KpiCard title="Pending approval" value={kpi.data?.pending} loading={kpi.isLoading} icon={Hourglass} to="/meetings?approval=PENDING" />
+        <KpiCard title="Approved" value={kpi.data?.approved} loading={kpi.isLoading} icon={CheckCircle2} to="/meetings?approval=APPROVED" />
+        <KpiCard title="Rejected" value={kpi.data?.rejected} loading={kpi.isLoading} icon={XCircle} to="/meetings?approval=REJECTED" />
+        <KpiCard title="Online" value={kpi.data?.online} loading={kpi.isLoading} icon={Monitor} />
+        <KpiCard title="Offline" value={kpi.data?.offline} loading={kpi.isLoading} icon={Building2} />
+        <KpiCard title="Due today" value={kpi.data?.today} loading={kpi.isLoading} icon={CalendarCheck2} />
+        <KpiCard title="Upcoming" value={kpi.data?.upcoming} loading={kpi.isLoading} icon={CalendarRange} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

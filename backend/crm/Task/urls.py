@@ -8,6 +8,7 @@ from .views import (
     TaskKPIView,
     MeetingCreateView,
     MeetingDetailView,
+    MeetingKPIView,
     MeetingApprovalView,
     MeetingRescheduleView,
     MeetingStatusUpdateView,
@@ -84,6 +85,11 @@ urlpatterns = [
         "meetings/",
         MeetingCreateView.as_view(),
         name="meeting-list-create",
+    ),
+    path(
+        "meetings/kpi/",
+        MeetingKPIView.as_view(),
+        name="meeting-kpi",
     ),
     path(
         "meetings/<int:meeting_id>/",

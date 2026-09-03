@@ -27,6 +27,7 @@ import {
   useReorderFields,
   useSetPrimaryVersion,
   useSubmissionAnalytics,
+  useUpdateCallTemplate,
   useVersions,
 } from "../hooks";
 import { callFieldSchema } from "@/schemas/callform.schema";
@@ -37,6 +38,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { defaultMeetingEmailConfiguration, meetingTemplateType } from "@/features/meetings/templateUtils";
 import {
   Select,
   SelectContent,
@@ -58,6 +61,54 @@ const EMPTY_FIELD_FORM = {
   max_files: 3,
   auto_select: false,
 };
+
+const EMAIL_EVENT_LABELS = {
+  approval_request: "Approval request email",
+  scheduled: "Approved / scheduled email",
+  rescheduled: "Reschedule approval email",
+};
+
+function MeetingEmailEditor({ template }) {
+  const updateTemplate = useUpdateCallTemplate();
+  const workflow = meetingTemplateType(template);
+  const [configuration, setConfiguration] = useState(() =>
+    Object.keys(template.email_configuration || {}).length
+      ? template.email_configuration
+      : defaultMeetingEmailConfiguration(workflow),
+  );
+  const setEventValue = (eventName, key, value) => setConfiguration((current) => ({
+    ...current,
+    [eventName]: { ...(current[eventName] || {}), [key]: value },
+  }));
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Automatic email templates</CardTitle></CardHeader>
+      <CardContent className="space-y-5">
+        <p className="text-xs text-muted-foreground">
+          These emails are sent automatically by the meeting workflow. Dynamic variables use double braces, for example {"{{meeting_title}}"}.
+        </p>
+        {Object.entries(configuration).map(([eventName, email]) => (
+          <div key={eventName} className="space-y-3 rounded-lg border p-4">
+            <h3 className="font-medium">{EMAIL_EVENT_LABELS[eventName] || eventName}</h3>
+            <FormField id={`${eventName}_subject`} label="Email subject">
+              <Input value={email.subject || ""} onChange={(event) => setEventValue(eventName, "subject", event.target.value)} />
+            </FormField>
+            <FormField id={`${eventName}_body`} label="Email body">
+              <Textarea rows={12} value={email.body || ""} onChange={(event) => setEventValue(eventName, "body", event.target.value)} />
+            </FormField>
+          </div>
+        ))}
+        <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
+          Available variables: meeting_title, customer_name, meeting_date, start_time, end_time, meeting_link, location, description, employee_name, manager_name, and every custom field key added below.
+        </div>
+        <Button disabled={updateTemplate.isPending} onClick={() => updateTemplate.mutateAsync({ id: template.id, email_configuration: configuration })}>
+          {updateTemplate.isPending ? "Saving…" : "Save email templates"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 function FieldEditor({ version }) {
   const fieldsQuery = useFields(version.id);
@@ -333,6 +384,117 @@ function FieldEditor({ version }) {
   );
 }
 
+function MeetingCustomFieldsEditor({ version }) {
+  const fieldsQuery = useFields(version.id);
+  const createField = useCreateField();
+  const deleteField = useDeleteField();
+  const [draft, setDraft] = useState({ label: "", field_type: "text", is_required: false, options: "" });
+  const fields = fieldsQuery.data ?? [];
+  const addField = async () => {
+    const label = draft.label.trim();
+    if (!label) return;
+    const fieldKey = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+    await createField.mutateAsync({
+      template_version: version.id,
+      field_key: fieldKey,
+      label,
+      field_type: draft.field_type,
+      is_required: draft.is_required,
+      options: ["select", "radio", "checkbox"].includes(draft.field_type)
+        ? draft.options.split(",").map((value) => value.trim()).filter(Boolean)
+        : [],
+    });
+    setDraft({ label: "", field_type: "text", is_required: false, options: "" });
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Custom Fields</CardTitle></CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-xs text-muted-foreground">Add extra fields to this meeting form whenever you need them.</p>
+        {fields.length ? <div className="space-y-2">{fields.map((field) => (
+          <div key={field.id} className="flex items-center gap-3 rounded-lg border px-3 py-2">
+            <span className="font-medium">{field.label}</span>
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs capitalize">{field.field_type}</span>
+            {field.is_required ? <span className="text-xs text-muted-foreground">Required</span> : null}
+            <Button type="button" variant="ghost" size="sm" className="ml-auto text-destructive" onClick={() => deleteField.mutateAsync(field.id)}>Remove</Button>
+          </div>
+        ))}</div> : <p className="rounded-lg border border-dashed p-5 text-center text-sm text-muted-foreground">No custom fields added yet.</p>}
+
+        <div className="grid items-end gap-3 rounded-lg border bg-muted/15 p-4 md:grid-cols-2">
+          <FormField id="meeting_field_name" label="Field name"><Input value={draft.label} placeholder="e.g. Agenda or Contact person" onChange={(event) => setDraft({ ...draft, label: event.target.value })} /></FormField>
+          <FormField id="meeting_field_type" label="Field type"><Select value={draft.field_type} onValueChange={(value) => setDraft({ ...draft, field_type: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["text", "textarea", "number", "date", "time", "boolean", "select", "radio", "checkbox"].map((type) => <SelectItem key={type} value={type} className="capitalize">{type}</SelectItem>)}</SelectContent></Select></FormField>
+          {["select", "radio", "checkbox"].includes(draft.field_type) ? <FormField id="meeting_field_options" label="Options"><Input value={draft.options} placeholder="Option one, Option two" onChange={(event) => setDraft({ ...draft, options: event.target.value })} /></FormField> : null}
+          <label className="flex h-9 items-center gap-2 text-sm"><input type="checkbox" checked={draft.is_required} onChange={(event) => setDraft({ ...draft, is_required: event.target.checked })} /> Required field</label>
+          <Button type="button" variant="outline" disabled={!draft.label.trim() || createField.isPending} onClick={addField}>+ Add field</Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function MeetingFormStructure({ version, template }) {
+  const fieldsQuery = useFields(version.id);
+  const updateTemplate = useUpdateCallTemplate();
+  const deleteField = useDeleteField();
+  const [values, setValues] = useState(template.email_configuration?.form_values || {});
+  const [hiddenFields, setHiddenFields] = useState(template.email_configuration?.hidden_fields || []);
+  const standardRows = [
+    ["Title", "meeting_title", "text"],
+    ["Meeting Venue", "meeting_type", "text"],
+    ["Location", "location", "text"],
+    ["All day", "all_day", "checkbox"],
+    ["From", "from", "datetime-local"],
+    ["To", "to", "datetime-local"],
+    ["Host", "manager_name", "text"],
+    ["Participants", "participants", "text"],
+    ["Meeting Link", "meeting_link", "url"],
+    ["Details/Description", "description", "textarea"],
+  ];
+  const customRows = (fieldsQuery.data ?? []).map((field) => [
+    field.label,
+    field.field_key,
+    field.field_type,
+  ]);
+  const setValue = (key, value) => setValues((current) => ({ ...current, [key]: value }));
+  const save = () => updateTemplate.mutateAsync({ id: template.id, email_configuration: { ...(template.email_configuration || {}), form_values: values, hidden_fields: hiddenFields } });
+  const visibleRows = [...standardRows, ...customRows].filter(([, key]) => !hiddenFields.includes(key));
+  const customKeys = new Set((fieldsQuery.data ?? []).map((field) => field.field_key));
+  const removeRow = async (key) => {
+    if (customKeys.has(key)) {
+      const field = (fieldsQuery.data ?? []).find((item) => item.field_key === key);
+      if (field) await deleteField.mutateAsync(field.id);
+      return;
+    }
+    setHiddenFields((current) => [...new Set([...current, key])]);
+  };
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-base">Meeting form structure</CardTitle></CardHeader>
+      <CardContent>
+        <p className="mb-4 text-xs text-muted-foreground">Type directly in the Value column. Custom fields added below automatically appear here.</p>
+        <div className="overflow-hidden rounded-lg border">
+          <div className="grid grid-cols-[minmax(140px,0.35fr)_1fr_auto] gap-3 border-b bg-muted/40 px-4 py-3 text-sm font-semibold">
+            <span>Form Field</span><span>Value</span><span>Action</span>
+          </div>
+          {visibleRows.map(([label, key, type]) => (
+            <div key={key} className="grid grid-cols-[minmax(140px,0.35fr)_1fr_auto] items-center gap-3 border-b px-4 py-2 text-sm last:border-b-0">
+              <strong>{label}</strong>
+              {type === "checkbox" || type === "boolean" ? <label className="flex items-center gap-2"><input type="checkbox" checked={Boolean(values[key])} onChange={(event) => setValue(key, event.target.checked)} /> {values[key] ? "Yes" : "No"}</label> : type === "textarea" ? <Textarea rows={3} value={values[key] || ""} placeholder={`Enter ${label.toLowerCase()}`} onChange={(event) => setValue(key, event.target.value)} /> : <Input type={["date", "time", "number", "url", "datetime-local"].includes(type) ? type : "text"} value={values[key] || ""} placeholder={`Enter ${label.toLowerCase()}`} onChange={(event) => setValue(key, event.target.value)} />}
+              <Button type="button" variant="ghost" size="sm" className="text-destructive" disabled={deleteField.isPending} onClick={() => removeRow(key)}>Delete</Button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button disabled={updateTemplate.isPending} onClick={save}>{updateTemplate.isPending ? "Saving…" : "Save form values"}</Button>
+          {hiddenFields.length ? <Button type="button" variant="outline" onClick={() => setHiddenFields([])}>Restore deleted standard rows</Button> : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function FieldMappingEditor({ templateId }) {
   const mappingsQ = useFieldMappings(templateId);
   const create = useCreateFieldMapping();
@@ -455,15 +617,15 @@ export default function CallTemplateDetailPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">{template.name}</h1>
         <div className="flex items-center gap-2">
-          <Button
+          {!isMeetingTemplate ? <Button
             variant="outline"
             size="sm"
             disabled={createVersion.isPending}
             onClick={() => createVersion.mutateAsync({ templateId: template.id, version_label: "" })}
           >
             New version
-          </Button>
-          {selected ? (
+          </Button> : null}
+          {selected && !isMeetingTemplate ? (
             <>
               <Button
                 variant="outline"
@@ -503,17 +665,9 @@ export default function CallTemplateDetailPage() {
       ) : (
         <>
           {isMeetingTemplate ? (
-            <Card className="border-blue-200 bg-blue-50/40 dark:border-blue-900 dark:bg-blue-950/20">
-              <CardHeader><CardTitle className="text-base">Meeting form structure</CardTitle></CardHeader>
-              <CardContent>
-                <p className="mb-3 text-xs text-muted-foreground">These standard meeting fields are always included. Add dynamic fields using the builder below.</p>
-                <div className="grid gap-2 text-sm md:grid-cols-2">
-                  {["Meeting title", "Task / related lead", "Manager", "Meeting date", "Start time", "End time", "Meeting type", "Location / Google Meet link", "Participants", "Description"].map((field) => <div key={field} className="rounded-md border bg-background px-3 py-2">{field}</div>)}
-                </div>
-              </CardContent>
-            </Card>
+            selected ? <MeetingFormStructure version={selected} template={template} /> : null
           ) : null}
-          <div className="flex flex-wrap items-center gap-2">
+          {!isMeetingTemplate ? <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">Editing:</span>
             <Select
               value={selected?.id ?? ""}
@@ -531,11 +685,11 @@ export default function CallTemplateDetailPage() {
                 ))}
               </SelectContent>
             </Select>
-          </div>
+          </div> : null}
 
-          {selected ? <FieldEditor key={selected.id} version={selected} /> : null}
-          <FieldMappingEditor templateId={template.id} />
-          {selected ? <VersionAnalytics versionId={selected.id} /> : null}
+          {selected ? (isMeetingTemplate ? <MeetingCustomFieldsEditor key={selected.id} version={selected} /> : <FieldEditor key={selected.id} version={selected} />) : null}
+          {!isMeetingTemplate ? <FieldMappingEditor templateId={template.id} /> : null}
+          {selected && !isMeetingTemplate ? <VersionAnalytics versionId={selected.id} /> : null}
         </>
       )}
     </div>

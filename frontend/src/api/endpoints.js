@@ -80,6 +80,7 @@ export const endpoints = {
   meetings: {
     list: "/tasks/meetings/",
     create: "/tasks/meetings/",
+    kpi: "/tasks/meetings/kpi/",
     detail: (meetingId) => `/tasks/meetings/${meetingId}/`,
     approval: (meetingId) => `/tasks/meetings/${meetingId}/approval/`,
     reschedule: (meetingId) => `/tasks/meetings/${meetingId}/reschedule/`,

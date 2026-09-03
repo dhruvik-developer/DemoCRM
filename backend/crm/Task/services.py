@@ -411,6 +411,7 @@ def send_manager_meeting_approval_email(meeting):
             f"CRM System"
         )
 
+
         send_mail(
             subject=subject,
             message=message,
@@ -770,6 +771,7 @@ def send_rescheduled_meeting_approval_email(
             f"CRM System"
         )
 
+
         send_mail(
             subject=subject,
             message=message,
@@ -864,6 +866,8 @@ def send_meeting_scheduled_emails(meeting):
 
         # Extra fields (Template 3 custom fields)
         extra_fields = getattr(meeting, "extra_fields", {}) or {}
+        if isinstance(extra_fields, dict) and "values" in extra_fields:
+            extra_fields = extra_fields.get("values") or {}
         custom_block = ""
         if isinstance(extra_fields, dict) and extra_fields:
             extras_str = "\n".join(
@@ -911,6 +915,7 @@ def send_meeting_scheduled_emails(meeting):
             f"Please be ready at the scheduled time.\n\n"
             f"Regards,\nCRM System"
         )
+
 
         send_mail(
             subject=subject,

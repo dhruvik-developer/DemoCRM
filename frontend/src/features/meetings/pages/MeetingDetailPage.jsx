@@ -21,9 +21,6 @@ import {
   useRescheduleMeeting,
 } from "../hooks";
 import { useUsers } from "@/features/admin/hooks";
-import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
-import { useCallTemplates, useFields } from "@/features/callforms/hooks";
-import { MEETING_TEMPLATE_MARKER, meetingTemplateType } from "../templateUtils";
 import { approvalDecisionSchema } from "@/schemas/meeting.schema";
 import PageError from "@/components/common/PageError";
 import PageLoader from "@/components/common/PageLoader";
@@ -71,13 +68,6 @@ export default function MeetingDetailPage() {
   const [rejectOpen, setRejectOpen] = useState(false);
   const [participantId, setParticipantId] = useState("");
   const [removeId, setRemoveId] = useState("");
-  const [rescheduleTemplateId, setRescheduleTemplateId] = useState("");
-  const [rescheduleValues, setRescheduleValues] = useState({});
-  const templatesQuery = useCallTemplates();
-  const rescheduleTemplates = (templatesQuery.data ?? []).filter((template) => template.description?.startsWith(MEETING_TEMPLATE_MARKER) && meetingTemplateType(template) === "reschedule" && template.is_active);
-  const selectedRescheduleTemplate = rescheduleTemplates.find((template) => String(template.id) === rescheduleTemplateId);
-  const rescheduleVersionId = selectedRescheduleTemplate?.primary_version?.id ?? selectedRescheduleTemplate?.primary_version;
-  const rescheduleFieldsQuery = useFields(rescheduleVersionId);
 
   const rejectionForm = useForm({
     resolver: zodResolver(approvalDecisionSchema),
@@ -206,14 +196,6 @@ export default function MeetingDetailPage() {
               This request was rejected. Rescheduling resets it to PENDING and
               re-notifies the manager.
             </p>
-            {rescheduleTemplates.length ? (
-              <>
-                <FormField id="reschedule_template" label="Reschedule template">
-                  <Select value={rescheduleTemplateId || "none"} onValueChange={(value) => { setRescheduleTemplateId(value === "none" ? "" : value); setRescheduleValues({}); }}><SelectTrigger><SelectValue placeholder="Select template" /></SelectTrigger><SelectContent><SelectItem value="none">No template</SelectItem>{rescheduleTemplates.map((template) => <SelectItem key={template.id} value={String(template.id)}>{template.name}</SelectItem>)}</SelectContent></Select>
-                </FormField>
-                {rescheduleTemplateId ? <DynamicFormFields fields={rescheduleFieldsQuery.data ?? []} values={rescheduleValues} onChange={setRescheduleValues} stepView={false} /> : null}
-              </>
-            ) : null}
             <form
               className="grid gap-3 md:grid-cols-4"
               onSubmit={(event) => {
@@ -224,7 +206,6 @@ export default function MeetingDetailPage() {
                   const value = data.get(key)?.toString().trim();
                   if (value) payload[key] = value;
                 }
-                if (rescheduleTemplateId) payload.extra_fields = rescheduleValues;
                 reschedule.mutateAsync(payload);
               }}
             >

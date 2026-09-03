@@ -15,16 +15,14 @@ import { addMeetingParticipant } from "../api";
 import { useUsers } from "@/features/admin/hooks";
 import { useTask } from "@/features/tasks/hooks";
 import TaskSelect from "@/features/tasks/components/TaskSelect";
-import { useCallTemplates, useFields } from "@/features/callforms/hooks";
-import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
-import { MEETING_TEMPLATE_MARKER, meetingTemplateType } from "../templateUtils";
 import { createMeetingSchema } from "@/schemas/meeting.schema";
 import FormField from "@/components/forms/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Search, Users } from "lucide-react";
+import { Plus, Search, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
 import {
   Select,
@@ -67,22 +65,13 @@ export default function MeetingCreatePage() {
   const createMeeting = useCreateMeeting();
   const { data: users = [] } = useUsers();
   const [typeId, setTypeId] = useState("1");
-  const [templateId, setTemplateId] = useState("");
-  const [dynamicValues, setDynamicValues] = useState({});
-  const [dynamicErrors, setDynamicErrors] = useState({});
   const [participantOpen, setParticipantOpen] = useState(false);
   const [participantIds, setParticipantIds] = useState([]);
+  const [customFields, setCustomFields] = useState([]);
+  const [customValues, setCustomValues] = useState({});
+  const [customErrors, setCustomErrors] = useState({});
+  const [fieldDraft, setFieldDraft] = useState({ label: "", field_type: "text", options: "", is_required: false });
   const isOnline = typeId === "1";
-  const templatesQuery = useCallTemplates();
-  const meetingTemplates = (templatesQuery.data ?? []).filter(
-    (template) => template?.description?.startsWith(MEETING_TEMPLATE_MARKER) && meetingTemplateType(template) !== "reschedule" && template.is_active,
-  );
-  const selectedTemplate = meetingTemplates.find(
-    (template) => String(template.id) === templateId,
-  );
-  const primaryVersionId = selectedTemplate?.primary_version?.id ?? selectedTemplate?.primary_version;
-  const fieldsQuery = useFields(primaryVersionId);
-  const dynamicFields = fieldsQuery.data ?? [];
 
   const isManager = String(resolved?.roleName || "").toLowerCase() === "manager";
   const canCreate = hasPermission(resolved, "add_meeting");
@@ -112,17 +101,6 @@ export default function MeetingCreatePage() {
 
   const selectedTaskId = watch("task_id");
   const { data: taskData } = useTask(selectedTaskId);
-
-  useEffect(() => {
-    const workflow = meetingTemplateType(selectedTemplate);
-    if (workflow === "online") {
-      setTypeId("1");
-      setValue("meeting_type_id", 1);
-    } else if (workflow === "offline") {
-      setTypeId("2");
-      setValue("meeting_type_id", 2);
-    }
-  }, [selectedTemplate, setValue]);
 
   // All employees for the "Who is this meeting with?" field
   const employeeOptions = users.filter((u) => {
@@ -155,20 +133,9 @@ export default function MeetingCreatePage() {
   }, [taskData, getValues, setValue]);
 
   const onSubmit = async (values) => {
-    const nextErrors = {};
-    dynamicFields.forEach((field) => {
-      const value = dynamicValues[field.field_key];
-      if (
-        field.is_required &&
-        (value === undefined || value === null || value === "" ||
-          (Array.isArray(value) && value.length === 0))
-      ) {
-        nextErrors[field.field_key] = `${field.label} is required.`;
-      }
-    });
-    setDynamicErrors(nextErrors);
-    if (Object.keys(nextErrors).length > 0) return;
-
+    const requiredErrors = Object.fromEntries(customFields.filter((field) => field.is_required && (customValues[field.field_key] === undefined || customValues[field.field_key] === "" || customValues[field.field_key] === null)).map((field) => [field.field_key, `${field.label} is required.`]));
+    setCustomErrors(requiredErrors);
+    if (Object.keys(requiredErrors).length) return;
     try {
       const meeting = await createMeeting.mutateAsync({
         task_id: values.task_id,
@@ -182,7 +149,7 @@ export default function MeetingCreatePage() {
         location: values.location || undefined,
         description: values.description || undefined,
         manager: values.manager, // auto-set to logged-in manager
-        extra_fields: templateId ? dynamicValues : {},
+        extra_fields: { definitions: customFields, values: customValues },
       });
       const results = await Promise.allSettled(participantIds.map((userId) => addMeetingParticipant(meeting.meeting_id, { user_id: userId, participant_role: "Attendee", is_required: true })));
       const failed = results.filter((result) => result.status === "rejected").length;
@@ -191,6 +158,23 @@ export default function MeetingCreatePage() {
     } catch {
       // Errors are toasted by the mutation; keep the form filled for retry.
     }
+  };
+
+  const addCustomField = () => {
+    const label = fieldDraft.label.trim();
+    if (!label || customFields.length >= 25) return;
+    const baseKey = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "field";
+    let fieldKey = baseKey;
+    let suffix = 2;
+    while (customFields.some((field) => field.field_key === fieldKey)) fieldKey = `${baseKey}_${suffix++}`;
+    const optionTypes = ["select", "radio", "checkbox"];
+    setCustomFields((current) => [...current, { id: `custom_${Date.now()}`, field_key: fieldKey, label, field_type: fieldDraft.field_type, is_required: fieldDraft.is_required, options: optionTypes.includes(fieldDraft.field_type) ? fieldDraft.options.split(",").map((item) => item.trim()).filter(Boolean) : [] }]);
+    setFieldDraft({ label: "", field_type: "text", options: "", is_required: false });
+  };
+
+  const removeCustomField = (fieldKey) => {
+    setCustomFields((current) => current.filter((field) => field.field_key !== fieldKey));
+    setCustomValues((current) => { const next = { ...current }; delete next[fieldKey]; return next; });
   };
 
   if (!canCreate) {
@@ -352,7 +336,7 @@ export default function MeetingCreatePage() {
           />
         </FormField>
 
-        <FormField
+        {false && <><FormField
           id="meeting_template"
           label="Meeting Template"
           help="Choose a template to display its custom fields for this meeting."
@@ -399,7 +383,22 @@ export default function MeetingCreatePage() {
               />
             )}
           </div>
-        ) : null}
+        ) : null}</>}
+
+        <section className="rounded-xl border bg-muted/15 p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <div><h2 className="font-semibold">Custom Fields</h2><p className="text-xs text-muted-foreground">Add extra fields for this meeting.</p></div>
+            <span className="text-xs text-muted-foreground">{customFields.length}/25</span>
+          </div>
+          {customFields.length ? <div className="mb-4 space-y-3">{customFields.map((field) => <div key={field.field_key} className="relative"><DynamicFormFields fields={[field]} values={customValues} errors={customErrors} onChange={(next) => { setCustomValues(next); setCustomErrors({}); }} stepView={false} /><Button type="button" variant="ghost" size="icon-sm" className="absolute right-2 top-2 text-destructive" title="Remove field" onClick={() => removeCustomField(field.field_key)}><Trash2 /></Button></div>)}</div> : <p className="mb-4 rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No custom fields added yet.</p>}
+          <div className="grid items-end gap-3 rounded-lg border bg-background p-3 md:grid-cols-2">
+            <FormField id="custom_field_label" label="Field name"><Input placeholder="e.g. Agenda or Contact person" value={fieldDraft.label} onChange={(event) => setFieldDraft({ ...fieldDraft, label: event.target.value })} /></FormField>
+            <FormField id="custom_field_type" label="Field type"><Select value={fieldDraft.field_type} onValueChange={(value) => setFieldDraft({ ...fieldDraft, field_type: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["text", "textarea", "number", "date", "time", "boolean", "select", "radio", "checkbox"].map((type) => <SelectItem key={type} value={type} className="capitalize">{type}</SelectItem>)}</SelectContent></Select></FormField>
+            {["select", "radio", "checkbox"].includes(fieldDraft.field_type) ? <FormField id="custom_field_options" label="Options"><Input placeholder="Option one, Option two" value={fieldDraft.options} onChange={(event) => setFieldDraft({ ...fieldDraft, options: event.target.value })} /></FormField> : null}
+            <label className="flex h-8 items-center gap-2 text-sm"><input type="checkbox" checked={fieldDraft.is_required} onChange={(event) => setFieldDraft({ ...fieldDraft, is_required: event.target.checked })} /> Required field</label>
+            <Button type="button" variant="outline" disabled={!fieldDraft.label.trim() || customFields.length >= 25} onClick={addCustomField}><Plus /> Add field</Button>
+          </div>
+        </section>
 
         <Button
           type="submit"

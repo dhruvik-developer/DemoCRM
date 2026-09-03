@@ -609,6 +609,126 @@ class TaskKPIView(APIView):
             )
 
 
+def _visible_meetings_queryset(request):
+    """Meetings visible to the requesting user.
+
+    Mirrors the role-based visibility used by MeetingCreateView list:
+    superuser / admin see all active meetings, everyone else only sees
+    meetings they created or manage.
+    """
+    meetings = Meeting.objects.filter(is_active=True).select_related(
+        "task_id", "lead", "meeting_status_id", "meeting_type_id", "created_by", "manager"
+    )
+    user = request.user
+    if not user.is_superuser:
+        role = getattr(user, "role", None)
+        if role is None:
+            return None, {"detail": "No role assigned to this user."}
+        role_name = getattr(role, "rolename", "").strip().lower()
+        if role_name != "admin":
+            meetings = meetings.filter(Q(created_by=user) | Q(manager=user))
+    return meetings, None
+
+
+# ==========================================================
+# MEETING KPI (aggregate summary)
+# ==========================================================
+
+
+class MeetingKPIView(APIView):
+    """GET /api/tasks/meetings/kpi/
+
+    Returns aggregate KPIs for meetings visible to the requesting user.
+    Counts respect the same role-based visibility as the meeting list.
+    """
+
+    permission_classes = [CanCommunicateWithLead]
+    permission_names = {"GET": "view_meeting"}
+
+    @extend_schema(
+        tags=["Meetings"],
+        summary="Meeting KPIs",
+        description=(
+            "GET: Returns aggregate meeting KPIs (total, pending, approved, "
+            "rejected, online, offline, today, upcoming) for meetings visible "
+            "to the requesting user."
+        ),
+        operation_id="meeting_kpi",
+        responses={
+            200: inline_serializer(
+                "MeetingKPIResponse",
+                fields={
+                    "total": serializers.IntegerField(),
+                    "pending": serializers.IntegerField(),
+                    "approved": serializers.IntegerField(),
+                    "rejected": serializers.IntegerField(),
+                    "online": serializers.IntegerField(),
+                    "offline": serializers.IntegerField(),
+                    "today": serializers.IntegerField(),
+                    "upcoming": serializers.IntegerField(),
+                },
+            ),
+            403: inline_serializer(
+                "MeetingKPIForbiddenResponse", fields={"detail": serializers.CharField()}
+            ),
+            500: inline_serializer(
+                "MeetingKPIServerErrorResponse", fields={"error": serializers.CharField()}
+            ),
+        },
+    )
+    def get(self, request):
+        try:
+            meetings, error = _visible_meetings_queryset(request)
+            if error:
+                return Response(error, status=status.HTTP_403_FORBIDDEN)
+
+            now = timezone.localtime()
+
+            total = meetings.count()
+
+            pending = meetings.filter(
+                approval_status=Meeting.ApprovalStatus.PENDING
+            ).count()
+            approved = meetings.filter(
+                approval_status=Meeting.ApprovalStatus.APPROVED
+            ).count()
+            rejected = meetings.filter(
+                approval_status=Meeting.ApprovalStatus.REJECTED
+            ).count()
+
+            online = meetings.filter(meeting_type_id=1).count()
+            offline = meetings.filter(meeting_type_id=2).count()
+
+            # 1 == Online, 2 == Offline (MeetingType ids, see Task/services.py)
+            today = meetings.filter(meeting_date=now.date()).count()
+            upcoming = meetings.filter(meeting_date__gt=now.date()).count()
+
+            return Response(
+                {
+                    "total": total,
+                    "pending": pending,
+                    "approved": approved,
+                    "rejected": rejected,
+                    "online": online,
+                    "offline": offline,
+                    "today": today,
+                    "upcoming": upcoming,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except (Http404, APIException):
+            raise
+        except Exception:
+            logger.exception(
+                "Error while fetching meeting KPIs: user_id=%s", request.user.pk
+            )
+            return Response(
+                {"error": ("Something went wrong while " "fetching meeting KPIs.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
 # ==========================================================
 # TASK DETAIL / UPDATE / DELETE
 # ==========================================================
