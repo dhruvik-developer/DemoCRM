@@ -8,11 +8,24 @@
             size: A4 portrait;
             margin: 20mm 15mm 20mm 15mm;
         }
+        /* DejaVu Sans is installed system-wide (fonts-dejavu-core) and supports U+20B9 ₹ */
+        @font-face {
+            font-family: 'DejaVu Sans';
+            src: url('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf') format('truetype');
+        }
+        @font-face {
+            font-family: 'DejaVu Sans';
+            src: url('/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf') format('truetype');
+            font-weight: bold;
+        }
         body {
-            font-family: Helvetica, Arial, sans-serif;
+            font-family: 'DejaVu Sans', 'Noto Sans', 'Liberation Sans', Helvetica, Arial, sans-serif;
             font-size: 12px;
             color: #333333;
             line-height: 1.5;
+        }
+        .rupee {
+            font-family: 'DejaVu Sans', 'Noto Sans', sans-serif;
         }
         .header-table {
             width: 100%;
@@ -99,10 +112,11 @@
     <table class="header-table">
         <tr>
             <td style="width: 50%;">
-                <div class="company-name">DemoCRM Solutions</div>
+                <div class="company-name">DemoCRM Solutions Pvt. Ltd.</div>
                 <div style="color: #64748b; font-size: 11px;">
-                    100 Tech Park Way, Suite 400<br>
-                    Contact: info@democrm.com | +1 (800) 555-0199
+                    100 Tech Park Way, Suite 400, Mumbai – 400001<br>
+                    Contact: info@democrm.com | +91 80055 00199<br>
+                    GSTIN: {{ company_gst }} &nbsp;|&nbsp; CIN: {{ company_cin }}
                 </div>
             </td>
             <td style="width: 50%; vertical-align: top;">
@@ -125,6 +139,12 @@
                 {% if company_name %}
                 <div>{{ company_name }}</div>
                 {% endif %}
+                {% if gst_number %}
+                <div>GSTIN: <strong>{{ gst_number }}</strong></div>
+                {% endif %}
+                {% if billing_address %}
+                <div style="color:#475569; font-size:11px; margin-top:4px;">{{ billing_address|linebreaksbr }}</div>
+                {% endif %}
                 {% if client_email %}
                 <div>Email: {{ client_email }}</div>
                 {% endif %}
@@ -145,42 +165,80 @@
         </tr>
     </table>
 
-    <!-- Line Items Table -->
+    <!-- Line Items Table — with HSN & GST per revision -->
     <div class="section-heading">Line Items</div>
     <table class="items-table">
         <thead>
             <tr>
-                <th style="width: 45%;">Description</th>
-                <th style="width: 15%; text-align: right;">Quantity</th>
-                <th style="width: 20%; text-align: right;">Unit Price ($)</th>
-                <th style="width: 20%; text-align: right;">Amount ($)</th>
+                <th style="width: 30%;">Description</th>
+                <th style="width: 12%;">HSN/SAC</th>
+                <th style="width: 8%; text-align: right;">Qty</th>
+                <th style="width: 14%; text-align: right;">Unit Price (&#8377;)</th>
+                <th style="width: 8%; text-align: right;">GST%</th>
+                <th style="width: 8%; text-align: right;">Disc%</th>
+                <th style="width: 20%; text-align: right;">Amount (&#8377;)</th>
             </tr>
         </thead>
         <tbody>
             {% for item in line_items %}
             <tr>
                 <td>{{ item.description }}</td>
+                <td class="text-right" style="color:#64748b; font-size:11px;">{{ item.hsn_code|default:"—" }}</td>
                 <td class="text-right">{{ item.quantity }}</td>
-                <td class="text-right">{{ item.unit_price|floatformat:2 }}</td>
-                <td class="text-right">{{ item.amount|floatformat:2 }}</td>
+                <td class="text-right">&#8377;{{ item.unit_price|floatformat:2 }}</td>
+                <td class="text-right">{{ item.gst_rate|floatformat:0 }}%</td>
+                <td class="text-right">{% if item.discount_percent %}{{ item.discount_percent|floatformat:0 }}%{% else %}—{% endif %}</td>
+                <td class="text-right"><strong>&#8377;{{ item.amount|floatformat:2 }}</strong></td>
             </tr>
             {% empty %}
             <tr>
-                <td colspan="4" style="text-align: center; color: #94a3b8;">No line items provided.</td>
+                <td colspan="7" style="text-align: center; color: #94a3b8;">No line items provided.</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 
-    <!-- Totals -->
-    <table style="width: 100%;">
+    <!-- Totals — Stitch styled with Discount & GST per revision -->
+    <table style="width: 100%; border-collapse: collapse;">
         <tr>
-            <td style="width: 50%;"></td>
-            <td style="width: 50%; text-align: right;">
-                <table style="width: 100%; font-size: 13px;">
+            <td style="width: 50%; vertical-align: top; font-size: 10px; color: #64748b; padding-top: 6px;">Amount in words: <em>Rupees {{ version.total_amount|floatformat:0 }} only</em>{% if version.discount_value %}<br><span style="color:#b45309;">Discount applied: {% if version.discount_type == 'PERCENT' %}{{ version.discount_value|floatformat:0 }}%{% else %}&#8377;{{ version.discount_value|floatformat:2 }}{% endif %}</span>{% endif %}</td>
+            <td style="width: 50%;">
+                <table style="width: 100%; border: 1px solid #E5E7EB; border-radius: 8px; background: #F9FAFB; padding: 10px;">
                     <tr>
-                        <td style="font-weight: bold; text-align: right; padding-right: 15px;">Total Amount:</td>
-                        <td style="font-weight: bold; text-align: right; width: 120px;" class="grand-total">${{ version.total_amount|floatformat:2 }}</td>
+                        <td style="padding: 4px 12px; color: #64748b; font-size: 11px;">Subtotal</td>
+                        <td style="padding: 4px 12px; text-align: right; font-size: 11px;">&#8377;{{ version.subtotal_amount|default:version.total_amount|floatformat:2 }}</td>
+                    </tr>
+                    {% if version.discount_value and version.discount_value != 0 %}
+                    <tr>
+                        <td style="padding: 2px 12px; color: #b45309; font-size: 11px;">Discount {% if version.discount_type == 'PERCENT' %}({{ version.discount_value|floatformat:0 }}%){% endif %}</td>
+                        <td style="padding: 2px 12px; text-align: right; font-size: 11px; color: #b45309;">- &#8377;{{ version.discount_amount|floatformat:2 }}</td>
+                    </tr>
+                    {% endif %}
+                    {% if version.gst_rate and version.gst_rate != 0 %}
+                    <tr>
+                        <td style="padding: 2px 12px; color: #64748b; font-size: 10px;">CGST ({{ cgst_rate|floatformat:1 }}%)</td>
+                        <td style="padding: 2px 12px; text-align: right; font-size: 10px;">&#8377;{{ cgst_amount|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 2px 12px; color: #64748b; font-size: 10px;">SGST ({{ sgst_rate|floatformat:1 }}%)</td>
+                        <td style="padding: 2px 12px; text-align: right; font-size: 10px;">&#8377;{{ sgst_amount|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 2px 12px; color: #64748b; font-size: 10px; font-weight: bold;">GST Total ({{ version.gst_rate|floatformat:0 }}%)</td>
+                        <td style="padding: 2px 12px; text-align: right; font-size: 10px; font-weight: bold;">&#8377;{{ version.gst_amount|floatformat:2 }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td style="padding: 2px 12px; color: #64748b; font-size: 10px;">GST</td>
+                        <td style="padding: 2px 12px; text-align: right; font-size: 10px; color: #64748b;">Not applicable</td>
+                    </tr>
+                    {% endif %}
+                    <tr>
+                        <td style="padding: 6px 12px; font-weight: bold; text-align: right; border-top: 1px solid #E5E7EB; font-size: 13px;" colspan="1">Total Amount:</td>
+                        <td style="padding: 6px 12px; font-weight: bold; text-align: right; border-top: 1px solid #E5E7EB; font-size: 14px; color: #0f172a;">&#8377;{{ version.total_amount|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td colspan="2" style="padding: 4px 12px; font-size: 9px; color: #64748b; text-align: right;">Valid for 30 days • {{ version.get_status_display }}</td>
                     </tr>
                 </table>
             </td>
@@ -205,9 +263,32 @@
     </div>
     {% endif %}
 
+    <!-- Bank + Authorized Signatory — real company trust -->
+    <table style="width: 100%; margin-top: 28px; border-collapse: collapse;">
+        <tr>
+            <td style="width: 55%; vertical-align: top; padding-right: 20px;">
+                <div class="section-heading">Bank Details</div>
+                <div style="font-size: 11px; color: #334155; line-height: 1.6;">
+                    Beneficiary: <strong>DemoCRM Solutions Pvt. Ltd.</strong><br>
+                    Bank: HDFC Bank, Mumbai Main Branch<br>
+                    A/C: 50200012345678 &nbsp;|&nbsp; IFSC: HDFC0001234<br>
+                    UPI: democrm@hdfcbank
+                </div>
+            </td>
+            <td style="width: 45%; vertical-align: top; text-align: center;">
+                <div class="section-heading" style="text-align: center;">Authorized Signatory</div>
+                <div style="margin-top: 18px; border-top: 1px solid #1e293b; width: 180px; margin-left: auto; margin-right: auto; padding-top: 6px; font-size: 11px; color: #1e293b;">
+                    For DemoCRM Solutions Pvt. Ltd.<br>
+                    <span style="color: #64748b; font-size: 10px;">Stamp & Signature</span>
+                </div>
+            </td>
+        </tr>
+    </table>
+
     <!-- Footer -->
     <div class="footer">
-        This is an official quotation from DemoCRM Solutions. Thank you for your business.
+        This is an official computer-generated quotation from DemoCRM Solutions Pvt. Ltd. • GSTIN: {{ company_gst }} • CIN: {{ company_cin }}<br>
+        Thank you for your business. For queries: info@democrm.com | +91 80055 00199 | www.democrm.com
     </div>
 
 </body>

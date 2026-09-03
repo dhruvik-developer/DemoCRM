@@ -43,6 +43,9 @@ export const endpoints = {
     customerDetail: (customerId) => `/crm/customers/${customerId}/`,
     customerActivities: (customerId) => `/crm/customers/${customerId}/activities/`,
     customerSmartLookup: "/crm/customers/smart-lookup/",
+    customerRecordPayment: (customerId) => `/crm/customers/${customerId}/record-payment/`,
+    leadRecordPayment: (leadId) => `/crm/leads/${leadId}/record-payment/`,
+    payments: "/crm/payments/",
 
     accounts: "/crm/accounts/",
     contacts: "/crm/contacts/",

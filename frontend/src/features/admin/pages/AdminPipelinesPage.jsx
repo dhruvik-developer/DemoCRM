@@ -13,7 +13,7 @@ import {
   usePipelineStages,
   useUpdatePipeline,
 } from "@/features/crm/hooks";
-import { useCallTemplates, useCreateStageActivity, useStageActivitiesForStage, useUpdateStageActivity } from "@/features/callforms/hooks";
+import { useCallTemplates, useCreateStageActivity, useDeleteStageActivity, useStageActivitiesForStage, useUpdateStageActivity } from "@/features/callforms/hooks";
 import { useRoles } from "@/features/admin/hooks";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import EmptyState from "@/components/common/EmptyState";
@@ -44,8 +44,10 @@ function StageActivitiesAdmin({ stageId }) {
   const { data: roles } = useRoles();
   const createLink = useCreateStageActivity();
   const updateActivity = useUpdateStageActivity();
+  const deleteActivity = useDeleteStageActivity();
   const [selected, setSelected] = useState("");
   const [editing, setEditing] = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const [editRoles, setEditRoles] = useState([]);
   const [editEditable, setEditEditable] = useState([]);
   const [editFormType, setEditFormType] = useState("CALL");
@@ -96,6 +98,7 @@ function StageActivitiesAdmin({ stageId }) {
                 <Badge variant="outline" className="text-[10px]">{activity.form_type ?? "CALL"}</Badge>
                 <span className="text-muted-foreground">→ {activity.call_template_name ?? activity.call_template ?? "— no template —"}</span>
                 <Button size="sm" variant="ghost" className="ml-auto h-6 text-[11px]" onClick={() => openEdit(activity)}>Edit</Button>
+                <Button size="sm" variant="ghost" className="h-6 text-[11px] text-destructive hover:text-destructive" onClick={() => setDeleting(activity)}>Delete</Button>
               </div>
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
                 <span>View:</span>
@@ -186,6 +189,20 @@ function StageActivitiesAdmin({ stageId }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleting)}
+        onOpenChange={(open) => !open && setDeleting(null)}
+        title={`Delete activity "${deleting?.name}"?`}
+        description="This will remove the form link from the stage. Leads will no longer see this form."
+        confirmLabel="Delete"
+        destructive
+        loading={deleteActivity.isPending}
+        onConfirm={() => {
+          if (!deleting) return;
+          deleteActivity.mutateAsync(deleting.id).then(() => setDeleting(null));
+        }}
+      />
     </div>
   );
 }

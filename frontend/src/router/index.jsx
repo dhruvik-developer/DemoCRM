@@ -31,6 +31,7 @@ import CallTemplateDetailPage from "@/features/callforms/pages/CallTemplateDetai
 import CallFormSubmitPage from "@/features/callforms/pages/CallFormSubmitPage";
 import CallFormRulesPage, { AdhocProposalsPage } from "@/features/callforms/pages/CallFormRulesPage";
 import AdminRolesPage from "@/features/admin/pages/AdminRolesPage";
+import AdminRolePermissionsPage from "@/features/admin/pages/AdminRolePermissionsPage";
 import AdminLeadSourcesPage from "@/features/admin/pages/AdminLeadSourcesPage";
 import AdminPipelinesPage from "@/features/admin/pages/AdminPipelinesPage";
 import AuditLogsPage from "@/features/admin/pages/AuditLogsPage";
@@ -85,6 +86,7 @@ export const router = createBrowserRouter([
           { path: "/callforms/rules", element: <CallFormRulesPage /> },
           { path: "/callforms/adhoc", element: <AdhocProposalsPage /> },
           { path: "/admin/roles", element: <AdminRolesPage /> },
+          { path: "/admin/roles/:roleId", element: <AdminRolePermissionsPage /> },
           { path: "/admin/sources", element: <AdminLeadSourcesPage /> },
           { path: "/admin/pipelines", element: <AdminPipelinesPage /> },
           { path: "/admin/audit-logs", element: <AuditLogsPage /> },

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from rest_framework import serializers
 from django.core.validators import RegexValidator
 
@@ -9,6 +11,7 @@ from .models import (
     CustomerContact,
     Lead,
     LeadSource,
+    Payment,
     Pipeline,
     PipelineStage,
     Quotation,
@@ -294,6 +297,29 @@ class CustomerSerializer(serializers.ModelSerializer):
         return attrs
 
 
+class PaymentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Payment
+        fields = [
+            "id",
+            "lead",
+            "customer",
+            "amount",
+            "payment_date",
+            "method",
+            "reference",
+            "notes",
+            "created_by",
+            "created_at",
+        ]
+        read_only_fields = ["id", "created_by", "created_at"]
+
+    def validate_amount(self, value):
+        if value <= Decimal("0.00"):
+            raise serializers.ValidationError("Amount must be greater than 0.")
+        return value
+
+
 class ActivitySerializer(serializers.ModelSerializer):
     class Meta:
         model = Activity
@@ -402,8 +428,11 @@ class QuotationLineItemSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "description",
+            "hsn_code",
             "quantity",
             "unit_price",
+            "gst_rate",
+            "discount_percent",
             "amount",
             "created_at",
         ]
@@ -437,6 +466,13 @@ class QuotationApprovalSerializer(serializers.ModelSerializer):
 class QuotationVersionSerializer(serializers.ModelSerializer):
     line_items = QuotationLineItemSerializer(many=True, read_only=True)
     approvals = QuotationApprovalSerializer(many=True, read_only=True)
+    subtotal = serializers.DecimalField(max_digits=18, decimal_places=2, read_only=True)
+    discount_amount = serializers.DecimalField(
+        max_digits=18, decimal_places=2, read_only=True
+    )
+    gst_amount = serializers.DecimalField(
+        max_digits=18, decimal_places=2, read_only=True
+    )
 
     class Meta:
         model = QuotationVersion
@@ -450,6 +486,13 @@ class QuotationVersionSerializer(serializers.ModelSerializer):
             "pipeline",
             "current_stage",
             "approval_required",
+            "subtotal_amount",
+            "discount_type",
+            "discount_value",
+            "discount_amount",
+            "gst_rate",
+            "gst_amount",
+            "subtotal",
             "total_amount",
             "terms",
             "notes",
@@ -475,6 +518,10 @@ class QuotationVersionSerializer(serializers.ModelSerializer):
             "pipeline",
             "current_stage",
             "approval_required",
+            "subtotal_amount",
+            "discount_amount",
+            "gst_amount",
+            "subtotal",
             "total_amount",
             "line_items",
             "approvals",

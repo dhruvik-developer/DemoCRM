@@ -119,7 +119,7 @@ export default function CallTemplatesPage() {
           </DialogHeader>
           <form
             onSubmit={createForm.handleSubmit((values) =>
-              createTemplate.mutateAsync(values).then(() => setCreateOpen(false)),
+              createTemplate.mutateAsync({ ...values, initial_fields: [] }).then(() => { setCreateOpen(false); createForm.reset(); }),
             )}
             className="flex flex-col gap-3"
           >

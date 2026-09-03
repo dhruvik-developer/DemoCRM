@@ -32,8 +32,11 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     shared-mime-info \
     fonts-liberation \
-    fonts-liberation \
-    && rm -rf /var/lib/apt/lists/*
+    fonts-dejavu-core \
+    fonts-noto-core \
+    fontconfig \
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -f -v
 
 
 # ==========================================================

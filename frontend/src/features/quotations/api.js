@@ -81,6 +81,10 @@ export async function rejectQuotation(quotationId, rejectionReason) {
   return data;
 }
 
+export async function deleteQuotation(quotationId) {
+  await apiClient.delete(endpoints.crm.quotationDetail(quotationId));
+}
+
 /**
  * PDF requires the Authorization header, so we fetch a blob instead of a
  * plain <a href>. Blocked by the backend for DRAFT/PENDING versions.

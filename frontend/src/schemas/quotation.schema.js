@@ -5,6 +5,7 @@ import { z } from "zod";
 
 export const lineItemSchema = z.object({
   description: z.string().trim().min(1, "Description is required."),
+  hsn_code: z.string().trim().max(20).optional().or(z.literal("")),
   quantity: z.preprocess(
     (val) => (val === "" || val === undefined || val === null ? undefined : Number(val)),
     z
@@ -17,18 +18,26 @@ export const lineItemSchema = z.object({
   unit_price: z.coerce
     .number({ message: "Unit price is required." })
     .min(0.01, "Unit price must be at least 0.01."),
+  gst_rate: z.coerce.number().min(0).max(100).optional().or(z.literal("")),
+  discount_percent: z.coerce.number().min(0).max(100).optional().or(z.literal("")),
 });
 
 export const createQuotationSchema = z.object({
   lead_id: z.string().uuid("A lead is required (quotations are created from ACTIVE leads)."),
   terms: z.string().trim().max(5000).optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  discount_type: z.enum(["FLAT", "PERCENT"]).optional().or(z.literal("")),
+  discount_value: z.coerce.number().min(0).optional().or(z.literal("")),
+  gst_rate: z.coerce.number().min(0).max(100).optional().or(z.literal("")),
   line_items: z.array(lineItemSchema).default([]),
 });
 
 export const draftUpdateSchema = z.object({
   terms: z.string().trim().max(5000).optional().or(z.literal("")),
   notes: z.string().trim().max(2000).optional().or(z.literal("")),
+  discount_type: z.enum(["FLAT", "PERCENT"]).optional().or(z.literal("")),
+  discount_value: z.coerce.number().min(0).optional().or(z.literal("")),
+  gst_rate: z.coerce.number().min(0).max(100).optional().or(z.literal("")),
   line_items: z.array(lineItemSchema),
 });
 

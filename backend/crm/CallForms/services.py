@@ -424,8 +424,11 @@ def get_lead_stage_forms(lead_or_id=None, stage_or_id=None, user=None):
     if not stage:
         raise ValidationError("No stage found for this lead.")
 
-    activities = stage.activities.filter(is_active=True).order_by(
-        "display_order", "name"
+    activities = (
+        stage.activities.filter(is_active=True)
+        .select_related("call_template")
+        .prefetch_related("call_template__versions__fields")
+        .order_by("display_order", "name")
     )
     role_name = getattr(getattr(user, "role", None), "rolename", None)
 
@@ -768,6 +771,17 @@ def validate_submission_data(template_version, form_data):
     Validates submitted JSON data dictionary against TemplateVersion fields schema.
     Raises ValidationError if required fields are missing or select/radio/checkbox/file values are invalid.
     """
+    import json as _json
+    import re as _re
+
+    # Gentle size guard — keep JSON payloads small (20KB) to avoid abuse
+    try:
+        if len(_json.dumps(form_data).encode("utf-8")) > 20 * 1024:
+            raise ValidationError({"data": "Payload too large (max 20KB)."})
+    except ValidationError:
+        raise
+    except Exception:
+        pass
     errors = {}
     fields = template_version.fields.all()
 
@@ -816,6 +830,14 @@ def validate_submission_data(template_version, form_data):
         if field.field_type == FieldType.FILE and val not in (None, ""):
             rules = field.validation_rules or {}
             allowed_exts = rules.get("file_types", "")
+            # Gentle regex for file_types — keep simple, no harsh rejection
+            if allowed_exts and not _re.match(
+                r"^[a-z0-9,.\s]+$", str(allowed_exts), _re.I
+            ):
+                errors[key] = (
+                    "file_types must be comma-separated extensions like pdf,docx,jpg"
+                )
+                continue
             max_files = rules.get("max_files")
             vals = val if isinstance(val, list) else [val]
             if max_files is not None:
@@ -839,6 +861,26 @@ def validate_submission_data(template_version, form_data):
                             f"File extension '.{ext}' not allowed. Allowed: {allowed_exts}"
                         )
                         break
+        # DATETIME/DATE/TIME gentle ISO parse (non-blocking for other types)
+        if field.field_type in (
+            FieldType.DATETIME,
+            FieldType.DATE,
+            FieldType.TIME,
+        ) and val not in (None, ""):
+            try:
+                if (
+                    field.field_type == FieldType.DATETIME
+                    and not dateparse.parse_datetime(str(val))
+                ):
+                    # also accept date-only strings for convenience
+                    if not dateparse.parse_date(str(val)):
+                        errors[key] = f"'{field.label}' must be a valid datetime."
+                elif field.field_type == FieldType.DATE and not dateparse.parse_date(
+                    str(val)
+                ):
+                    errors[key] = f"'{field.label}' must be a valid date."
+            except Exception:
+                pass
 
     if errors:
         raise ValidationError(errors)
@@ -892,6 +934,15 @@ def sync_submission_to_lead(submission):
     lead = submission.lead
     if not lead:
         return []
+    # Gentle permission gate — fill-if-blank direct columns only if user can edit lead (or is owner)
+    can_edit_lead = True
+    try:
+        can_edit_lead = (
+            submission.submitted_by.has_perm("customer_management.change_lead")
+            or submission.lead.assigned_to_id == submission.submitted_by_id
+        )
+    except Exception:
+        pass
 
     data = submission.data or {}
     direct_updates = {}
@@ -906,26 +957,25 @@ def sync_submission_to_lead(submission):
             tgt_model, tgt_field = mappings[norm]
             if tgt_model == "Lead":
                 if "." in tgt_field:
-                    # e.g. metadata.annual_revenue
                     _, meta_key = tgt_field.split(".", 1)
                     metadata_updates[meta_key] = value
                 else:
-                    current = getattr(lead, tgt_field, None)
-                    if current in (None, ""):
-                        direct_updates[tgt_field] = (
-                            str(value).strip() if isinstance(value, str) else value
-                        )
+                    if can_edit_lead:
+                        current = getattr(lead, tgt_field, None)
+                        if current in (None, ""):
+                            direct_updates[tgt_field] = (
+                                str(value).strip() if isinstance(value, str) else value
+                            )
                     metadata_updates[raw_key] = value
             else:
-                # For Customer/CustomerAccount we just store in metadata for now; sync on convert will handle
                 metadata_updates[raw_key] = value
             continue
         direct_field = DIRECT_MAP.get(norm)
         if direct_field:
-            current = getattr(lead, direct_field, None)
-            if current in (None, ""):
-                direct_updates[direct_field] = str(value).strip()
-            # also mirror into metadata for visibility
+            if can_edit_lead:
+                current = getattr(lead, direct_field, None)
+                if current in (None, ""):
+                    direct_updates[direct_field] = str(value).strip()
             metadata_updates[raw_key] = value
         else:
             # Skip internal file blobs that are not scalar – still store
