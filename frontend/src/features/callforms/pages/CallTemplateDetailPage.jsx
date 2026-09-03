@@ -487,7 +487,7 @@ export default function CallTemplateDetailPage() {
             </>
           ) : null}
           <Button variant="ghost" asChild>
-            <Link to={isMeetingTemplate ? "/notifications/templates" : "/callforms"}>
+            <Link to={isMeetingTemplate ? "/meeting-templates" : "/callforms"}>
               ← Templates
             </Link>
           </Button>
@@ -502,6 +502,17 @@ export default function CallTemplateDetailPage() {
         </Card>
       ) : (
         <>
+          {isMeetingTemplate ? (
+            <Card className="border-blue-200 bg-blue-50/40 dark:border-blue-900 dark:bg-blue-950/20">
+              <CardHeader><CardTitle className="text-base">Meeting form structure</CardTitle></CardHeader>
+              <CardContent>
+                <p className="mb-3 text-xs text-muted-foreground">These standard meeting fields are always included. Add dynamic fields using the builder below.</p>
+                <div className="grid gap-2 text-sm md:grid-cols-2">
+                  {["Meeting title", "Task / related lead", "Manager", "Meeting date", "Start time", "End time", "Meeting type", "Location / Google Meet link", "Participants", "Description"].map((field) => <div key={field} className="rounded-md border bg-background px-3 py-2">{field}</div>)}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">Editing:</span>
             <Select

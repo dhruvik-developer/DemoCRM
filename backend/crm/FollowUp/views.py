@@ -7,10 +7,12 @@ from rest_framework.exceptions import APIException
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
-from drf_spectacular.utils import extend_schema
+from rest_framework import serializers
+from drf_spectacular.utils import extend_schema, inline_serializer
 from .models import FollowUpStatus, Followup, RecordNote
 from .serializers import FollowupSerializer, FollowUpStatusUpdateSerializer, RecordNoteSerializer
-from django.db.models import Q
+from django.db.models import Q, Count
+from django.utils import timezone
 from .pagination import CRMPageNumberPagination
 from .permission import CanCommunicateWithlead
 from Notification.notification_utils import trigger_notification_event
@@ -710,5 +712,127 @@ class FollowUpStatusUpdateView(APIView):
 
             return Response(
                 {"error": ("Something went wrong while " "updating FollowUp status.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+# ==========================================================
+# FOLLOWUP KPI (aggregate summary)
+# ==========================================================
+
+
+def _visible_followups_queryset(request):
+    """Follow-ups visible to the requesting user.
+
+    Mirrors the role-based visibility used by FollowUpListCreateView:
+    superuser / admin / manager see all active follow-ups, everyone else
+    only sees follow-ups on tasks assigned to them.
+    """
+    followups = Followup.objects.select_related(
+        "task_id", "task_id__assigned_to", "followup_status", "followup_type"
+    )
+    user = request.user
+    if not user.is_superuser:
+        role = getattr(user, "role", None)
+        if role is None:
+            return None, {"detail": "No role assigned to this user."}
+        role_name = getattr(role, "rolename", "").strip().lower()
+        if role_name not in ["admin", "manager"]:
+            followups = followups.filter(task_id__assigned_to=user)
+    return followups, None
+
+
+class FollowUpKPIView(APIView):
+    """GET /api/followups/kpi/
+
+    Returns aggregate KPIs for follow-ups visible to the requesting user.
+    Counts respect the same role-based visibility as the follow-up list.
+    """
+
+    permission_classes = [CanCommunicateWithlead]
+    permission_names = {"GET": "view_followup"}
+
+    @extend_schema(
+        tags=["Follow Ups"],
+        summary="Follow-up KPIs",
+        description=(
+            "GET: Returns aggregate follow-up KPIs (total, pending, completed, "
+            "overdue, today, upcoming, by_type) for follow-ups visible to the "
+            "requesting user."
+        ),
+        operation_id="followup_kpi",
+        responses={
+            200: inline_serializer(
+                "FollowUpKPIResponse",
+                fields={
+                    "total": serializers.IntegerField(),
+                    "pending": serializers.IntegerField(),
+                    "completed": serializers.IntegerField(),
+                    "overdue": serializers.IntegerField(),
+                    "today": serializers.IntegerField(),
+                    "upcoming": serializers.IntegerField(),
+                    "by_type": serializers.DictField(child=serializers.IntegerField()),
+                },
+            ),
+            403: inline_serializer(
+                "FollowUpKPIForbiddenResponse", fields={"detail": serializers.CharField()}
+            ),
+            500: inline_serializer(
+                "FollowUpKPIServerErrorResponse", fields={"error": serializers.CharField()}
+            ),
+        },
+    )
+    def get(self, request):
+        try:
+            followups, error = _visible_followups_queryset(request)
+            if error:
+                return Response(error, status=status.HTTP_403_FORBIDDEN)
+
+            # Status ID 2 == Completed (FOLLOWUP_STATUSES / frontend constants)
+            completed_status_id = 2
+
+            now = timezone.now()
+            start_today = timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_today = start_today + timezone.timedelta(days=1)
+
+            total = followups.count()
+
+            completed = followups.filter(followup_status_id=completed_status_id).count()
+            pending = followups.exclude(followup_status_id=completed_status_id).count()
+
+            open_followups = followups.exclude(followup_status_id=completed_status_id)
+            overdue = open_followups.filter(followup_date__lt=now).count()
+            today = open_followups.filter(
+                followup_date__gte=start_today, followup_date__lt=end_today
+            ).count()
+            upcoming = open_followups.filter(followup_date__gte=end_today).count()
+
+            by_type = dict(
+                followups.values("followup_type_id")
+                .annotate(total=Count("followup_id"))
+                .values_list("followup_type_id", "total")
+            )
+
+            return Response(
+                {
+                    "total": total,
+                    "pending": pending,
+                    "completed": completed,
+                    "overdue": overdue,
+                    "today": today,
+                    "upcoming": upcoming,
+                    "by_type": by_type,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except (Http404, APIException):
+            raise
+        except Exception:
+            logger.exception(
+                "Error while fetching follow-up KPIs: user_id=%s", request.user.pk
+            )
+            return Response(
+                {"error": ("Something went wrong while " "fetching follow-up KPIs.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )

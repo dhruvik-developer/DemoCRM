@@ -68,6 +68,7 @@ export const endpoints = {
 
    tasks: {
     list: "/tasks/",
+    kpi: "/tasks/kpi/",
     detail: (taskId) => `/tasks/${taskId}/`,
     assign: (taskId) => `/tasks/${taskId}/assign/`,
     status: (taskId) => `/tasks/${taskId}/status/`,
@@ -97,6 +98,7 @@ export const endpoints = {
 
   followups: {
     list: "/followups/",
+    kpi: "/followups/kpi/",
     detail: (followupId) => `/followups/${followupId}/`,
     status: (followupId) => `/followups/${followupId}/status/`,
   },

@@ -41,7 +41,7 @@ export default function CallTemplatesPage() {
   });
 
   const rows = (templatesQuery.data ?? []).filter(
-    (template) => template?.description !== "__MEETING_TEMPLATE__",
+    (template) => !template?.description?.startsWith("__MEETING_TEMPLATE__"),
   );
 
   const handleEditClick = (template) => {

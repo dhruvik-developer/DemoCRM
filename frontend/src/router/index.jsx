@@ -81,7 +81,7 @@ export const router = createBrowserRouter([
           { path: "/quotations/new", element: <QuotationCreatePage /> },
           { path: "/quotations/:quotationId", element: <QuotationDetailPage /> },
           { path: "/notifications", element: <NotificationsPage /> },
-          { path: "/notifications/templates", element: <MeetingTemplatesPage /> },
+          { path: "/meeting-templates", element: <MeetingTemplatesPage /> },
           { path: "/meeting-templates/:templateId", element: <CallTemplateDetailPage /> },
           { path: "/callforms", element: <CallTemplatesPage /> },
           { path: "/callforms/templates/:templateId", element: <CallTemplateDetailPage /> },

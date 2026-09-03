@@ -16,7 +16,7 @@ from .services import (
     OFFLINE_MEETING_TYPE_ID,
     OFFICE_LOCATION,
 )
-from django.db.models import Q
+from django.db.models import Q, Count
 
 from .permission import CanCommunicateWithLead
 
@@ -489,6 +489,122 @@ class TaskListCreateView(APIView):
 
             return Response(
                 {"error": ("Something went wrong while " "creating the task.")},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+def _visible_tasks_queryset(request):
+    """Active tasks visible to the requesting user.
+
+    Mirrors the role-based visibility used by TaskListCreateView:
+    superuser / admin / manager see all active tasks, everyone else
+    only sees tasks assigned to them.
+    """
+    tasks = Task.objects.filter(is_active=True).select_related("status", "priority")
+    user = request.user
+    if not user.is_superuser:
+        role = getattr(user, "role", None)
+        if role is None:
+            return None, {"detail": "No role assigned to this user."}
+        role_name = getattr(role, "rolename", "").strip().lower()
+        if role_name not in ["admin", "manager"]:
+            tasks = tasks.filter(assigned_to=user)
+    return tasks, None
+
+
+# ==========================================================
+# TASK KPI (aggregate summary)
+# ==========================================================
+
+
+class TaskKPIView(APIView):
+    """GET /api/tasks/kpi/
+
+    Returns aggregate KPIs for tasks visible to the requesting user.
+    Counts respect the same role-based visibility as the task list.
+    """
+
+    permission_classes = [CanCommunicateWithLead]
+    permission_names = {"GET": "view_task"}
+
+    @extend_schema(
+        tags=["Tasks"],
+        summary="Task KPIs",
+        description=(
+            "GET: Returns aggregate task KPIs (total, open, overdue, today, "
+            "upcoming, completed, high_priority) for tasks visible to the "
+            "requesting user."
+        ),
+        operation_id="task_kpi",
+        responses={
+            200: inline_serializer(
+                "TaskKPIResponse",
+                fields={
+                    "total": serializers.IntegerField(),
+                    "open": serializers.IntegerField(),
+                    "overdue": serializers.IntegerField(),
+                    "today": serializers.IntegerField(),
+                    "upcoming": serializers.IntegerField(),
+                    "completed": serializers.IntegerField(),
+                    "high_priority": serializers.IntegerField(),
+                },
+            ),
+            403: inline_serializer(
+                "TaskKPIForbiddenResponse", fields={"detail": serializers.CharField()}
+            ),
+            500: inline_serializer(
+                "TaskKPIServerErrorResponse", fields={"error": serializers.CharField()}
+            ),
+        },
+    )
+    def get(self, request):
+        try:
+            tasks, error = _visible_tasks_queryset(request)
+            if error:
+                return Response(error, status=status.HTTP_403_FORBIDDEN)
+
+            # Status ID 3 == Completed (TASK_STATUSES / frontend constants)
+            completed_status_id = 3
+
+            now = timezone.now()
+            start_today = timezone.localtime(now).replace(hour=0, minute=0, second=0, microsecond=0)
+            end_today = start_today + timezone.timedelta(days=1)
+
+            total = tasks.count()
+
+            completed_tasks = tasks.filter(status_id=completed_status_id)
+            open_tasks = tasks.exclude(status_id=completed_status_id)
+
+            completed = completed_tasks.count()
+            open_count = open_tasks.count()
+
+            overdue = open_tasks.filter(due_date__lt=now).count()
+            today = open_tasks.filter(due_date__gte=start_today, due_date__lt=end_today).count()
+            upcoming = open_tasks.filter(due_date__gte=end_today).count()
+
+            high_priority = open_tasks.filter(priority_id=3).count()
+
+            return Response(
+                {
+                    "total": total,
+                    "open": open_count,
+                    "overdue": overdue,
+                    "today": today,
+                    "upcoming": upcoming,
+                    "completed": completed,
+                    "high_priority": high_priority,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        except (Http404, APIException):
+            raise
+        except Exception:
+            logger.exception(
+                "Error while fetching task KPIs: user_id=%s", request.user.pk
+            )
+            return Response(
+                {"error": ("Something went wrong while " "fetching task KPIs.")},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
@@ -2385,6 +2501,7 @@ class MeetingRescheduleView(APIView):
                 "end_time",
                 "meeting_link",
                 "location",
+                "extra_fields",
             ):
 
                 if field in request.data:

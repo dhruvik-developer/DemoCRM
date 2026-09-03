@@ -10,6 +10,11 @@ export async function getTasks(filters) {
   return data;
 }
 
+export async function getTaskKpi() {
+  const { data } = await apiClient.get(endpoints.tasks.kpi);
+  return data;
+}
+
 export async function getTask(taskId) {
   const { data } = await apiClient.get(endpoints.tasks.detail(taskId));
   return data;

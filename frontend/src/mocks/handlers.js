@@ -41,6 +41,32 @@ export const handlers = [
     }),
   ),
 
+  // ── Tasks KPI ─────────────────────────────────────────────
+  http.get("/tasks/kpi/", () =>
+    HttpResponse.json({
+      total: 0,
+      open: 0,
+      overdue: 0,
+      today: 0,
+      upcoming: 0,
+      completed: 0,
+      high_priority: 0,
+    }),
+  ),
+
+  // ── Follow-up KPI ────────────────────────────────────────
+  http.get("/followups/kpi/", () =>
+    HttpResponse.json({
+      total: 0,
+      pending: 0,
+      completed: 0,
+      overdue: 0,
+      today: 0,
+      upcoming: 0,
+      by_type: {},
+    }),
+  ),
+
   // DRF-style 401 for anything without a handler → exercises the refresh flow.
   http.get("*", ({ request }) => {
     const auth = request.headers.get("Authorization");

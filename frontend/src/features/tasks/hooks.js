@@ -12,6 +12,7 @@ import {
   deleteTask,
   getTask,
   getTasks,
+  getTaskKpi,
   getTaskStatuses,
   getTaskCategories,
   updateTask,
@@ -23,6 +24,13 @@ export function useTasks(filters) {
     queryKey: taskKeys.list(filters),
     queryFn: () => getTasks(filters),
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useTaskKpi() {
+  return useQuery({
+    queryKey: ["tasks", "kpi"],
+    queryFn: getTaskKpi,
   });
 }
 

@@ -5,6 +5,7 @@ from .views import (
     TaskDetailView,
     TaskAssignView,
     TaskStatusUpdateView,
+    TaskKPIView,
     MeetingCreateView,
     MeetingDetailView,
     MeetingApprovalView,
@@ -68,6 +69,7 @@ urlpatterns = [
     # TASK
     # ======================================================
     path("", TaskListCreateView.as_view(), name="task-list-create"),
+    path("kpi/", TaskKPIView.as_view(), name="task-kpi"),
     path("<int:task_id>/", TaskDetailView.as_view(), name="task-detail"),
     path("<int:task_id>/assign/", TaskAssignView.as_view(), name="task-assign"),
     path(

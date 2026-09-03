@@ -12,6 +12,11 @@ export async function getFollowUps(filters) {
   return data;
 }
 
+export async function getFollowUpKpi() {
+  const { data } = await apiClient.get(endpoints.followups.kpi);
+  return data;
+}
+
 export async function getFollowUp(followUpId) {
   const { data } = await apiClient.get(endpoints.followups.detail(followUpId));
   return data;

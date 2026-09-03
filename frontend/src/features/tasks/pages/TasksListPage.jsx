@@ -6,7 +6,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
 import { taskPriorityName, taskStatusName } from "@/utils/taskMasterData";
-import { useTasks, useDeleteTask } from "../hooks";
+import { useTasks, useDeleteTask, useTaskKpi } from "../hooks";
 import DataTable from "@/components/tables/DataTable";
 import EmptyState from "@/components/common/EmptyState";
 import PageError from "@/components/common/PageError";
@@ -14,12 +14,29 @@ import ConfirmDialog from "@/components/common/ConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { MessageSquareText, Pencil, Pin, Trash2 } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { MessageSquareText, Pencil, Pin, Trash2, CheckSquare, Clock, CalendarClock, CalendarRange, Flag, ListTodo } from "lucide-react";
 import RecordNotesPanel from "@/features/notes/components/RecordNotesPanel";
 import ListControls from "@/components/common/ListControls";
 import { usePinnedRecords } from "@/hooks/usePinnedRecords";
 
 import { useUsers } from "@/features/admin/hooks";
+
+function KpiCard({ title, value, loading, icon: Icon, to }) {
+  return (
+    <Card className="rounded-xl">
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+        <CardTitle className="text-sm font-medium">{title}</CardTitle>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent>
+        {loading ? <Skeleton className="h-7 w-12" /> : <div className="text-2xl font-bold">{value ?? "—"}</div>}
+        {to ? <Link to={to} className="text-xs text-[#2563EB] hover:underline">View →</Link> : null}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function TasksListPage() {
   const { resolved } = useAuth();
@@ -28,6 +45,7 @@ export default function TasksListPage() {
   const [taskToDelete, setTaskToDelete] = useState(null);
   const [notesRecord, setNotesRecord] = useState(null);
   const deleteTask = useDeleteTask();
+  const kpi = useTaskKpi();
 
   const page = Number(searchParams.get("page") ?? "1");
   const search = searchParams.get("search") ?? "";
@@ -97,6 +115,16 @@ export default function TasksListPage() {
             <Link to="/tasks/new">New task</Link>
           </Button>
         ) : null}
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <KpiCard title="Total tasks" value={kpi.data?.total} loading={kpi.isLoading} icon={ListTodo} />
+        <KpiCard title="Open" value={kpi.data?.open} loading={kpi.isLoading} icon={CheckSquare} />
+        <KpiCard title="Overdue" value={kpi.data?.overdue} loading={kpi.isLoading} icon={Clock} to="/tasks?inbox=overdue" />
+        <KpiCard title="Due today" value={kpi.data?.today} loading={kpi.isLoading} icon={CalendarClock} to="/tasks?inbox=today" />
+        <KpiCard title="Upcoming" value={kpi.data?.upcoming} loading={kpi.isLoading} icon={CalendarRange} to="/tasks?inbox=upcoming" />
+        <KpiCard title="Completed" value={kpi.data?.completed} loading={kpi.isLoading} icon={CheckSquare} to="/tasks?inbox=completed" />
+        <KpiCard title="High priority" value={kpi.data?.high_priority} loading={kpi.isLoading} icon={Flag} />
       </div>
 
       <div className="flex flex-wrap items-center gap-2">

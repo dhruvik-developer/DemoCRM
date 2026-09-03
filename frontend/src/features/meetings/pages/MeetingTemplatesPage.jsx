@@ -16,8 +16,8 @@ import FormField from "@/components/forms/FormField";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
-export const MEETING_TEMPLATE_MARKER = "__MEETING_TEMPLATE__";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { MEETING_TEMPLATE_MARKER, meetingTemplateDescription, meetingTemplateType } from "../templateUtils";
 
 export default function MeetingTemplatesPage() {
   const navigate = useNavigate();
@@ -28,16 +28,16 @@ export default function MeetingTemplatesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [deleting, setDeleting] = useState(null);
-  const createForm = useForm({ defaultValues: { name: "" } });
-  const editForm = useForm({ defaultValues: { name: "", is_active: true } });
+  const createForm = useForm({ defaultValues: { name: "", template_type: "online" } });
+  const editForm = useForm({ defaultValues: { name: "", template_type: "online", is_active: true } });
 
   const rows = (templatesQuery.data ?? []).filter(
-    (template) => template?.description === MEETING_TEMPLATE_MARKER,
+    (template) => template?.description?.startsWith(MEETING_TEMPLATE_MARKER),
   );
 
   const startEdit = (template) => {
     setEditing(template);
-    editForm.reset({ name: template.name, is_active: template.is_active ?? true });
+    editForm.reset({ name: template.name, template_type: meetingTemplateType(template), is_active: template.is_active ?? true });
   };
 
   return (
@@ -54,6 +54,7 @@ export default function MeetingTemplatesPage() {
         <DataTable
           columns={[
             { key: "name", header: "Name" },
+            { key: "template_type", header: "Type", render: (row) => <span className="capitalize">{meetingTemplateType(row)}</span> },
             { key: "is_active", header: "Active", render: (row) => row.is_active ? "Yes" : "No" },
             { key: "actions", header: "Actions", render: (row) => (
               <div className="flex gap-2">
@@ -77,12 +78,15 @@ export default function MeetingTemplatesPage() {
         <DialogContent>
           <DialogHeader><DialogTitle>New meeting template</DialogTitle></DialogHeader>
           <form className="flex flex-col gap-4" onSubmit={createForm.handleSubmit(async (values) => {
-            const template = await createTemplate.mutateAsync({ name: values.name, description: MEETING_TEMPLATE_MARKER });
+            const template = await createTemplate.mutateAsync({ name: values.name, description: meetingTemplateDescription(values.template_type), initial_fields: [] });
             setCreateOpen(false);
             navigate(`/meeting-templates/${template.id}`);
           })}>
             <FormField id="meeting_template_name" label="Template name" required>
               <Input id="meeting_template_name" {...createForm.register("name", { required: true })} />
+            </FormField>
+            <FormField id="meeting_template_type" label="Meeting workflow">
+              <Select value={createForm.watch("template_type")} onValueChange={(value) => createForm.setValue("template_type", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="online">Online meeting</SelectItem><SelectItem value="offline">Offline meeting</SelectItem><SelectItem value="reschedule">Reschedule request</SelectItem></SelectContent></Select>
             </FormField>
             <DialogFooter><Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button><Button type="submit">Create & build fields</Button></DialogFooter>
           </form>
@@ -91,8 +95,9 @@ export default function MeetingTemplatesPage() {
 
       <Dialog open={Boolean(editing)} onOpenChange={(open) => !open && setEditing(null)}>
         <DialogContent><DialogHeader><DialogTitle>Edit meeting template</DialogTitle></DialogHeader>
-          <form className="flex flex-col gap-4" onSubmit={editForm.handleSubmit((values) => updateTemplate.mutateAsync({ id: editing.id, ...values }).then(() => setEditing(null)))}>
+          <form className="flex flex-col gap-4" onSubmit={editForm.handleSubmit((values) => updateTemplate.mutateAsync({ id: editing.id, name: values.name, is_active: values.is_active, description: meetingTemplateDescription(values.template_type) }).then(() => setEditing(null)))}>
             <FormField id="edit_meeting_template_name" label="Name"><Input {...editForm.register("name")} /></FormField>
+            <FormField id="edit_meeting_template_type" label="Meeting workflow"><Select value={editForm.watch("template_type")} onValueChange={(value) => editForm.setValue("template_type", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="online">Online meeting</SelectItem><SelectItem value="offline">Offline meeting</SelectItem><SelectItem value="reschedule">Reschedule request</SelectItem></SelectContent></Select></FormField>
             <label className="flex gap-2 text-sm"><input type="checkbox" {...editForm.register("is_active")} /> Active</label>
             <DialogFooter><Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancel</Button><Button type="submit">Save</Button></DialogFooter>
           </form>

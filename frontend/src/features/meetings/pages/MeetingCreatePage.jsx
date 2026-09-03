@@ -17,7 +17,7 @@ import { useTask } from "@/features/tasks/hooks";
 import TaskSelect from "@/features/tasks/components/TaskSelect";
 import { useCallTemplates, useFields } from "@/features/callforms/hooks";
 import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
-import { MEETING_TEMPLATE_MARKER } from "./MeetingTemplatesPage";
+import { MEETING_TEMPLATE_MARKER, meetingTemplateType } from "../templateUtils";
 import { createMeetingSchema } from "@/schemas/meeting.schema";
 import FormField from "@/components/forms/FormField";
 import { Button } from "@/components/ui/button";
@@ -75,7 +75,7 @@ export default function MeetingCreatePage() {
   const isOnline = typeId === "1";
   const templatesQuery = useCallTemplates();
   const meetingTemplates = (templatesQuery.data ?? []).filter(
-    (template) => template?.description === MEETING_TEMPLATE_MARKER && template.is_active,
+    (template) => template?.description?.startsWith(MEETING_TEMPLATE_MARKER) && meetingTemplateType(template) !== "reschedule" && template.is_active,
   );
   const selectedTemplate = meetingTemplates.find(
     (template) => String(template.id) === templateId,
@@ -112,6 +112,17 @@ export default function MeetingCreatePage() {
 
   const selectedTaskId = watch("task_id");
   const { data: taskData } = useTask(selectedTaskId);
+
+  useEffect(() => {
+    const workflow = meetingTemplateType(selectedTemplate);
+    if (workflow === "online") {
+      setTypeId("1");
+      setValue("meeting_type_id", 1);
+    } else if (workflow === "offline") {
+      setTypeId("2");
+      setValue("meeting_type_id", 2);
+    }
+  }, [selectedTemplate, setValue]);
 
   // All employees for the "Who is this meeting with?" field
   const employeeOptions = users.filter((u) => {
@@ -171,13 +182,7 @@ export default function MeetingCreatePage() {
         location: values.location || undefined,
         description: values.description || undefined,
         manager: values.manager, // auto-set to logged-in manager
-        extra_fields: templateId
-          ? {
-              template_id: templateId,
-              template_name: selectedTemplate?.name,
-              values: dynamicValues,
-            }
-          : {},
+        extra_fields: templateId ? dynamicValues : {},
       });
       const results = await Promise.allSettled(participantIds.map((userId) => addMeetingParticipant(meeting.meeting_id, { user_id: userId, participant_role: "Attendee", is_required: true })));
       const failed = results.filter((result) => result.status === "rejected").length;

@@ -10,6 +10,7 @@ import {
   createFollowUp,
   deleteFollowUp,
   getFollowUps,
+  getFollowUpKpi,
   updateFollowUpStatus,
 } from "./api";
 
@@ -18,6 +19,13 @@ export function useFollowUps(filters) {
     queryKey: followUpKeys.list(filters),
     queryFn: () => getFollowUps(filters),
     placeholderData: (previous) => previous,
+  });
+}
+
+export function useFollowUpKpi() {
+  return useQuery({
+    queryKey: ["followups", "kpi"],
+    queryFn: getFollowUpKpi,
   });
 }
 
