@@ -333,7 +333,7 @@ export default function AppLayout() {
             {/* Global Quick Command Palette Trigger */}
             <button
               onClick={() => setCommandOpen(true)}
-              className="hidden sm:flex items-center justify-between gap-3 bg-[var(--surface-sunken)] border border-border rounded-full px-3.5 py-1.5 w-60 lg:w-72 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all cursor-pointer shadow-xs"
+              className="hidden sm:flex items-center justify-between gap-3 bg-muted border border-border rounded-full px-3.5 py-1.5 w-60 lg:w-72 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground transition-all cursor-pointer shadow-xs"
             >
               <div className="flex items-center gap-2 truncate">
                 <Search className="h-3.5 w-3.5 text-primary shrink-0" />

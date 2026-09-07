@@ -63,6 +63,45 @@ body {
   --color-card: var(--card);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
+  /* Meridian extended tokens — required so bg-surface / text-on-surface / border-outline etc. resolve in Tailwind v4 */
+  --color-surface: var(--surface);
+  --color-surface-container: var(--surface-container);
+  --color-surface-container-high: var(--surface-container-high);
+  --color-surface-dim: var(--surface-dim);
+  --color-surface-bright: var(--surface-bright);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-on-background: var(--on-background);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-outline: var(--outline);
+  --color-outline-variant: var(--outline-variant);
+  --color-border-hover: var(--border-hover);
+  --color-primary-container: var(--primary-container);
+  --color-on-primary: var(--on-primary);
+  --color-on-primary-container: var(--on-primary-container);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-fixed-dim: var(--primary-fixed-dim);
+  --color-secondary-container: var(--secondary-container);
+  --color-on-secondary: var(--on-secondary);
+  --color-secondary-soft: var(--secondary-soft);
+  --color-tertiary: var(--tertiary);
+  --color-tertiary-soft: var(--tertiary-soft);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-border: var(--success-border);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-border: var(--warning-border);
+  --color-error: var(--error);
+  --color-error-container: var(--error-container);
+  --color-on-error: var(--on-error);
+  --color-on-error-container: var(--on-error-container);
+  --color-danger-soft: var(--danger-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-border: var(--info-border);
+  --color-status-active-bg: var(--status-active-bg);
+  --color-status-active-text: var(--status-active-text);
   /* Meridian radii: 9/8/12/16/20 */
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -101,6 +140,7 @@ body {
   --surface-container-high: #E3E9DE;
   --surface-dim: #DDE3D8;
   --surface-bright: #FFFFFF;
+  --surface-sunken: #EBEFE7;
   --on-background: #13201C;
   --on-surface: #13201C;
   --on-surface-variant: #5B6B63;
@@ -171,6 +211,7 @@ body {
   --surface-container: #1E2E28;
   --surface-container-high: #243A32;
   --surface-dim: #1A2822;
+  --surface-sunken: #1A2822;
   --on-background: #E8F0E9;
   --on-surface: #E8F0E9;
   --on-surface-variant: #8FA89E;
@@ -220,13 +261,6 @@ body {
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
-  }
-  /* Primary gradient kept consistent light/dark */
-  .bg-primary {
-    background: linear-gradient(135deg, oklch(0.546 0.22 264.376) 0%, oklch(0.62 0.18 264) 100%);
-  }
-  .dark .bg-primary {
-    background: linear-gradient(135deg, oklch(0.6 0.2 264) 0%, oklch(0.55 0.18 260) 100%);
   }
 }
 

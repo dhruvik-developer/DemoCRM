@@ -151,7 +151,7 @@ export default function AdminRolePermissionsPage() {
         </div>
       </div>
 
-      <Card className="rounded-[14px] border-outline-variant bg-white shadow-sm">
+      <Card className="rounded-[14px] border-border bg-card shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-sm font-semibold">
@@ -193,8 +193,8 @@ export default function AdminRolePermissionsPage() {
         const allChecked = perms.every((p) => activeSelected.has(p.id));
         const someChecked = perms.some((p) => activeSelected.has(p.id));
         return (
-          <Card key={group} className="rounded-[16px] border border-border bg-surface shadow-sm overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 bg-[var(--surface-sunken)] border-b border-border py-3">
+          <Card key={group} className="rounded-[16px] border border-border bg-card shadow-sm overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 bg-muted/50 border-b border-border py-3">
               <div>
                 <CardTitle className="text-sm font-semibold capitalize text-foreground">{groupTitle}</CardTitle>
                 <p className="text-xs text-muted-foreground">{perms.length} permissions</p>
@@ -220,7 +220,7 @@ export default function AdminRolePermissionsPage() {
                     <label
                       key={permission.id}
                       className={`flex items-start gap-2.5 rounded-lg border p-3 text-xs transition-colors cursor-pointer ${
-                        checked ? "border-primary/30 bg-primary-soft/20 text-foreground" : "border-border hover:bg-muted/40 text-foreground"
+                        checked ? "border-primary/30 bg-primary/5 text-foreground" : "border-border hover:bg-muted/40 text-foreground"
                       }`}
                     >
                       <input
@@ -255,7 +255,7 @@ export default function AdminRolePermissionsPage() {
         <Button variant="outline" onClick={() => navigate("/admin/roles")}>
           Cancel
         </Button>
-        <Button onClick={handleSave} disabled={!isDirty || updateRole.isPending} className="bg-[#4F46E5] hover:bg-[#4338CA]">
+        <Button onClick={handleSave} disabled={!isDirty || updateRole.isPending}>
           {updateRole.isPending ? "Saving…" : `Save ${activeSelected.size} permissions`}
         </Button>
       </div>

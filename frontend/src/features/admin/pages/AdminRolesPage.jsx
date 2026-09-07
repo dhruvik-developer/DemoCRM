@@ -106,7 +106,7 @@ export default function AdminRolesPage() {
           const isProtected = PROTECTED_ROLES.includes(roleName);
           const assignedPerms = role.permissions ?? [];
           return (
-            <Card key={role.role_id} className="rounded-[14px] border-outline-variant bg-white shadow-sm overflow-hidden">
+            <Card key={role.role_id} className="rounded-[14px] border-border bg-card shadow-sm overflow-hidden">
               <CardHeader className="flex flex-row items-center justify-between pb-2">
                 <CardTitle className="text-base font-semibold">{role.rolename}</CardTitle>
                 {!isProtected ? (
@@ -127,7 +127,7 @@ export default function AdminRolesPage() {
                   <p className="text-sm text-muted-foreground">{role.description}</p>
                 ) : null}
                 <div>
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#94A3B8] mb-1.5 block">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5 block">
                     Assigned Permissions ({assignedPerms.length})
                   </span>
                   {(() => {
@@ -143,7 +143,7 @@ export default function AdminRolesPage() {
                               <Badge
                                 key={id}
                                 variant="outline"
-                                className="text-[11px] px-2 py-0.5 bg-white border-[#E2E8F0] font-medium"
+                                className="text-[11px] px-2 py-0.5 font-medium"
                                 title={perm ? `${perm.name} — ${perm.codename}` : `#${id}`}
                               >
                                 {label}
@@ -151,7 +151,7 @@ export default function AdminRolesPage() {
                             );
                           })}
                           {!isExpanded && assignedPerms.length > 12 ? (
-                            <Badge variant="secondary" className="text-[11px] bg-[#F1F5F9] text-[#475569]">+{assignedPerms.length - 12} more</Badge>
+                            <Badge variant="secondary" className="text-[11px]">+{assignedPerms.length - 12} more</Badge>
                           ) : null}
                           {assignedPerms.length === 0 ? (
                             <span className="text-sm text-muted-foreground">No permissions assigned.</span>
@@ -160,7 +160,7 @@ export default function AdminRolesPage() {
                         {assignedPerms.length > 12 && (
                           <button
                             type="button"
-                            className="mt-1.5 text-xs font-semibold text-primary hover:underline"
+                            className="mt-1.5 text-xs font-semibold text-primary dark:text-emerald-300 hover:underline"
                             onClick={() => setExpandedRoleId(isExpanded ? null : role.role_id)}
                           >
                             {isExpanded ? "Show less ↑" : `View all (${assignedPerms.length}) →`}
@@ -173,7 +173,7 @@ export default function AdminRolesPage() {
                 <Button
                   variant={isProtected ? "outline" : "outline"}
                   size="sm"
-                  className={`w-fit mt-2 ${isProtected ? "border-amber-200 text-amber-700 hover:bg-amber-50" : ""}`}
+                  className={`w-fit mt-2 ${isProtected ? "border-amber-200 text-amber-700 hover:bg-amber-50 dark:border-amber-500/40 dark:text-amber-300 dark:hover:bg-amber-500/10" : ""}`}
                   onClick={() => navigate(`/admin/roles/${role.role_id}`)}
                 >
                   {isProtected ? "Edit protected permissions" : "Manage permissions"}
@@ -223,7 +223,7 @@ export default function AdminRolesPage() {
               <FormField id="assign_role" label="Target Role">
                 <select
                   id="assign_role"
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm"
+                  className="flex h-9 w-full rounded-md border border-input bg-card px-3 py-1 text-sm text-card-foreground"
                   value={assignRoleId}
                   onChange={(event) => setAssignRoleId(event.target.value)}
                 >
@@ -312,13 +312,13 @@ export default function AdminRolesPage() {
                   key={permission.id}
                   className={`flex items-start gap-2.5 rounded-md border p-2.5 text-xs transition-colors cursor-pointer ${
                     checked
-                      ? "border-primary/50 bg-primary/5"
-                      : "hover:bg-muted/40"
+                      ? "border-primary/50 bg-primary/5 dark:bg-primary/15"
+                      : "border-border hover:bg-muted/40"
                   }`}
                 >
                   <input
                     type="checkbox"
-                    className="mt-0.5 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                    className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
                     checked={Boolean(checked)}
                     onChange={(event) => {
                       setEditingPermissions((previous) => {
