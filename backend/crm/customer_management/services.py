@@ -105,12 +105,55 @@ class CRMService:
         user,
         name,
         description=None,
+        clone_from_pipeline=None,
+        clone_stages=True,
+        entity_label="Deal",
     ):
         pipeline = Pipeline.objects.create(
             name=name,
             description=description,
+            entity_label=entity_label or "Deal",
             created_by=user,
         )
+
+        # Clone stage skeleton (names/order/config) from template pipeline, but
+        # deliberately do NOT copy PipelineStageActivity (forms). This gives each
+        # pipeline isolated control: deleting a form from one pipeline never affects another.
+        if clone_stages:
+            template = clone_from_pipeline
+            if template is None:
+                # auto-pick most recent other pipeline as template
+                template = (
+                    Pipeline.objects.exclude(pk=pipeline.pk)
+                    .order_by("-created_at")
+                    .first()
+                )
+            if template is not None:
+                template_stages = PipelineStage.objects.filter(
+                    pipeline=template, is_active=True
+                ).order_by("display_order")
+                for st in template_stages:
+                    PipelineStage.objects.create(
+                        pipeline=pipeline,
+                        name=st.name,
+                        description=st.description,
+                        display_order=st.display_order,
+                        is_active=True,
+                        requires_quotation=st.requires_quotation,
+                        quotation_approval_required=st.quotation_approval_required,
+                    )
+                if template_stages.exists():
+                    CRMService.create_audit_log(
+                        user=user,
+                        entity_type="Pipeline",
+                        entity_id=pipeline.id,
+                        action="PIPELINE_STAGES_CLONED",
+                        new_value={
+                            "template_pipeline": str(template.id),
+                            "template_name": template.name,
+                            "stages_cloned": template_stages.count(),
+                        },
+                    )
 
         CRMService.create_audit_log(
             user=user,
@@ -146,14 +189,46 @@ class CRMService:
         if display_order < 1:
             raise ValidationError("Display order must be at least 1.")
 
-        stage = PipelineStage.objects.create(
-            pipeline=pipeline,
-            name=name,
-            description=description,
-            display_order=display_order,
-            requires_quotation=requires_quotation,
-            quotation_approval_required=quotation_approval_required,
-        )
+        # If you want to "replace/insert at 3" — auto-shift existing stages down instead of 400.
+        # e.g. Demo has 1,2,3,4,5 and you add Demo_Product at 3 → 3→4, 4→5, 5→6, new is 3.
+        from django.db import IntegrityError, transaction
+
+        if PipelineStage.objects.filter(
+            pipeline=pipeline, display_order=display_order
+        ).exists():
+            with transaction.atomic():
+                # shift descending to avoid intermediate unique clash
+                for s in PipelineStage.objects.filter(
+                    pipeline=pipeline, display_order__gte=display_order
+                ).order_by("-display_order"):
+                    s.display_order = s.display_order + 1
+                    s.save(update_fields=["display_order", "updated_at"])
+        # also enforce unique name per pipeline
+        if PipelineStage.objects.filter(pipeline=pipeline, name=name).exists():
+            raise ValidationError(
+                f"Stage name '{name}' already exists in this pipeline."
+            )
+
+        try:
+            stage = PipelineStage.objects.create(
+                pipeline=pipeline,
+                name=name,
+                description=description,
+                display_order=display_order,
+                requires_quotation=requires_quotation,
+                quotation_approval_required=quotation_approval_required,
+            )
+        except IntegrityError as e:
+            msg = str(e).lower()
+            if "unique_pipeline_stage_order" in msg or "display_order" in msg:
+                raise ValidationError(
+                    f"Display order {display_order} still collides. Use {PipelineStage.objects.filter(pipeline=pipeline).count()+1}."
+                )
+            if "unique_pipeline_stage_name" in msg or "name" in msg:
+                raise ValidationError(
+                    f"Stage name '{name}' already exists in this pipeline."
+                )
+            raise ValidationError(str(e))
 
         CRMService.create_audit_log(
             user=user,
@@ -269,6 +344,50 @@ class CRMService:
                 "lead_id": lead.id,
             },
         )
+
+        # ── Auto-create Task for agent so newly created lead appears in agent's task list ──
+        try:
+            from datetime import timedelta
+
+            task_status, _ = TaskStatus.objects.get_or_create(
+                status_name="Pending", defaults={"is_active": True}
+            )
+            task_priority, _ = TaskPriority.objects.get_or_create(
+                priority_name="Medium", defaults={"is_active": True}
+            )
+            task_category, _ = TaskCategory.objects.get_or_create(
+                category_name="Follow-Up", defaults={"is_active": True}
+            )
+            due = timezone.now() + timedelta(days=1)
+            # idempotency: don't duplicate if a pending task for this lead already exists
+            if not Task.objects.filter(
+                lead=lead, assigned_to=assigned_to, is_active=True
+            ).exists():
+                auto_task = Task.objects.create(
+                    assigned_to=assigned_to,
+                    created_by=user,
+                    lead=lead,
+                    task_title=f"Call - {lead.name}",
+                    description=f"New lead assigned: {lead.name} ({lead.phone or lead.email or ''}) - call and qualify.".strip(),
+                    due_date=due,
+                    status=task_status,
+                    priority=task_priority,
+                    category=task_category,
+                    is_active=True,
+                )
+                CRMService.create_audit_log(
+                    user=user,
+                    entity_type="Task",
+                    entity_id=auto_task.task_id,
+                    action="TASK_AUTO_CREATED_FROM_LEAD",
+                    new_value={
+                        "task_id": auto_task.task_id,
+                        "lead_id": str(lead.id),
+                        "assigned_to": str(assigned_to.user_id),
+                    },
+                )
+        except Exception as e:
+            logger.warning("Auto-task creation for lead %s failed: %s", lead.id, e)
 
         return lead
 

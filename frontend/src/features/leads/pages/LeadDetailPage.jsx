@@ -6,9 +6,9 @@ import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Building2, Mail, Phone, Rocket, ArrowLeft, ArrowRight } from "lucide-react";
 
 import { useAuth } from "@/hooks/useAuth";
-import { hasPermission } from "@/utils/permissions";
 import { useWorkflowCapabilities } from "@/hooks/useWorkflowCapabilities";
 import { useMasterDataMaps, usePipelineStages } from "@/features/crm/hooks";
 import {
@@ -23,6 +23,7 @@ import { useLeadPrimaryForm, useLogAttempt, useSubmitForm } from "@/features/cal
 import CallWorkspaceForm from "@/components/CallWorkspaceForm";
 import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
 import ActivitiesCard from "@/features/activities/components/ActivitiesCard";
+import { triggerConfetti } from "@/utils/confetti";
 import { convertLeadSchema, lostLeadSchema } from "@/schemas/lead.schema";
 import PageError from "@/components/common/PageError";
 import PageLoader from "@/components/common/PageLoader";
@@ -59,111 +60,15 @@ import { Separator } from "@/components/ui/separator";
 import { useUsers } from "@/features/admin/hooks";
 import { useQuotations } from "@/features/quotations/hooks";
 import { useTasks, useUpdateTaskStatus } from "@/features/tasks/hooks";
-import { useFollowUps, useCreateFollowUp } from "@/features/followups/hooks";
-import { useMeetings } from "@/features/meetings/hooks";
-import { followUpStatusName, followUpTypeName, FOLLOWUP_TYPES } from "@/utils/followUpMasterData";
+import { useCreateFollowUp } from "@/features/followups/hooks";
+import { FOLLOWUP_TYPES } from "@/utils/followUpMasterData";
 import { toast } from "sonner";
 
-function FollowUpsPanel({ query, taskId, canSchedule }) {
-  const rows = query.data?.results ?? [];
-  return (
-    <Card className="rounded-xl">
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-sm">Follow-ups</CardTitle>
-        <Badge variant="outline">{query.data?.count ?? rows.length}</Badge>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {query.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
-        {!query.isLoading && rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No follow-ups for this lead.</p>
-        ) : null}
-        {rows.slice(0, 3).map((followUp) => (
-          <div key={followUp.followup_id} className="flex items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium">{followUpTypeName(followUp.followup_type) || "Follow-up"}</p>
-              <p className="text-xs text-muted-foreground">
-                {followUp.followup_date ? new Date(followUp.followup_date).toLocaleString() : "Date not set"}
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <Badge variant="outline">{followUpStatusName(followUp.followup_status)}</Badge>
-              {followUp.task_id ? (
-                <Button asChild size="sm">
-                  <Link to={`/tasks/${followUp.task_id}`}>Take follow-up</Link>
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        ))}
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link to="/followups">View follow-ups</Link>
-          </Button>
-          {canSchedule && taskId ? (
-            <Button asChild size="sm">
-              <Link to={`/followups?create=1&task_id=${taskId}`}>Schedule follow-up</Link>
-            </Button>
-          ) : null}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function MeetingsPanel({ query, taskId, canSchedule, currentUserId }) {
-  const rows = query.data?.results ?? [];
-  return (
-    <Card className="rounded-xl">
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <CardTitle className="text-sm">Meetings</CardTitle>
-        <Badge variant="outline">{query.data?.count ?? rows.length}</Badge>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        {query.isLoading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
-        {!query.isLoading && rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No meetings for this lead.</p>
-        ) : null}
-        {rows.slice(0, 3).map((meeting) => (
-          <div key={meeting.meeting_id} className="flex items-start justify-between gap-3 border-b pb-3 last:border-0 last:pb-0">
-            <div className="min-w-0">
-              <Link to={`/meetings/${meeting.meeting_id}`} className="truncate text-sm font-medium hover:underline">
-                {meeting.meeting_title}
-              </Link>
-              <p className="text-xs text-muted-foreground">
-                {meeting.meeting_date || "Date not set"}{meeting.start_time ? ` · ${meeting.start_time.slice(0, 5)}` : ""}
-              </p>
-            </div>
-            <div className="flex flex-col items-end gap-2">
-              <StatusBadge status={meeting.approval_status} />
-              {String(meeting.approval_status).toUpperCase() === "REJECTED" &&
-              String(meeting.created_by?.user_id ?? meeting.created_by ?? "") === String(currentUserId) ? (
-                <Button asChild size="sm" variant="destructive">
-                  <Link to={`/meetings/${meeting.meeting_id}`}>Reschedule meeting</Link>
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        ))}
-        <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm">
-            <Link to="/meetings">View meetings</Link>
-          </Button>
-          {canSchedule && taskId ? (
-            <Button asChild size="sm">
-              <Link to={`/meetings/new?task_id=${taskId}`}>Schedule meeting</Link>
-            </Button>
-          ) : null}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
-
-function Field({ label, value }) {
+function Field({ label, value, mono = false }) {
   return (
     <div className="flex flex-col gap-1">
       <span className="text-xs uppercase tracking-wide text-muted-foreground">{label}</span>
-      <span className="text-sm">{value ?? "—"}</span>
+      <span className={`text-sm ${mono ? "font-mono" : ""}`}>{value ?? "—"}</span>
     </div>
   );
 }
@@ -318,6 +223,7 @@ function ConvertDialog({ lead, open, onOpenChange }) {
     defaultValues: { name: lead.name ?? "", email: lead.email ?? "", phone: lead.phone ?? "", company_name: lead.company_name ?? "", gst_number: "" },
   });
   const onSubmit = (values) => convertLead.mutateAsync({ name: values.name, email: values.email, phone: values.phone, company_name: values.company_name || undefined, gst_number: values.gst_number || undefined }).then((customer) => {
+    triggerConfetti();
     onOpenChange(false);
     if (customer?.id) navigate(`/customers/${customer.id}`);
   });
@@ -348,7 +254,7 @@ function ConvertDialog({ lead, open, onOpenChange }) {
 
 export default function LeadDetailPage() {
   const { leadId } = useParams();
-  const { user, resolved } = useAuth();
+  const { resolved } = useAuth();
   const leadQuery = useLead(leadId);
   const usersQuery = useUsers();
   const masterData = useMasterDataMaps();
@@ -356,8 +262,6 @@ export default function LeadDetailPage() {
   const primaryFormQuery = useLeadPrimaryForm(leadId);
   const quotationsQuery = useQuotations({ lead: leadId });
   const tasksQuery = useTasks({ lead: leadId });
-  const followUpsQuery = useFollowUps({ lead: leadId, page_size: 3 });
-  const meetingsQuery = useMeetings({ lead: leadId, page_size: 3 });
   const workspaceSubmit = useSubmitForm();
   const workspaceLogAttempt = useLogAttempt();
   const workspaceProgress = useProgressLead(leadId);
@@ -472,9 +376,9 @@ export default function LeadDetailPage() {
   return (
     <div className="mx-auto flex w-full max-w-[1480px] flex-col gap-5 p-6 lg:px-7 lg:py-6">
       {/* Hero Card — single composite like sample hero-card:258 */}
-      <Card className="rounded-[14px] border-[#E2E8F0] shadow-[0_1px_2px_rgba(0,0,0,0.05)] overflow-hidden">
+      <Card className="rounded-[20px] border-border bg-surface shadow-sm overflow-hidden">
         <CardContent className="p-0">
-          <div className="p-[22px_26px]">
+          <div className="p-6">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 text-[12px] font-semibold text-muted-foreground">
@@ -483,11 +387,11 @@ export default function LeadDetailPage() {
                   <StatusBadge status={lead.status} />
                   {masterData.stageName(lead.current_stage) ? <Badge className="bg-[#EEF2FF] text-[#4F46E5] border-[#C7D2FE] text-[11px] font-bold">{masterData.stageName(lead.current_stage)}</Badge> : null}
                 </div>
-                <h1 className="mt-1 truncate text-[24px] font-extrabold tracking-[-0.03em] text-[#0F172A]">{lead.name}</h1>
-                <div className="mt-1.5 flex flex-wrap items-center gap-3.5 text-[13px] text-muted-foreground">
-                  <span className="inline-flex items-center gap-1.5">👤 {lead.company_name ?? "—"}</span>
-                  <span className="inline-flex items-center gap-1.5">✉️ {lead.email ?? "—"}</span>
-                  <span className="inline-flex items-center gap-1.5">📞 {lead.phone ?? "—"}</span>
+                <h1 className="mt-1.5 truncate font-display text-[28px] font-extrabold tracking-tight text-[#113D37] dark:text-[#E8F0E9]">{lead.name}</h1>
+                <div className="mt-1.5 flex flex-wrap items-center gap-4 text-[13px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5"><Building2 className="h-3.5 w-3.5 shrink-0 text-primary" /> {lead.company_name ?? "—"}</span>
+                  <span className="inline-flex items-center gap-1.5"><Mail className="h-3.5 w-3.5 shrink-0 text-primary" /> {lead.email ?? "—"}</span>
+                  <span className="inline-flex items-center gap-1.5"><Phone className="h-3.5 w-3.5 shrink-0 text-primary" /> <span className="font-mono font-medium">{lead.phone ?? "—"}</span></span>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-3 text-sm md:grid-cols-4 lg:hidden">
                   <Field label="Pipeline" value={masterData.pipelineName(lead.pipeline)} />
@@ -497,13 +401,13 @@ export default function LeadDetailPage() {
                 </div>
               </div>
               <div className="flex shrink-0 flex-wrap gap-2 lg:justify-end">
-                {caps.canMarkLost ? <Button variant="ghost" size="sm" className="text-[#DC2626] hover:bg-[#FEF2F2] font-semibold" onClick={() => setDialog("lost")}>Mark Lost</Button> : null}
-                {caps.canProgress ? <Button size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8] font-semibold" onClick={() => setDialog("progress")}>Submit & Move →</Button> : caps.canConvert ? <Button size="sm" className="bg-[#2563EB] hover:bg-[#1D4ED8] font-semibold" onClick={() => setDialog("convert")}>Convert 🚀</Button> : null}
-                {caps.canAssign ? <Button variant="outline" size="sm" className="font-semibold" onClick={() => setDialog("assign")}>Assign</Button> : null}
+                {caps.canMarkLost ? <Button variant="outline" size="sm" className="text-destructive border-destructive/20 hover:bg-destructive/10 font-semibold rounded-[9px]" onClick={() => setDialog("lost")}>Mark lost</Button> : null}
+                {caps.canProgress ? <Button size="sm" className="bg-[#FF6A3D] text-[#2B1206] hover:bg-[#E0532A] hover:text-white rounded-[9px] font-semibold shadow-xs" onClick={() => setDialog("progress")}>Submit & move <ArrowRight className="h-3.5 w-3.5 ml-1" /></Button> : caps.canConvert ? <Button size="sm" className="bg-[#FF6A3D] text-[#2B1206] hover:bg-[#E0532A] hover:text-white rounded-[9px] font-semibold shadow-xs" onClick={() => setDialog("convert")}>Convert <Rocket className="h-3.5 w-3.5 ml-1" /></Button> : null}
+                {caps.canAssign ? <Button variant="outline" size="sm" className="font-semibold rounded-[9px]" onClick={() => setDialog("assign")}>Assign</Button> : null}
               </div>
             </div>
           </div>
-          <div className="border-t border-[#F1F5F9] px-6 py-2">
+          <div className="border-t border-border bg-[#F8FAF7] dark:bg-[#182823] px-6 py-3">
             <PipelineStepper stages={stages} currentStageId={lead.current_stage} stageEnteredAt={lead.updated_at ?? lead.created_at} />
           </div>
         </CardContent>
@@ -586,26 +490,26 @@ export default function LeadDetailPage() {
         </div>
       </div>
 
-      <Card className="rounded-[14px] border-[#E2E8F0]">
+      <Card className="rounded-[16px] border-outline bg-surface">
         <CardHeader><CardTitle className="text-sm font-bold">Details</CardTitle></CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
-          <Field label="Email" value={lead.email} />
-          <Field label="Phone" value={lead.phone} />
+          <Field label="Email" value={lead.email} mono />
+          <Field label="Phone" value={lead.phone} mono />
           <Field label="Company" value={lead.company_name} />
           <Field label="Pipeline" value={masterData.pipelineName(lead.pipeline)} />
           <Field label="Current stage" value={masterData.stageName(lead.current_stage)} />
           <Field label="Source" value={masterData.sourceName(lead.source)} />
-          <Field label="Total value" value={lead.total_value} />
-          <Field label="Paid amount" value={lead.paid_amount} />
-          <Field label="Due amount" value={lead.due_amount} />
+          <Field label="Total value" value={lead.total_value != null ? `₹${lead.total_value}` : null} mono />
+          <Field label="Paid amount" value={lead.paid_amount != null ? `₹${lead.paid_amount}` : null} mono />
+          <Field label="Due amount" value={lead.due_amount != null ? `₹${lead.due_amount}` : null} mono />
           <Field label="Assigned to" value={assignedLabel} />
-          <Field label="Created" value={lead.created_at ? new Date(lead.created_at).toLocaleString() : null} />
+          <Field label="Created" value={lead.created_at ? new Date(lead.created_at).toLocaleString() : null} mono />
         </CardContent>
       </Card>
 
       <Separator />
 
-      <Link to="/leads" className="text-sm text-muted-foreground hover:underline">← Back to leads</Link>
+      <Link to="/leads" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:underline"><ArrowLeft className="h-3.5 w-3.5" />Back to leads</Link>
 
       <AssignDialog lead={lead} open={dialog === "assign"} onOpenChange={(open) => !open && setDialog(null)} />
       <ProgressDialog lead={lead} open={dialog === "progress"} onOpenChange={(open) => !open && setDialog(null)} />

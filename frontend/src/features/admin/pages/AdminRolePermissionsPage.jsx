@@ -151,7 +151,7 @@ export default function AdminRolePermissionsPage() {
         </div>
       </div>
 
-      <Card className="rounded-[14px] border-[#E5E7EB] bg-white shadow-sm">
+      <Card className="rounded-[14px] border-outline-variant bg-white shadow-sm">
         <CardHeader className="pb-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <CardTitle className="text-sm font-semibold">
@@ -193,16 +193,16 @@ export default function AdminRolePermissionsPage() {
         const allChecked = perms.every((p) => activeSelected.has(p.id));
         const someChecked = perms.some((p) => activeSelected.has(p.id));
         return (
-          <Card key={group} className="rounded-[14px] border-[#E5E7EB] bg-white shadow-sm overflow-hidden">
-            <CardHeader className="flex flex-row items-center justify-between gap-2 bg-[#F9FAFB] border-b border-[#E5E7EB] py-3">
+          <Card key={group} className="rounded-[16px] border border-border bg-surface shadow-sm overflow-hidden">
+            <CardHeader className="flex flex-row items-center justify-between gap-2 bg-[var(--surface-sunken)] border-b border-border py-3">
               <div>
-                <CardTitle className="text-sm font-semibold capitalize">{groupTitle}</CardTitle>
+                <CardTitle className="text-sm font-semibold capitalize text-foreground">{groupTitle}</CardTitle>
                 <p className="text-xs text-muted-foreground">{perms.length} permissions</p>
               </div>
-              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+              <label className="flex items-center gap-2 text-xs font-medium cursor-pointer text-foreground">
                 <input
                   type="checkbox"
-                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                  className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                   checked={allChecked}
                   ref={(el) => {
                     if (el) el.indeterminate = !allChecked && someChecked;
@@ -220,19 +220,19 @@ export default function AdminRolePermissionsPage() {
                     <label
                       key={permission.id}
                       className={`flex items-start gap-2.5 rounded-lg border p-3 text-xs transition-colors cursor-pointer ${
-                        checked ? "border-[#C7D2FE] bg-[#EEF2FF]" : "border-[#E5E7EB] hover:bg-[#F9FAFB]"
+                        checked ? "border-primary/30 bg-primary-soft/20 text-foreground" : "border-border hover:bg-muted/40 text-foreground"
                       }`}
                     >
                       <input
                         type="checkbox"
-                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-[#4F46E5] focus:ring-[#4F46E5]"
+                        className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
                         checked={checked}
                         onChange={() => handleToggle(permission.id)}
                       />
                       <div className="min-w-0 flex flex-col gap-0.5">
-                        <span className="font-semibold leading-tight text-[#0F172A] line-clamp-2">{permission.name || permission.codename}</span>
-                        <span className="font-mono text-[11px] text-[#64748B] truncate">{permission.codename}</span>
-                        <span className="text-[10px] text-[#94A3B8]">ID #{permission.id}</span>
+                        <span className="font-semibold leading-tight text-foreground line-clamp-2">{permission.name || permission.codename}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground truncate">{permission.codename}</span>
+                        <span className="text-[10px] text-muted-foreground">ID #{permission.id}</span>
                       </div>
                     </label>
                   );

@@ -229,7 +229,7 @@ function PipelineStagesList({ pipelineId }) {
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Pipeline Stages ({stages.length})
         </h4>
-        <Button size="sm" variant="outline" onClick={() => setAddOpen(true)}>
+        <Button size="sm" variant="outline" onClick={() => { const n = Math.max(0, ...stages.map((s) => Number(s.display_order) || 0)) + 1; stageForm.reset({ name: "", display_order: n, description: "", requires_quotation: false, quotation_approval_required: false }); setAddOpen(true); }}>
           + Add stage
         </Button>
       </div>
@@ -249,7 +249,7 @@ function PipelineStagesList({ pipelineId }) {
                     Stage {st.display_order ?? idx + 1}
                   </Badge>
                   <span className="font-medium">{st.name}</span>
-                  {st.requires_quotation ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">Quotation</Badge> : null}
+                  {st.requires_quotation ? <Badge className="bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/50 text-[10px]">Quotation</Badge> : null}
                   {st.quotation_approval_required ? <Badge variant="outline" className="text-[10px]">Approval</Badge> : null}
                   {st.description ? (
                     <span className="text-xs text-muted-foreground">({st.description})</span>

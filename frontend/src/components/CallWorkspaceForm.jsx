@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- shared form constants live with the component */
 import { useState } from "react";
 
 export const FORM_FIELDS = [

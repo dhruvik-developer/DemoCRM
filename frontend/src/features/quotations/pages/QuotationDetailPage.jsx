@@ -26,6 +26,7 @@ import {
   downloadQuotationPdf,
 } from "../hooks";
 import LineItemsEditor from "../components/LineItemsEditor";
+import { triggerConfetti } from "@/utils/confetti";
 import { draftUpdateSchema, rejectQuotationSchema, sendEmailSchema } from "@/schemas/quotation.schema";
 import PageError from "@/components/common/PageError";
 import PageLoader from "@/components/common/PageLoader";
@@ -248,13 +249,13 @@ export default function QuotationDetailPage() {
       </div>
 
       {/* Stitch-styled Quotation Document — real company look with GST */}
-      <Card className="overflow-hidden border-[#E5E7EB] bg-white shadow-sm">
+      <Card className="overflow-hidden border-border bg-surface shadow-sm">
         {/* Company header */}
-        <div className="flex flex-col gap-3 border-b border-[#E5E7EB] bg-[#F9FAFB] px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex flex-col gap-3 border-b border-border bg-[var(--surface-sunken)] px-6 py-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex gap-3">
-            <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-[#2563EB] to-[#818CF8] font-extrabold text-white sm:grid">S</div>
+            <div className="hidden h-10 w-10 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary to-primary-container font-extrabold text-white sm:grid">S</div>
             <div>
-              <div className="text-[18px] font-bold tracking-tight text-[#111214]">DemoCRM Solutions Pvt. Ltd.</div>
+              <div className="text-[18px] font-bold tracking-tight text-foreground">DemoCRM Solutions Pvt. Ltd.</div>
               <div className="mt-1 max-w-[360px] text-[11px] leading-relaxed text-muted-foreground">
                 100 Tech Park Way, Suite 400, Mumbai – 400001<br />
                 GSTIN: 27AABCD1234F1Z5 &nbsp;•&nbsp; CIN: U72200MH2020PTC123456<br />
@@ -263,7 +264,7 @@ export default function QuotationDetailPage() {
             </div>
           </div>
           <div className="text-left sm:text-right">
-            <div className="text-[20px] font-bold tracking-tight text-[#2563EB]">QUOTATION</div>
+            <div className="text-[20px] font-bold tracking-tight text-primary">QUOTATION</div>
             <div className="mt-1 space-y-0.5 text-xs text-muted-foreground">
               <div>Ref: <span className="font-semibold text-foreground">{quotation.quotation_number}</span> • Rev v{currentVersion?.version_number}</div>
               <div className="flex items-center gap-1.5 sm:justify-end"><StatusBadge status={currentVersion?.status ?? status} /><span className="text-[11px]">{currentVersion?.status}</span></div>
@@ -275,10 +276,10 @@ export default function QuotationDetailPage() {
           {/* Prepared For + Overview */}
           <div className="grid gap-6 p-6 sm:grid-cols-2">
             <div>
-              <div className="mb-2 border-b border-[#E5E7EB] pb-1 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">Prepared For</div>
+              <div className="mb-2 border-b border-border pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Prepared For</div>
               <div className="text-sm font-semibold text-foreground">{quotation.customer?.name ?? leadForEmailQ.data?.name ?? quotation.lead_name ?? "—"}</div>
               <div className="text-xs text-muted-foreground">{quotation.customer?.company_name ?? leadForEmailQ.data?.company_name ?? ""}</div>
-              <div className="mt-1 text-xs">
+              <div className="mt-1 text-xs text-foreground">
                 GSTIN: <span className="font-medium">{leadForEmailQ.data?.metadata?.gst_number ?? leadForEmailQ.data?.metadata?.gst ?? leadForEmailQ.data?.customer_account?.gst_number ?? "—"}</span>
               </div>
               {(leadForEmailQ.data?.metadata?.billing_address || leadForEmailQ.data?.customer_account?.billing_address) && (
@@ -290,23 +291,23 @@ export default function QuotationDetailPage() {
               </div>
             </div>
             <div>
-              <div className="mb-2 border-b border-[#E5E7EB] pb-1 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">Quotation Overview</div>
+              <div className="mb-2 border-b border-border pb-1 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Quotation Overview</div>
               <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between"><span className="font-semibold text-[#6B7280] w-24">Date:</span> <span className="font-medium">{currentVersion?.created_at ? new Date(currentVersion.created_at).toLocaleDateString() : "—"}</span></div>
-                <div className="flex justify-between"><span className="font-semibold text-[#6B7280] w-24">Valid Until:</span> <span className="font-medium">{currentVersion?.created_at ? new Date(new Date(currentVersion.created_at).getTime() + 30*24*60*60*1000).toLocaleDateString() : "—"}</span></div>
-                <div className="flex justify-between"><span className="font-semibold text-[#6B7280] w-24">Status:</span> <span className="font-medium">{currentVersion?.status}</span></div>
-                <div className="flex justify-between"><span className="font-semibold text-[#6B7280] w-24">Total:</span> <span className="font-bold tabular-nums">₹{toMoney(currentVersion?.total_amount)}</span></div>
+                <div className="flex justify-between"><span className="font-semibold text-muted-foreground w-24">Date:</span> <span className="font-medium text-foreground">{currentVersion?.created_at ? new Date(currentVersion.created_at).toLocaleDateString() : "—"}</span></div>
+                <div className="flex justify-between"><span className="font-semibold text-muted-foreground w-24">Valid Until:</span> <span className="font-medium text-foreground">{currentVersion?.created_at ? new Date(new Date(currentVersion.created_at).getTime() + 30*24*60*60*1000).toLocaleDateString() : "—"}</span></div>
+                <div className="flex justify-between"><span className="font-semibold text-muted-foreground w-24">Status:</span> <span className="font-medium text-foreground">{currentVersion?.status}</span></div>
+                <div className="flex justify-between"><span className="font-semibold text-muted-foreground w-24">Total:</span> <span className="font-bold tabular-nums text-foreground">₹{toMoney(currentVersion?.total_amount)}</span></div>
               </div>
             </div>
           </div>
 
           {/* Line Items Table */}
           <div className="px-6">
-            <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-[#6B7280]">Line Items — Discount & GST per revision</div>
-            <div className="overflow-hidden rounded-lg border border-[#E5E7EB]">
+            <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">Line Items — Discount & GST per revision</div>
+            <div className="overflow-hidden rounded-lg border border-border">
               <table className="w-full border-collapse text-xs">
                 <thead>
-                  <tr className="bg-[#F1F5F9] text-[11px] uppercase tracking-wide text-[#334155]">
+                  <tr className="bg-[var(--surface-sunken)] text-[11px] uppercase tracking-wide text-foreground font-semibold">
                     <th className="px-2 py-2 text-left font-bold">Description</th>
                     <th className="px-2 py-2 text-right font-bold">HSN</th>
                     <th className="px-2 py-2 text-right font-bold">Qty</th>
@@ -318,13 +319,13 @@ export default function QuotationDetailPage() {
                 </thead>
                 <tbody>
                   {(currentVersion?.line_items ?? []).map((item) => (
-                    <tr key={item.id} className="border-t border-[#E2E8F0] bg-white">
+                    <tr key={item.id} className="border-t border-border bg-surface">
                       <td className="px-2 py-2 font-medium text-foreground">{item.description}</td>
                       <td className="px-2 py-2 text-right text-[11px] text-muted-foreground">{item.hsn_code || "—"}</td>
                       <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{item.quantity}</td>
                       <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">₹{toMoney(item.unit_price)}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{item.gst_rate != null ? `${Number(item.gst_rate).toFixed(0)}%` : "18%"}</td>
-                      <td className="px-2 py-2 text-right tabular-nums">{item.discount_percent ? `${Number(item.discount_percent).toFixed(0)}%` : "—"}</td>
+                      <td className="px-2 py-2 text-right tabular-nums text-foreground">{item.gst_rate != null ? `${Number(item.gst_rate).toFixed(0)}%` : "18%"}</td>
+                      <td className="px-2 py-2 text-right tabular-nums text-foreground">{item.discount_percent ? `${Number(item.discount_percent).toFixed(0)}%` : "—"}</td>
                       <td className="px-2 py-2 text-right tabular-nums font-semibold text-foreground">₹{toMoney(item.amount)}</td>
                     </tr>
                   ))}
@@ -335,21 +336,21 @@ export default function QuotationDetailPage() {
               </table>
             </div>
             <div className="mt-3 flex justify-end">
-              <div className="min-w-[280px] rounded-lg border border-[#E5E7EB] bg-[#F9FAFB] px-4 py-3 text-right">
-                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Subtotal</span><span className="font-medium tabular-nums">₹{toMoney(currentVersion?.subtotal_amount ?? currentVersion?.subtotal ?? currentVersion?.total_amount)}</span></div>
+              <div className="min-w-[280px] rounded-lg border border-border bg-[var(--surface-sunken)] px-4 py-3 text-right">
+                <div className="flex justify-between text-xs"><span className="text-muted-foreground">Subtotal</span><span className="font-medium tabular-nums text-foreground">₹{toMoney(currentVersion?.subtotal_amount ?? currentVersion?.subtotal ?? currentVersion?.total_amount)}</span></div>
                 {currentVersion?.discount_value && Number(currentVersion.discount_value) !== 0 ? (
-                  <div className="flex justify-between text-xs text-amber-700"><span>Discount {currentVersion.discount_type === "PERCENT" ? `(${currentVersion.discount_value}%)` : ""}</span><span>- ₹{toMoney(currentVersion.discount_amount ?? 0)}</span></div>
+                  <div className="flex justify-between text-xs text-amber-500"><span>Discount {currentVersion.discount_type === "PERCENT" ? `(${currentVersion.discount_value}%)` : ""}</span><span>- ₹{toMoney(currentVersion.discount_amount ?? 0)}</span></div>
                 ) : null}
                 {currentVersion?.gst_rate && Number(currentVersion.gst_rate) !== 0 ? (
                   <>
-                    <div className="flex justify-between text-xs text-muted-foreground"><span>CGST {(Number(currentVersion.gst_rate)/2).toFixed(1)}%</span><span>₹{toMoney(Number(currentVersion.gst_amount ?? 0)/2)}</span></div>
-                    <div className="flex justify-between text-xs text-muted-foreground"><span>SGST {(Number(currentVersion.gst_rate)/2).toFixed(1)}%</span><span>₹{toMoney(Number(currentVersion.gst_amount ?? 0)/2)}</span></div>
-                    <div className="flex justify-between text-xs font-medium text-muted-foreground"><span>GST Total {Number(currentVersion.gst_rate).toFixed(0)}%</span><span>₹{toMoney(currentVersion.gst_amount ?? 0)}</span></div>
+                    <div className="flex justify-between text-xs text-muted-foreground"><span>CGST {(Number(currentVersion.gst_rate)/2).toFixed(1)}%</span><span className="text-foreground">₹{toMoney(Number(currentVersion.gst_amount ?? 0)/2)}</span></div>
+                    <div className="flex justify-between text-xs text-muted-foreground"><span>SGST {(Number(currentVersion.gst_rate)/2).toFixed(1)}%</span><span className="text-foreground">₹{toMoney(Number(currentVersion.gst_amount ?? 0)/2)}</span></div>
+                    <div className="flex justify-between text-xs font-medium text-muted-foreground"><span>GST Total {Number(currentVersion.gst_rate).toFixed(0)}%</span><span className="text-foreground font-semibold">₹{toMoney(currentVersion.gst_amount ?? 0)}</span></div>
                   </>
                 ) : (
                   <div className="flex justify-between text-xs text-muted-foreground"><span>GST</span><span>Not applicable</span></div>
                 )}
-                <div className="mt-1 flex justify-between border-t border-[#E5E7EB] pt-2 text-sm font-bold"><span>Total Amount</span><span className="tabular-nums">₹{toMoney(currentVersion?.total_amount)}</span></div>
+                <div className="mt-1 flex justify-between border-t border-border pt-2 text-sm font-bold text-foreground"><span>Total Amount</span><span className="tabular-nums">₹{toMoney(currentVersion?.total_amount)}</span></div>
                 <div className="mt-1 text-[10px] text-muted-foreground">Valid 30 days • {currentVersion?.status}</div>
               </div>
             </div>
@@ -357,13 +358,13 @@ export default function QuotationDetailPage() {
 
           {/* Terms & Notes + Footer */}
           {(currentVersion?.terms || currentVersion?.notes || currentVersion?.rejection_reason) && (
-            <div className="mx-6 mt-6 rounded-lg border-l-4 border-[#94A3B8] bg-[#F8FAFC] p-3 text-xs leading-relaxed">
-              {currentVersion?.terms && <div className="mb-1"><span className="font-bold">Terms & Conditions:</span> {currentVersion.terms}</div>}
-              {currentVersion?.notes && <div><span className="font-bold">Notes:</span> {currentVersion.notes}</div>}
+            <div className="mx-6 mt-6 rounded-lg border-l-4 border-primary bg-[var(--surface-sunken)] p-3 text-xs leading-relaxed text-foreground">
+              {currentVersion?.terms && <div className="mb-1"><span className="font-bold text-foreground">Terms & Conditions:</span> {currentVersion.terms}</div>}
+              {currentVersion?.notes && <div><span className="font-bold text-foreground">Notes:</span> {currentVersion.notes}</div>}
               {currentVersion?.rejection_reason && <div className="mt-1 text-destructive"><span className="font-bold">Rejected:</span> {currentVersion.rejection_reason}</div>}
             </div>
           )}
-          <div className="mx-6 mt-6 border-t border-[#E5E7EB] pt-3 text-center text-[11px] leading-relaxed text-[#94A3B8]">
+          <div className="mx-6 mt-6 border-t border-border pt-3 text-center text-[11px] leading-relaxed text-muted-foreground">
             This is an official quotation from DemoCRM Solutions Pvt. Ltd. • GSTIN: 27AABCD1234F1Z5<br />
             Thank you for your business. For queries, contact info@democrm.com
           </div>
@@ -414,7 +415,12 @@ export default function QuotationDetailPage() {
         description="This will automatically convert the originating lead into a Customer."
         confirmLabel="Accept & create customer"
         loading={accept.isPending}
-        onConfirm={() => accept.mutateAsync().then(() => setAcceptOpen(false))}
+        onConfirm={() =>
+          accept.mutateAsync().then(() => {
+            triggerConfetti();
+            setAcceptOpen(false);
+          })
+        }
       />
 
       <ConfirmDialog

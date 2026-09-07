@@ -450,8 +450,40 @@ class UserNotificationListView(APIView):
                 read_bool = is_read.lower() in ("true", "1")
                 notifications = notifications.filter(is_read=read_bool)
 
-            serializer = NotificationSerializer(notifications, many=True)
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            # Pagination: ?page=1&page_size=10 (default 10, max 50) — avoids infinite scroll
+            from django.core.paginator import EmptyPage, Paginator
+
+            try:
+                page = int(request.query_params.get("page", "1"))
+            except ValueError:
+                page = 1
+            try:
+                page_size = int(request.query_params.get("page_size", "20"))
+            except ValueError:
+                page_size = 20
+            page_size = max(1, min(page_size, 50))
+            paginator = Paginator(notifications, page_size)
+            try:
+                page_obj = paginator.page(page)
+            except EmptyPage:
+                page_obj = (
+                    paginator.page(paginator.num_pages) if paginator.num_pages else []
+                )
+
+            serializer = NotificationSerializer(
+                page_obj.object_list if hasattr(page_obj, "object_list") else [],
+                many=True,
+            )
+            return Response(
+                {
+                    "count": paginator.count,
+                    "num_pages": paginator.num_pages,
+                    "page": page,
+                    "page_size": page_size,
+                    "results": serializer.data,
+                },
+                status=status.HTTP_200_OK,
+            )
         except Exception as e:
             logger.error(
                 "Failed to list notifications for user %s: %s", request.user, e

@@ -64,10 +64,10 @@ export default function DataTable({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-md border">
+      <div className="rounded-md border border-outline overflow-hidden">
         <Table>
-          <TableHeader>
-            <TableRow>
+          <TableHeader className="bg-surface-container">
+            <TableRow className="bg-surface-container hover:bg-surface-container">
               {columns.map((column) => (
                 <TableHead key={column.key} className={column.className}>
                   {column.sortable && canSort ? (
@@ -106,11 +106,8 @@ export default function DataTable({
               rows.filter(Boolean).map((row, idx) => (
                 <TableRow
                   key={getRowId?.(row) ?? row?.id ?? idx}
-                  className={onRowClick ? "cursor-pointer hover:bg-muted/50" : undefined}
-                  onClick={(event) => {
-                    if (!onRowClick || event.target.closest("a,button,input,select,textarea,[role='button']")) return;
-                    onRowClick(row);
-                  }}
+                  className={onRowClick ? "cursor-pointer hover:bg-surface-container/50" : "hover:bg-surface-container/50"}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
                 >
                   {columns.map((column) => (
                     <TableCell key={column.key} className={column.className}>

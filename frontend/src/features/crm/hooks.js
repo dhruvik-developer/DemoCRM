@@ -90,7 +90,9 @@ export function useCreatePipeline() {
     mutationFn: createPipeline,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: crmKeys.pipelines });
-      toast.success("Pipeline created.");
+      // Fresh pipeline clones stage skeleton server-side (forms NOT copied → isolated control).
+      queryClient.invalidateQueries({ queryKey: ["crm", "pipeline-stages"] });
+      toast.success("Pipeline created. Stages copied (forms are empty — link forms per pipeline).");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });
@@ -114,7 +116,9 @@ export function useDeletePipeline() {
     mutationFn: (id) => deletePipeline(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: crmKeys.pipelines });
-      toast.success("Pipeline deleted.");
+      queryClient.invalidateQueries({ queryKey: ["crm", "pipeline-stages"] });
+      queryClient.invalidateQueries({ queryKey: ["callforms"] });
+      toast.success("Pipeline deleted (only its stages & forms removed).");
     },
     onError: (error) => toast.error(getApiErrorMessage(error)),
   });
@@ -125,7 +129,9 @@ export function useCreatePipelineStage() {
   return useMutation({
     mutationFn: createPipelineStage,
     onSuccess: (result) => {
+      // Isolated: invalidate both generic and pipeline-specific keys, and also all pipeline views
       queryClient.invalidateQueries({ queryKey: ["crm", "pipeline-stages"] });
+      if (result?.pipeline) queryClient.invalidateQueries({ queryKey: crmKeys.pipelineStages(result.pipeline) });
       toast.success("Pipeline stage created.");
       return result;
     },

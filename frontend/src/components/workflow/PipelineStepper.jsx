@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, Clock } from "lucide-react";
 
 export default function PipelineStepper({ stages = [], currentStageId, stageEnteredAt }) {
   if (!stages.length) return null;
@@ -7,56 +7,81 @@ export default function PipelineStepper({ stages = [], currentStageId, stageEnte
   const activeIndex = currentIndex === -1 ? 0 : currentIndex;
 
   return (
-    <div className="flex items-center gap-0 overflow-x-auto py-3">
+    <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto py-2.5 scrollbar-none">
       {sorted.map((stage, idx) => {
         const isCompleted = idx < activeIndex;
         const isActive = idx === activeIndex;
-        // eslint-disable-next-line react-hooks/purity
+        // eslint-disable-next-line react-hooks/purity -- stageEnteredAt is a timestamp, days calc is idempotent per render
         const daysInStage = isActive && stageEnteredAt ? Math.floor((Date.now() - new Date(stageEnteredAt).getTime()) / 86400000) : null;
 
         return (
-          <div key={stage.id} className="flex items-center gap-0 flex-1 min-w-0">
-            <div className="flex flex-col items-center gap-1.5 min-w-[96px] flex-1 relative">
-              <div
-                className={[
-                  "flex h-[26px] w-[26px] items-center justify-center rounded-full text-[11px] font-bold border-2 transition-all duration-200 z-10",
-                  isActive
-                    ? "bg-[#2563EB] border-[#2563EB] text-white shadow-[0_0_0_4px_#EEF2FF]"
-                    : isCompleted
-                      ? "bg-[#10B981] border-[#10B981] text-white"
-                      : "bg-white border-[#E5E7EB] text-muted-foreground",
-                ].join(" ")}
-                aria-label={`${stage.name} ${isActive ? "active" : isCompleted ? "completed" : "pending"}`}
-              >
-                {isCompleted ? <Check className="h-3.5 w-3.5" /> : idx + 1}
-              </div>
+          <div key={stage.id} className="flex min-w-[130px] sm:min-w-0 flex-1 flex-col gap-1.5">
+            {/* Progression Track Bar */}
+            <div
+              className={[
+                "h-1.5 w-full rounded-full transition-all duration-300",
+                isCompleted
+                  ? "bg-primary"
+                  : isActive
+                    ? "bg-[#FF6A3D]"
+                    : "bg-[var(--surface-container)] border border-border",
+              ].join(" ")}
+            />
+
+            {/* Stage Indicator & Title */}
+            <div className="flex items-center gap-2 mt-0.5">
               <span
                 className={[
-                  "text-[11.5px] font-semibold text-center leading-tight line-clamp-2",
-                  isActive ? "text-foreground font-extrabold" : isCompleted ? "text-foreground" : "text-muted-foreground",
+                  "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold border transition-colors",
+                  isActive
+                    ? "bg-[#FF6A3D] text-[#2B1206] border-[#FF6A3D] shadow-xs"
+                    : isCompleted
+                      ? "bg-primary text-white border-primary"
+                      : "bg-surface border-border text-muted-foreground",
+                ].join(" ")}
+                aria-label={`${stage.name} ${isActive ? "active" : isCompleted ? "completed" : "upcoming"}`}
+              >
+                {isCompleted ? <Check className="h-3 w-3 stroke-[2.5]" /> : idx + 1}
+              </span>
+              <span
+                className={[
+                  "text-[12px] leading-tight truncate transition-colors",
+                  isActive
+                    ? "font-bold text-foreground"
+                    : isCompleted
+                      ? "font-semibold text-foreground"
+                      : "text-muted-foreground dark:text-[#A4B8B0] font-medium",
                 ].join(" ")}
               >
                 {stage.name}
               </span>
-              {stage.requires_quotation ? (
-                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
-                  Quotation
-                </span>
-              ) : null}
               {isActive && daysInStage !== null ? (
                 <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded border ${daysInStage > 7 ? "bg-red-50 text-red-700 border-red-200" : "bg-muted text-muted-foreground"}`}>
                   {daysInStage}d {daysInStage > 7 ? "⚠️" : ""}
                 </span>
               ) : null}
             </div>
-            {idx < sorted.length - 1 ? (
-              <div
-                className={[
-                  "h-0.5 flex-1 mx-1 rounded -mt-6",
-                  idx < activeIndex ? "bg-[#10B981]" : "bg-[#E5E7EB]",
-                ].join(" ")}
-              />
-            ) : null}
+
+            {/* Badges: Quotation Requirement or Days in Stage */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {stage.requires_quotation ? (
+                <span className="inline-flex items-center gap-1 rounded-full border border-warning-border bg-warning-soft px-2 py-0.5 text-[10px] font-semibold text-warning">
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning" /> Quotation
+                </span>
+              ) : null}
+              {isActive && daysInStage !== null ? (
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-mono font-medium ${
+                    daysInStage > 7
+                      ? "bg-destructive/10 text-destructive border-destructive/20"
+                      : "bg-primary-soft text-primary border-primary/20"
+                  }`}
+                >
+                  <Clock className="h-2.5 w-2.5" />
+                  {daysInStage}d {daysInStage > 7 ? "• slow" : ""}
+                </span>
+              ) : null}
+            </div>
           </div>
         );
       })}

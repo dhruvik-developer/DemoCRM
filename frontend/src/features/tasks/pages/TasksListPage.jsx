@@ -3,6 +3,22 @@
 
 import { useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  CheckCircle2,
+  CheckSquare,
+  Clock,
+  Plus,
+  Search,
+  UserCheck,
+  MessageSquareText,
+  Pencil,
+  Pin,
+  Trash2,
+  CalendarClock,
+  CalendarRange,
+  Flag,
+  ListTodo,
+} from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { hasPermission } from "@/utils/permissions";
 import { TASK_STATUSES, taskPriorityName, taskStatusName } from "@/utils/taskMasterData";
@@ -11,9 +27,7 @@ import DataTable from "@/components/tables/DataTable";
 import EmptyState from "@/components/common/EmptyState";
 import PageError from "@/components/common/PageError";
 import ConfirmDialog from "@/components/common/ConfirmDialog";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -23,12 +37,19 @@ import {
 } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MessageSquareText, Pencil, Pin, Trash2, CheckSquare, Clock, CalendarClock, CalendarRange, Flag, ListTodo } from "lucide-react";
 import RecordNotesPanel from "@/features/notes/components/RecordNotesPanel";
 import ListControls from "@/components/common/ListControls";
 import { usePinnedRecords } from "@/hooks/usePinnedRecords";
 
 import { useUsers } from "@/features/admin/hooks";
+
+const INBOX_TABS = [
+  { key: "all", label: "All", icon: ListTodo },
+  { key: "overdue", label: "Overdue", icon: Clock },
+  { key: "today", label: "Today", icon: CalendarClock },
+  { key: "upcoming", label: "Upcoming", icon: CalendarRange },
+  { key: "completed", label: "Completed", icon: CheckCircle2 },
+];
 
 function KpiCard({ title, value, loading, icon: Icon, to }) {
   return (
@@ -69,6 +90,26 @@ function EmployeeTaskStatusSelect({ task }) {
         ))}
       </SelectContent>
     </Select>
+  );
+}
+
+function TaskStatusCell({ task, isManagerOrAdmin }) {
+  if (!isManagerOrAdmin) {
+    return <EmployeeTaskStatusSelect task={task} />;
+  }
+  const s = taskStatusName(task.status) || "Pending";
+  const isDone = s.toLowerCase() === "completed";
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+        isDone
+          ? "bg-success-soft text-success border-success-border"
+          : "bg-surface-container text-muted-foreground border-border"
+      }`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full ${isDone ? "bg-success" : "bg-muted-foreground"}`} />
+      {s}
+    </span>
   );
 }
 
@@ -117,6 +158,7 @@ export default function TasksListPage() {
   let rows = tasksQuery.data?.results ?? [];
   let count = tasksQuery.data?.count ?? 0;
   const canCreate = hasPermission(resolved, "add_task");
+  const isManagerOrAdmin = Boolean(resolved?.isAdmin || hasPermission(resolved, "assign_task"));
 
   // Inbox filtering client-side per §13 (backend has no overdue/today param)
   const now = new Date();
@@ -142,12 +184,16 @@ export default function TasksListPage() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">My Tasks</h1>
+    <div className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-6 lg:p-8">
+      {/* Page Header */}
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="font-display text-[28px] font-extrabold tracking-tight text-[#113D37] dark:text-[#E8F0E9]">Tasks & Follow-ups</h1>
+          <p className="text-[13px] text-muted-foreground mt-0.5">Manage assignments, track deadlines, and maintain pipeline momentum.</p>
+        </div>
         {canCreate ? (
-          <Button asChild className="bg-[#2563EB] hover:bg-[#1D4ED8]">
-            <Link to="/tasks/new">New task</Link>
+          <Button asChild className="bg-[#FF6A3D] text-[#2B1206] hover:bg-[#E0532A] hover:text-white rounded-[9px] font-semibold">
+            <Link to="/tasks/new"><Plus className="h-4 w-4 mr-1" /> New task</Link>
           </Button>
         ) : null}
       </div>
@@ -162,150 +208,258 @@ export default function TasksListPage() {
         <KpiCard title="High priority" value={kpi.data?.high_priority} loading={kpi.isLoading} icon={Flag} />
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {[
-          ["all", "All"],
-          ["overdue", "Overdue"],
-          ["today", "Today"],
-          ["upcoming", "Upcoming"],
-          ["completed", "Completed"],
-        ].map(([key, label]) => (
-          <Button key={key} variant={inbox === key ? "default" : "outline"} size="sm" onClick={() => updateParam("inbox", key === "all" ? "" : key)} className={inbox === key ? "bg-[#2563EB] hover:bg-[#1D4ED8]" : ""}>
-            {label}
-          </Button>
-        ))}
-        <div className="ml-auto flex items-center gap-2">
-          <Input placeholder="Search tasks…" className="w-64" defaultValue={search} onChange={(event) => updateParam("search", event.target.value.trim())} />
+      {/* Toolbar: Filter Tabs & Search */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {INBOX_TABS.map(({ key, label, icon: Icon }) => {
+            const isActive = (inbox === "all" && key === "all") || inbox === key;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => updateParam("inbox", key === "all" ? "" : key)}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                  isActive
+                    ? "bg-primary-soft border-primary/30 text-primary shadow-xs"
+                    : "bg-surface border-border text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                }`}
+              >
+                <Icon className={`h-3.5 w-3.5 ${isActive ? "text-primary" : "text-muted-foreground"}`} />
+                {label}
+              </button>
+            );
+          })}
         </div>
-        <ListControls
-          filterValue={inbox}
-          filterOptions={[["all", "All tasks"], ["overdue", "Overdue"], ["today", "Due today"], ["upcoming", "Upcoming"], ["completed", "Completed"]].map(([value, label]) => ({ value, label }))}
-          onFilterChange={(value) => updateParam("inbox", value === "all" ? "" : value)}
-          sortValue={ordering}
-          sortOptions={[{ value: "due_date", label: "Due date: oldest first" }, { value: "-due_date", label: "Due date: newest first" }, { value: "task_title", label: "Title: A–Z" }, { value: "-task_title", label: "Title: Z–A" }]}
-          onSortChange={(value) => updateParam("ordering", value)}
-          pinnedOnly={pinnedOnly}
-          onPinnedOnlyChange={(value) => updateParam("pinned", value ? "1" : "")}
-        />
+
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative flex items-center bg-surface border border-border rounded-[10px] px-3 py-1.5 w-64 md:w-72 shadow-sm">
+            <Search className="h-4 w-4 text-muted-foreground mr-2 shrink-0" />
+            <input
+              placeholder="Search tasks…"
+              className="bg-transparent border-none outline-none text-xs text-foreground placeholder:text-muted-foreground w-full"
+              defaultValue={search}
+              key={search}
+              onChange={(event) => updateParam("search", event.target.value)}
+            />
+          </div>
+          <ListControls
+            filterValue={inbox}
+            filterOptions={[["all", "All tasks"], ["overdue", "Overdue"], ["today", "Due today"], ["upcoming", "Upcoming"], ["completed", "Completed"]].map(([value, label]) => ({ value, label }))}
+            onFilterChange={(value) => updateParam("inbox", value === "all" ? "" : value)}
+            sortValue={ordering}
+            sortOptions={[{ value: "due_date", label: "Due date: oldest first" }, { value: "-due_date", label: "Due date: newest first" }, { value: "task_title", label: "Title: A–Z" }, { value: "-task_title", label: "Title: Z–A" }]}
+            onSortChange={(value) => updateParam("ordering", value)}
+            pinnedOnly={pinnedOnly}
+            onPinnedOnlyChange={(value) => updateParam("pinned", value ? "1" : "")}
+          />
+        </div>
       </div>
 
       {tasksQuery.isError ? (
         <PageError error={tasksQuery.error} onRetry={tasksQuery.refetch} />
       ) : (
-        <DataTable
-          columns={[
-            {
-              key: "pin",
-              header: "",
-              className: "w-10",
-              render: (task) => <Button variant="ghost" size="icon-sm" title={pins.isPinned(task.task_id) ? "Unpin task" : "Pin task"} aria-label={pins.isPinned(task.task_id) ? "Unpin task" : "Pin task"} onClick={() => pins.togglePin(task.task_id)}><Pin className={pins.isPinned(task.task_id) ? "fill-primary text-primary" : "text-muted-foreground"} /></Button>,
-            },
-            {
-              key: "task_title",
-              header: "Title",
-              sortable: true,
-              render: (task) => {
-                const priority = taskPriorityName(task.priority);
-                const isHigh = priority?.toLowerCase() === "high";
-                return (
-                  <div className="flex items-center gap-2">
-                    {isHigh ? <span className="h-6 w-1 rounded bg-[#2563EB]" /> : null}
-                    <Link to={`/tasks/${task.task_id}`} className="font-medium hover:underline">
-                      {task.task_title}
-                    </Link>
-                    {task.lead ? <Badge variant="outline" className="text-[10px]">→ Workspace</Badge> : null}
-                  </div>
-                );
+        <div className="rounded-[16px] bg-surface border border-border shadow-sm overflow-hidden">
+          <DataTable
+            columns={[
+              {
+                key: "pin",
+                header: "",
+                className: "w-10",
+                render: (task) => (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title={pins.isPinned(task.task_id) ? "Unpin task" : "Pin task"}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      pins.togglePin(task.task_id);
+                    }}
+                  >
+                    <Pin className={pins.isPinned(task.task_id) ? "fill-primary text-primary" : "text-muted-foreground"} />
+                  </Button>
+                ),
               },
-            },
-            {
-              key: "status",
-              header: "Status",
-              render: (task) => <EmployeeTaskStatusSelect task={task} />,
-            },
-            {
-              key: "priority",
-              header: "Priority",
-              render: (task) => {
-                const n = taskPriorityName(task.priority);
-                return n ? <Badge variant={n.toLowerCase() === "high" ? "destructive" : n.toLowerCase() === "medium" ? "secondary" : "outline"}>{n}</Badge> : "—";
+              {
+                key: "task_title",
+                header: "Task Description",
+                sortable: true,
+                render: (task) => {
+                  const to = task.lead ? `/leads/${task.lead}` : `/tasks/${task.task_id}`;
+                  const priority = taskPriorityName(task.priority);
+                  const isHigh = priority?.toLowerCase() === "high";
+                  const isCompleted = taskStatusName(task.status)?.toLowerCase() === "completed";
+
+                  return (
+                    <div className="flex items-center gap-3 py-1">
+                      <div
+                        className={`w-5 h-5 rounded-[6px] border flex items-center justify-center shrink-0 transition-colors ${
+                          isCompleted
+                            ? "bg-success border-success text-white"
+                            : "border-border bg-surface hover:border-primary"
+                        }`}
+                      >
+                        {isCompleted && <CheckCircle2 className="h-3.5 w-3.5" />}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            to={to}
+                            onClick={(event) => event.stopPropagation()}
+                            className={`font-semibold text-[13.5px] text-foreground hover:text-primary transition-colors truncate ${
+                              isCompleted ? "line-through text-muted-foreground" : ""
+                            }`}
+                          >
+                            {task.task_title}
+                          </Link>
+                          {isHigh && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-destructive" title="High Priority" />
+                          )}
+                        </div>
+                        {task.lead ? (
+                          <span className="text-[11px] text-muted-foreground block truncate">
+                            Linked to lead workspace
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                },
               },
-            },
-            {
-              key: "due_date",
-              header: "Due",
-              sortable: true,
-              render: (task) =>
-                task.due_date ? new Date(task.due_date).toLocaleString() : "—",
-            },
-            {
-              key: "assigned_to",
-              header: "Assigned to",
-              render: (task) => findUserName(task.assigned_to),
-            },
-            {
-              key: "notes",
-              header: "Notes",
-              className: "w-16",
-              render: (task) => <Button variant="ghost" size="icon-sm" title="Add note" aria-label={`Notes for ${task.task_title}`} onClick={() => setNotesRecord({ type: "task", id: task.task_id, title: task.task_title })}><MessageSquareText /></Button>,
-            },
-            {
-              key: "actions",
-              header: "",
-              render: (task) => {
-                const isManagerOrAdmin = Boolean(resolved?.isAdmin || hasPermission(resolved, "assign_task"));
-                if (!isManagerOrAdmin) {
-                  return null;
-                }
-                return (
-                  <div className="flex items-center justify-end gap-1">
-                    <Button asChild variant="ghost" size="sm">
-                      <Link to={`/tasks/${task.task_id}`}>Open →</Link>
-                    </Button>
-                    <Button asChild variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" title="Edit task">
-                      <Link to={`/tasks/${task.task_id}`}>
-                        <Pencil className="size-4" />
-                      </Link>
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                      title="Delete task"
-                      onClick={() => setTaskToDelete(task)}
+              {
+                key: "status",
+                header: "Status",
+                render: (task) => <TaskStatusCell task={task} isManagerOrAdmin={isManagerOrAdmin} />,
+              },
+              {
+                key: "priority",
+                header: "Priority",
+                render: (task) => {
+                  const n = taskPriorityName(task.priority) || "Normal";
+                  const isHigh = n.toLowerCase() === "high";
+                  const isMed = n.toLowerCase() === "medium";
+                  return (
+                    <span
+                      className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${
+                        isHigh
+                          ? "bg-destructive/10 text-destructive border border-destructive/20"
+                          : isMed
+                            ? "bg-warning-soft text-warning border border-warning-border"
+                            : "bg-muted text-muted-foreground"
+                      }`}
                     >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </div>
-                );
+                      {n}
+                    </span>
+                  );
+                },
               },
-            },
-          ]}
-          rows={rows}
-          getRowId={(row) => row.task_id}
-          onRowClick={(task) => navigate(`/tasks/${task.task_id}`)}
-          isLoading={tasksQuery.isLoading}
-          emptyState={
-            <EmptyState
-              title="No tasks found"
-              description={
-                search
-                  ? "Try adjusting the search."
-                  : canCreate
-                    ? "Create your first task."
-                    : "Nothing assigned to you yet."
-              }
-              ctaLabel={canCreate && !search ? "New task" : undefined}
-              ctaTo={canCreate ? "/tasks/new" : undefined}
-            />
-          }
-          sortValue={ordering}
-          onSortChange={(value) => updateParam("ordering", value)}
-          page={pinnedOnly ? 1 : page}
-          pageSize={10}
-          count={count}
-          onPageChange={(nextPage) => updateParam("page", String(nextPage))}
-        />
+              {
+                key: "due_date",
+                header: "Due Date",
+                sortable: true,
+                render: (task) => {
+                  if (!task.due_date) return <span className="text-muted-foreground text-xs">—</span>;
+                  const d = new Date(task.due_date);
+                  const isOverdue = d < now && taskStatusName(task.status)?.toLowerCase() !== "completed";
+                  return (
+                    <span
+                      className={`font-mono text-xs font-semibold ${
+                        isOverdue ? "text-destructive" : "text-foreground"
+                      }`}
+                    >
+                      {d.toLocaleDateString()} {d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                    </span>
+                  );
+                },
+              },
+              {
+                key: "assigned_to",
+                header: "Assignee",
+                render: (task) => (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    <UserCheck className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="truncate max-w-36">{findUserName(task.assigned_to)}</span>
+                  </div>
+                ),
+              },
+              {
+                key: "notes",
+                header: "Notes",
+                className: "w-16",
+                render: (task) => (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    title="Add note"
+                    aria-label={`Notes for ${task.task_title}`}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setNotesRecord({ type: "task", id: task.task_id, title: task.task_title });
+                    }}
+                  >
+                    <MessageSquareText />
+                  </Button>
+                ),
+              },
+              {
+                key: "actions",
+                header: "",
+                render: (task) => {
+                  if (!isManagerOrAdmin) {
+                    return null;
+                  }
+                  return (
+                    <div className="flex items-center justify-end gap-1">
+                      <Button asChild variant="ghost" size="sm" onClick={(event) => event.stopPropagation()}>
+                        <Link to={`/tasks/${task.task_id}`}>Open →</Link>
+                      </Button>
+                      <Button asChild variant="ghost" size="icon" className="size-8 text-muted-foreground hover:text-foreground" title="Edit task" onClick={(event) => event.stopPropagation()}>
+                        <Link to={`/tasks/${task.task_id}`}>
+                          <Pencil className="size-4" />
+                        </Link>
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        title="Delete task"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setTaskToDelete(task);
+                        }}
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  );
+                },
+              },
+            ]}
+            rows={rows}
+            getRowId={(row) => row.task_id}
+            onRowClick={(task) => navigate(`/tasks/${task.task_id}`)}
+            isLoading={tasksQuery.isLoading}
+            emptyState={
+              <EmptyState
+                title="No tasks found"
+                description={
+                  search
+                    ? "Try adjusting the search."
+                    : canCreate
+                      ? "Create your first task."
+                      : "Nothing assigned to you yet."
+                }
+                ctaLabel={canCreate && !search ? "New task" : undefined}
+                ctaTo={canCreate ? "/tasks/new" : undefined}
+              />
+            }
+            sortValue={ordering}
+            onSortChange={(value) => updateParam("ordering", value)}
+            page={pinnedOnly ? 1 : page}
+            pageSize={10}
+            count={count}
+            onPageChange={(nextPage) => updateParam("page", String(nextPage))}
+          />
+        </div>
       )}
 
       <ConfirmDialog

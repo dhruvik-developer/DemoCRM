@@ -176,7 +176,7 @@ export default function MeetingsListPage() {
           </p>
         </div>
         {canCreate ? (
-          <Button asChild className="bg-[#2563EB] hover:bg-[#1D4ED8]">
+          <Button asChild className="bg-secondary hover:bg-[#E0532A]">
             <Link to="/meetings/new">Schedule Meeting</Link>
           </Button>
         ) : null}
