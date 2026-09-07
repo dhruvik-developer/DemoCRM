@@ -14,7 +14,6 @@ import {
 import { toast } from "sonner";
 import { useLead, useProgressLead } from "@/features/leads/hooks";
 import { useLeadPrimaryForm, useLogAttempt, useSubmitForm } from "@/features/callforms/hooks";
-import DynamicFormFields from "@/features/callforms/components/DynamicFormFields";
 import CallWorkspaceForm from "@/components/CallWorkspaceForm";
 import { useMasterDataMaps, usePipelineStages } from "@/features/crm/hooks";
 import {
@@ -215,9 +214,6 @@ function TaskCallWorkspace({ task, updateStatus }) {
 
   const stagesQuery = usePipelineStages(leadQuery.data?.pipeline);
 
-  const [formValues, setFormValues] = useState({});
-  const [fieldErrors, setFieldErrors] = useState({});
-
   const lead = leadQuery.data;
   const formData = primaryFormQuery.data;
   const customFields = formData?.fields ?? [];
@@ -296,7 +292,7 @@ function TaskCallWorkspace({ task, updateStatus }) {
     if (submittedValues?.preventDefault) submittedValues.preventDefault();
     const rawValues = submittedValues && !submittedValues.preventDefault
       ? submittedValues
-      : formValues;
+      : {};
     const valuesToSave = {
       ...rawValues,
       ...(rawValues.callOutcome !== undefined ? { call_outcome: rawValues.callOutcome } : {}),
@@ -304,7 +300,6 @@ function TaskCallWorkspace({ task, updateStatus }) {
       ...(rawValues.proposedDealValue !== undefined ? { proposed_value: rawValues.proposedDealValue } : {}),
       ...(rawValues.nextStepDate !== undefined ? { agreed_next_action: rawValues.nextStepDate } : {}),
     };
-    setFieldErrors({});
 
     const versionId =
       formData?.template_version?.id ||
@@ -332,7 +327,7 @@ function TaskCallWorkspace({ task, updateStatus }) {
       } else {
         const validOutcome = mapToBackendOutcome(valuesToSave.callOutcome || valuesToSave.call_outcome);
         const formattedNotes = Object.entries(valuesToSave)
-          .filter(([_, v]) => Boolean(v))
+          .filter(([, v]) => Boolean(v))
           .map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`)
           .join("\n");
         await logAttempt.mutateAsync({
@@ -398,112 +393,6 @@ function TaskCallWorkspace({ task, updateStatus }) {
       onCompleteTask={handleCompleteTask}
       onSubmitAndMove={handleMoveToNextStage}
     />
-  );
-
-  return (
-    <Card className="border-primary/40 bg-background shadow-none">
-      <CardHeader className="pb-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <CardTitle className="text-lg font-bold flex items-center gap-2">
-              <span>Call Workspace — {lead?.name || "Assigned Lead"}</span>
-            </CardTitle>
-            <p className="text-xs text-muted-foreground mt-1">
-              Active Call Form Steps & Lead Information for live data entry.
-            </p>
-          </div>
-          <Badge variant="default" className="text-xs">
-            Current Stage: {masterData.stageName(lead?.current_stage) || "Lead Active"}
-          </Badge>
-        </div>
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-6 pt-5">
-        {/* Lead Basic Info Header Bar */}
-        {lead ? (
-          <div className="grid gap-4 py-2 text-sm md:grid-cols-4">
-            <div>
-              <span className="text-xs font-medium uppercase text-muted-foreground">Phone</span>
-              <p className="font-semibold text-foreground">{lead.phone || "—"}</p>
-            </div>
-            <div>
-              <span className="text-xs font-medium uppercase text-muted-foreground">Email</span>
-              <p className="font-semibold text-foreground">{lead.email || "—"}</p>
-            </div>
-            <div>
-              <span className="text-xs font-medium uppercase text-muted-foreground">Company</span>
-              <p className="font-semibold text-foreground">{lead.company_name || "—"}</p>
-            </div>
-            <div>
-              <span className="text-xs font-medium uppercase text-muted-foreground">Pipeline / Stage</span>
-              <p className="font-semibold text-foreground">
-                {masterData.pipelineName(lead.pipeline) || "Sales"} / {masterData.stageName(lead.current_stage) || "Stage"}
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        {/* Step-by-Step Interactive Call Form */}
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-foreground">
-              Call Form Steps — {formData?.template_name || masterData.stageName(lead?.current_stage) || "Initial Contact"}
-            </h3>
-            {nextStage ? (
-              <Badge variant="outline" className="text-xs">
-                Next Step: {nextStage.name}
-              </Badge>
-            ) : null}
-          </div>
-
-          <div className="flex items-center justify-between text-xs uppercase tracking-wide text-muted-foreground">
-            <span>Form Fields Workflow</span>
-            <span>{activeFields.length} {activeFields.length === 1 ? "field" : "fields"}</span>
-          </div>
-
-          <DynamicFormFields
-            fields={activeFields}
-            values={formValues}
-            errors={fieldErrors}
-            onChange={setFormValues}
-            stepView={false}
-          />
-        </div>
-
-        {/* Live Action Bar */}
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={submitForm.isPending}
-            onClick={handleSaveForm}
-          >
-            {submitForm.isPending ? "Saving Form Data…" : "Save Form Answers"}
-          </Button>
-
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={updateStatus.isPending}
-              onClick={handleCompleteTask}
-            >
-              {updateStatus.isPending ? "Completing Task…" : "Complete Task"}
-            </Button>
-
-            {nextStage ? (
-              <Button
-                type="button"
-                disabled={progressLead.isPending || updateStatus.isPending || submitForm.isPending}
-                onClick={handleMoveToNextStage}
-              >
-                {progressLead.isPending ? "Moving Stage…" : `Submit & Move to ${nextStage.name} →`}
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 

@@ -64,7 +64,8 @@ export function useDecideApproval(meetingId) {
   return useMutation({
     mutationFn: (payload) => {
       const id = payload.meetingId || meetingId;
-      const { meetingId: _, ...rest } = payload;
+      const rest = { ...payload };
+      delete rest.meetingId;
       return decideMeetingApproval(id, rest);
     },
     onSuccess: (_data, payload) => {
@@ -84,7 +85,8 @@ export function useRescheduleMeeting(meetingId) {
   return useMutation({
     mutationFn: (payload) => {
       const id = payload.meetingId || meetingId;
-      const { meetingId: _, ...rest } = payload;
+      const rest = { ...payload };
+      delete rest.meetingId;
       return rescheduleMeeting(id, rest);
     },
     onSuccess: () => {

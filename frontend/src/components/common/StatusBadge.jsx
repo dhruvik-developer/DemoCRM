@@ -18,7 +18,7 @@ const STATUS_DOTS = {
 };
 
 const STATUS_CLASSES = {
-  ACTIVE: "bg-success-soft text-[#2E8B57] border-success-border",
+  ACTIVE: "bg-success-soft text-success border-success-border",
   LOST: "bg-error-container text-error border-transparent",
   CONVERTED: "bg-success-soft text-success border-success-border",
   DRAFT: "bg-surface-container text-on-surface border-outline-variant",

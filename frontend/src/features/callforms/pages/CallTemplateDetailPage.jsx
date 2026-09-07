@@ -39,7 +39,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { defaultMeetingEmailConfiguration, meetingTemplateType } from "@/features/meetings/templateUtils";
 import {
   Select,
   SelectContent,
@@ -61,54 +60,6 @@ const EMPTY_FIELD_FORM = {
   max_files: 3,
   auto_select: false,
 };
-
-const EMAIL_EVENT_LABELS = {
-  approval_request: "Approval request email",
-  scheduled: "Approved / scheduled email",
-  rescheduled: "Reschedule approval email",
-};
-
-function MeetingEmailEditor({ template }) {
-  const updateTemplate = useUpdateCallTemplate();
-  const workflow = meetingTemplateType(template);
-  const [configuration, setConfiguration] = useState(() =>
-    Object.keys(template.email_configuration || {}).length
-      ? template.email_configuration
-      : defaultMeetingEmailConfiguration(workflow),
-  );
-  const setEventValue = (eventName, key, value) => setConfiguration((current) => ({
-    ...current,
-    [eventName]: { ...(current[eventName] || {}), [key]: value },
-  }));
-
-  return (
-    <Card>
-      <CardHeader><CardTitle className="text-base">Automatic email templates</CardTitle></CardHeader>
-      <CardContent className="space-y-5">
-        <p className="text-xs text-muted-foreground">
-          These emails are sent automatically by the meeting workflow. Dynamic variables use double braces, for example {"{{meeting_title}}"}.
-        </p>
-        {Object.entries(configuration).map(([eventName, email]) => (
-          <div key={eventName} className="space-y-3 rounded-lg border p-4">
-            <h3 className="font-medium">{EMAIL_EVENT_LABELS[eventName] || eventName}</h3>
-            <FormField id={`${eventName}_subject`} label="Email subject">
-              <Input value={email.subject || ""} onChange={(event) => setEventValue(eventName, "subject", event.target.value)} />
-            </FormField>
-            <FormField id={`${eventName}_body`} label="Email body">
-              <Textarea rows={12} value={email.body || ""} onChange={(event) => setEventValue(eventName, "body", event.target.value)} />
-            </FormField>
-          </div>
-        ))}
-        <div className="rounded-md bg-muted p-3 text-xs text-muted-foreground">
-          Available variables: meeting_title, customer_name, meeting_date, start_time, end_time, meeting_link, location, description, employee_name, manager_name, and every custom field key added below.
-        </div>
-        <Button disabled={updateTemplate.isPending} onClick={() => updateTemplate.mutateAsync({ id: template.id, email_configuration: configuration })}>
-          {updateTemplate.isPending ? "Saving…" : "Save email templates"}
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
 
 function FieldEditor({ version }) {
   const fieldsQuery = useFields(version.id);

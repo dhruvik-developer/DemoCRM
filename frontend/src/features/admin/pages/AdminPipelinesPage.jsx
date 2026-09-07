@@ -249,7 +249,7 @@ function PipelineStagesList({ pipelineId }) {
                     Stage {st.display_order ?? idx + 1}
                   </Badge>
                   <span className="font-medium">{st.name}</span>
-                  {st.requires_quotation ? <Badge className="bg-amber-50 text-amber-700 border-amber-200 text-[10px]">Quotation</Badge> : null}
+                  {st.requires_quotation ? <Badge className="bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800/50 text-[10px]">Quotation</Badge> : null}
                   {st.quotation_approval_required ? <Badge variant="outline" className="text-[10px]">Approval</Badge> : null}
                   {st.description ? (
                     <span className="text-xs text-muted-foreground">({st.description})</span>

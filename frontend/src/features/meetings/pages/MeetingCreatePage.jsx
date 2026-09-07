@@ -336,55 +336,6 @@ export default function MeetingCreatePage() {
           />
         </FormField>
 
-        {false && <><FormField
-          id="meeting_template"
-          label="Meeting Template"
-          help="Choose a template to display its custom fields for this meeting."
-        >
-          <Select
-            value={templateId || "none"}
-            onValueChange={(value) => {
-              setTemplateId(value === "none" ? "" : value);
-              setDynamicValues({});
-              setDynamicErrors({});
-            }}
-          >
-            <SelectTrigger id="meeting_template">
-              <SelectValue placeholder="No custom template" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No custom template</SelectItem>
-              {meetingTemplates.map((template) => (
-                <SelectItem key={template.id} value={String(template.id)}>
-                  {template.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </FormField>
-
-        {templateId ? (
-          <div className="rounded-xl border bg-muted/20 p-4">
-            <h2 className="mb-3 font-medium">
-              {selectedTemplate?.name ?? "Custom meeting fields"}
-            </h2>
-            {fieldsQuery.isLoading ? (
-              <p className="text-sm text-muted-foreground">Loading template fields…</p>
-            ) : (
-              <DynamicFormFields
-                fields={dynamicFields}
-                values={dynamicValues}
-                errors={dynamicErrors}
-                onChange={(nextValues) => {
-                  setDynamicValues(nextValues);
-                  setDynamicErrors({});
-                }}
-                stepView={false}
-              />
-            )}
-          </div>
-        ) : null}</>}
-
         <section className="rounded-xl border bg-muted/15 p-4">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div><h2 className="font-semibold">Custom Fields</h2><p className="text-xs text-muted-foreground">Add extra fields for this meeting.</p></div>
@@ -414,4 +365,3 @@ export default function MeetingCreatePage() {
     </div>
   );
 }
-

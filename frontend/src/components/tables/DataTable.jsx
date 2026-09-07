@@ -104,7 +104,11 @@ export default function DataTable({
               </TableRow>
             ) : (
               rows.filter(Boolean).map((row, idx) => (
-                <TableRow key={getRowId?.(row) ?? row?.id ?? idx} className="hover:bg-surface-container/50">
+                <TableRow
+                  key={getRowId?.(row) ?? row?.id ?? idx}
+                  className={onRowClick ? "cursor-pointer hover:bg-surface-container/50" : "hover:bg-surface-container/50"}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                >
                   {columns.map((column) => (
                     <TableCell key={column.key} className={column.className}>
                       {column.render ? column.render(row) : row?.[column.key]}

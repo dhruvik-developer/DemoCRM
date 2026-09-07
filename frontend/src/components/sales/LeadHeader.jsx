@@ -34,22 +34,22 @@ export default function LeadHeader({ lead, pipelineName, stageName, sourceName }
           ) : null}
         </div>
       </div>
-      <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4 border-t border-outline-variant pt-3.5 mt-1">
+      <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4 border-t border-border pt-3.5 mt-1">
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-wider text-[#94A3B8]">Pipeline</div>
-          <div className="mt-1 text-[13px] font-bold text-[#0F172A]">{pipelineName ?? "—"}</div>
+          <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">Pipeline</div>
+          <div className="mt-1 text-[13px] font-bold text-foreground">{pipelineName ?? "—"}</div>
         </div>
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-wider text-[#94A3B8]">Current Stage</div>
-          <div className="mt-1 text-[13px] font-bold text-[#0F172A]">{stageName ?? "—"}</div>
+          <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">Current Stage</div>
+          <div className="mt-1 text-[13px] font-bold text-foreground">{stageName ?? "—"}</div>
         </div>
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-wider text-[#94A3B8]">Source</div>
-          <div className="mt-1 text-[13px] font-bold text-[#0F172A]">{sourceName ?? "—"}</div>
+          <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">Source</div>
+          <div className="mt-1 text-[13px] font-bold text-foreground">{sourceName ?? "—"}</div>
         </div>
         <div>
-          <div className="text-[10.5px] font-bold uppercase tracking-wider text-[#94A3B8]">Value</div>
-          <div className="mt-1 text-[13px] font-bold text-[#0F172A]">{lead.total_value ? `₹${lead.total_value}` : "—"}</div>
+          <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground">Value</div>
+          <div className="mt-1 text-[13px] font-bold text-foreground">{lead.total_value ? `₹${lead.total_value}` : "—"}</div>
         </div>
       </div>
     </div>
